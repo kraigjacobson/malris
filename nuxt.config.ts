@@ -8,10 +8,19 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxtjs/supabase',
     '@nuxt/content',
-    '@nuxt/image'
+    '@nuxt/image',
+    '@pinia/nuxt'
   ],
 
   css: ['~/assets/css/main.css'],
+
+  supabase: {
+    redirectOptions: {
+      login: '/login',
+      callback: '/login',
+      exclude: ['/', '/api/media/**', '/api/stream/**']
+    }
+  },
 
   runtimeConfig: {
     public: {

@@ -12,13 +12,27 @@ export default defineEventHandler(async (event) => {
 
     console.log('Getting media info for UUID:', uuid)
 
-    // Make request to media API
-    const response = await $fetch(`http://localhost:8000/media/${uuid}`, {
+    // Make request to media API to get the media record information
+    const response = await fetch(`http://localhost:8000/media/${uuid}`, {
       method: 'GET',
-      timeout: 10000
+      headers: {
+        'Accept': 'application/json'
+      }
     })
 
-    return response
+    if (!response.ok) {
+      console.error(`Media API error: ${response.status} ${response.statusText}`)
+      throw createError({
+        statusCode: response.status,
+        statusMessage: `Media API error: ${response.statusText}`
+      })
+    }
+
+    const mediaInfo = await response.json()
+    
+    console.log(`Successfully retrieved media info for: ${uuid}`)
+    
+    return mediaInfo
 
   } catch (error: any) {
     console.error('Error getting media info:', error)

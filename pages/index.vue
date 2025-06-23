@@ -2,18 +2,18 @@
   <div class="container mx-auto p-6">
     <div class="max-w-4xl mx-auto">
       <div class="text-center mb-8">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+        <h1 class="text-4xl font-bold text-neutral-900 dark:text-white mb-4">
           Welcome to AI Job Tracking
         </h1>
-        <p class="text-lg text-gray-600 dark:text-gray-400">
+        <p class="text-lg text-neutral-600 dark:text-neutral-400">
           Track and manage your AI job image metadata with powerful search and filtering capabilities.
         </p>
       </div>
       
-      <div class="mt-8 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-        <h3 class="font-semibold mb-4 text-gray-900 dark:text-white text-lg">Current Features:</h3>
+      <div class="mt-8 p-6 bg-neutral-800 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-700">
+        <h3 class="font-semibold mb-4 text-neutral-900 dark:text-white text-lg">Current Features:</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+          <ul class="text-sm text-neutral-600 dark:text-neutral-400 space-y-2">
             <li class="flex items-center gap-2">
               <UIcon name="i-heroicons-check-circle" class="text-green-500" />
               Image metadata storage with UUID tracking
@@ -31,7 +31,7 @@
               Paginated results with customizable page sizes
             </li>
           </ul>
-          <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+          <ul class="text-sm text-neutral-600 dark:text-neutral-400 space-y-2">
             <li class="flex items-center gap-2">
               <UIcon name="i-heroicons-check-circle" class="text-green-500" />
               Relational data between images and subjects
@@ -53,7 +53,7 @@
       </div>
 
       <!-- Quick Actions -->
-      <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <NuxtLink
           to="/image-meta"
           class="block p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
@@ -76,6 +76,19 @@
             <div>
               <h3 class="font-medium text-green-900 dark:text-green-100">Media Gallery</h3>
               <p class="text-sm text-green-700 dark:text-green-300">View images</p>
+            </div>
+          </div>
+        </NuxtLink>
+        
+        <NuxtLink
+          to="/subjects-gallery"
+          class="block p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+        >
+          <div class="flex items-center gap-3">
+            <UIcon name="i-heroicons-user-group" class="text-orange-600 dark:text-orange-400 text-xl" />
+            <div>
+              <h3 class="font-medium text-orange-900 dark:text-orange-100">Subjects Gallery</h3>
+              <p class="text-sm text-orange-700 dark:text-orange-300">Browse subjects</p>
             </div>
           </div>
         </NuxtLink>

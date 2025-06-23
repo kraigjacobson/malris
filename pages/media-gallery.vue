@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto p-6">
+  <div class="container mx-auto p-6 pb-24">
     <div class="mb-8">
       <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
         Media Gallery
@@ -57,9 +57,59 @@
         </div>
       </div>
 
+      <!-- Sort Options and Limit -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Sort By
+          </label>
+          <USelectMenu
+            v-model="sortOptions.sort_by"
+            :items="sortByOptions"
+            placeholder="Sort by..."
+            class="w-full"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Sort Order
+          </label>
+          <USelectMenu
+            v-model="sortOptions.sort_order"
+            :items="sortOrderOptions"
+            placeholder="Sort order..."
+            class="w-full"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Results Per Page
+          </label>
+          <USelectMenu
+            v-model="pagination.limit"
+            :items="limitOptions"
+            placeholder="Results per page..."
+            class="w-full"
+          />
+        </div>
+      </div>
+
       <div class="flex gap-4 mt-4">
-        <UButton @click="searchMedia" :loading="isLoading" color="primary">
+        <UButton
+          v-if="!isLoading"
+          @click="searchMedia"
+          color="primary"
+        >
           Search
+        </UButton>
+        <UButton
+          v-else
+          @click="cancelSearch"
+          color="red"
+          variant="outline"
+        >
+          <UIcon name="i-heroicons-x-mark" class="mr-2" />
+          Cancel Search
         </UButton>
         <UButton @click="clearFilters" variant="outline">
           Clear
@@ -103,29 +153,31 @@
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group"
+          class="bg-neutral-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group"
         >
           <!-- Image Preview -->
           <div
             v-if="media.type === 'image'"
-            class="aspect-square bg-gray-100 dark:bg-gray-700 relative cursor-pointer"
+            class="aspect-square relative cursor-pointer"
             @click="openModal(media)"
           >
-            <NuxtImg
-              :src="`http://localhost:8000/media/${media.uuid}/download?size=sm`"
+            <img
+              v-if="settingsStore.displayImages"
+              :src="`/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover"
               loading="lazy"
               @error="handleImageError"
             />
+            <ImagePlaceholder v-else />
             <!-- Delete Button - Top Right Corner -->
             <div class="absolute top-2 right-2 z-10">
               <UButton
                 icon="i-heroicons-trash"
-                color="red"
+                color="error"
                 variant="solid"
-                size="sm"
-                class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg"
+                size="lg"
+                class="opacity-0 group-hover:opacity-25 transition-opacity duration-200 shadow-lg"
                 @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
               />
@@ -135,17 +187,33 @@
           <!-- Video Preview -->
           <div
             v-else-if="media.type === 'video'"
-            class="aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center relative cursor-pointer"
+            class="aspect-square relative cursor-pointer"
+            :data-video-uuid="media.uuid"
             @click="openModal(media)"
+            @mouseenter="handleVideoHover(media.uuid, true)"
+            @mouseleave="handleVideoHover(media.uuid, false)"
           >
-            <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
+            <!-- Video element -->
+            <video
+              :ref="`video-${media.uuid}`"
+              :poster="media.thumbnail"
+              class="w-full h-full object-cover"
+              muted
+              loop
+              preload="none"
+              playsinline
+              webkit-playsinline
+            >
+              Your browser does not support the video tag.
+            </video>
+            
             <!-- Delete Button - Top Right Corner -->
             <div class="absolute top-2 right-2 z-10">
               <UButton
                 icon="i-heroicons-trash"
-                color="red"
+                color="error"
                 variant="solid"
-                size="sm"
+                size="lg"
                 class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg"
                 @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
@@ -165,7 +233,7 @@
               <span
                 v-for="tag in media.tags.slice(0, 3)"
                 :key="tag"
-                class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
+                class="px-2 py-1 text-xs rounded"
               >
                 {{ tag }}
               </span>
@@ -179,21 +247,43 @@
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow group"
+          class="bg-neutral-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow group"
         >
           <div class="flex items-center gap-4">
             <!-- Thumbnail -->
             <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded flex-shrink-0 cursor-pointer" @click="openModal(media)">
-              <NuxtImg
-                v-if="media.type === 'image'"
-                :src="`http://localhost:8000/media/${media.uuid}/download?size=thumb`"
+              <img
+                v-if="media.type === 'image' && settingsStore.displayImages"
+                :src="`/api/media/${media.uuid}/image?size=sm`"
                 :alt="media.filename"
                 class="w-full h-full object-cover rounded"
                 loading="lazy"
                 @error="handleImageError"
               />
+              <ImagePlaceholder v-else-if="media.type === 'image'" />
+              <div
+                v-else-if="media.type === 'video'"
+                class="w-full h-full relative"
+                :data-video-uuid="media.uuid"
+                @mouseenter="handleVideoHover(media.uuid, true)"
+                @mouseleave="handleVideoHover(media.uuid, false)"
+              >
+                <!-- Video element -->
+                <video
+                  :ref="`video-list-${media.uuid}`"
+                  :poster="media.thumbnail"
+                  class="w-full h-full object-cover rounded"
+                  muted
+                  loop
+                  preload="none"
+                  playsinline
+                  webkit-playsinline
+                >
+                  Your browser does not support the video tag.
+                </video>
+              </div>
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
+                <UIcon name="i-heroicons-document" class="text-2xl text-gray-400" />
               </div>
             </div>
 
@@ -220,15 +310,28 @@
             <div class="flex-shrink-0 flex items-center gap-2">
               <UButton
                 icon="i-heroicons-trash"
-                color="red"
-                variant="outline"
-                size="sm"
+                color="error"
+                variant="solid"
+                size="lg"
                 @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
               />
               <UIcon name="i-heroicons-chevron-right" class="text-gray-400" />
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="pagination.total > (typeof pagination.limit === 'object' ? pagination.limit.value : pagination.limit)" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-4 z-50">
+        <div class="flex justify-center">
+          <UPagination
+            v-model:page="currentPage"
+            :items-per-page="typeof pagination.limit === 'object' ? pagination.limit.value : pagination.limit"
+            :total="pagination.total"
+            show-last
+            show-first
+          />
         </div>
       </div>
     </div>
@@ -253,11 +356,12 @@
           <div class="flex justify-between items-center mb-6">
             <h3 class="text-lg font-semibold">{{ selectedMedia.filename }}</h3>
             <div class="flex items-center gap-2">
-              <span class="text-sm text-gray-500">{{ currentImageIndex + 1 }} / {{ imageResults.length }}</span>
+              <span class="text-sm text-gray-500">{{ currentMediaIndex + 1 }} / {{ allMediaResults.length }}</span>
               <UButton
-                variant="ghost"
+                variant="solid"
                 icon="i-heroicons-trash"
-                color="red"
+                color="error"
+                size="lg"
                 @click="confirmDelete(selectedMedia)"
                 :loading="deletingIds.includes(selectedMedia.uuid)"
               />
@@ -274,30 +378,51 @@
             <div v-if="selectedMedia.type === 'image'" class="max-w-full relative">
               <!-- Previous Button -->
               <UButton
-                v-if="currentImageIndex > 0"
+                v-if="currentMediaIndex > 0"
                 variant="solid"
                 color="white"
                 icon="i-heroicons-chevron-left"
                 class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg"
-                @click="navigateImage(-1)"
+                @click="navigateMedia(-1)"
               />
               
-              <NuxtImg
-                :src="`http://localhost:8000/media/${selectedMedia.uuid}/download?size=lg`"
+              <img
+                v-if="settingsStore.displayImages"
+                :src="`/api/media/${selectedMedia.uuid}/image?size=lg`"
                 :alt="selectedMedia.filename"
                 class="w-full h-auto max-h-[80vh] object-contain rounded"
                 @error="handleImageError"
               />
+              <div v-else class="w-full h-64 flex items-center justify-center">
+                <ImagePlaceholder />
+              </div>
               
               <!-- Next Button -->
               <UButton
-                v-if="currentImageIndex < imageResults.length - 1"
+                v-if="currentMediaIndex < allMediaResults.length - 1"
                 variant="solid"
                 color="white"
                 icon="i-heroicons-chevron-right"
                 class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg"
-                @click="navigateImage(1)"
+                @click="navigateMedia(1)"
               />
+            </div>
+
+            <!-- Video Display -->
+            <div v-else-if="selectedMedia.type === 'video'" class="max-w-full">
+              <video
+                ref="modalVideo"
+                :src="`/api/stream/${selectedMedia.uuid}`"
+                :poster="selectedMedia.thumbnail"
+                controls
+                autoplay
+                muted
+                loop
+                class="w-full h-auto max-h-[80vh] rounded"
+                preload="metadata"
+              >
+                Your browser does not support the video tag.
+              </video>
             </div>
 
             <!-- Media Details -->
@@ -348,16 +473,27 @@
 </template>
 
 <script setup>
+import { useSettingsStore } from '~/stores/settings'
+import { nextTick } from 'vue'
+
 // Page metadata
 definePageMeta({
   title: 'Media Gallery'
 })
 
+// Initialize settings store
+const settingsStore = useSettingsStore()
+
 // Reactive data
 const filters = ref({
-  media_type: '',
+  media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
   purpose: '',
   tags: ''
+})
+
+const sortOptions = ref({
+  sort_by: 'created_at',
+  sort_order: 'desc'
 })
 
 const mediaResults = ref([])
@@ -367,10 +503,24 @@ const viewMode = ref('grid')
 const selectedMedia = ref(null)
 const deletingIds = ref([])
 const isModalOpen = ref(false)
+const currentPage = ref(1)
+const pagination = ref({
+  total: 0,
+  limit: 16,
+  offset: 0,
+  has_more: false
+})
+
+// Video hover state
+const hoveredVideoId = ref(null)
 
 // Computed properties for navigation
 const imageResults = computed(() => {
   return mediaResults.value.filter(media => media.type === 'image')
+})
+
+const allMediaResults = computed(() => {
+  return mediaResults.value
 })
 
 const currentImageIndex = computed(() => {
@@ -378,9 +528,13 @@ const currentImageIndex = computed(() => {
   return imageResults.value.findIndex(media => media.uuid === selectedMedia.value.uuid)
 })
 
+const currentMediaIndex = computed(() => {
+  if (!selectedMedia.value) return -1
+  return allMediaResults.value.findIndex(media => media.uuid === selectedMedia.value.uuid)
+})
+
 // Filter options
 const mediaTypeOptions = [
-  { label: 'All Types', value: '' },
   { label: 'Images', value: 'image' },
   { label: 'Videos', value: 'video' }
 ]
@@ -388,14 +542,50 @@ const mediaTypeOptions = [
 const purposeOptions = [
   { label: 'All Purposes', value: '' },
   { label: 'Source', value: 'source' },
-  { label: 'Destination', value: 'dest' }
+  { label: 'Destination', value: 'dest' },
+  { label: 'Intermediate', value: 'intermediate' },
+  { label: 'Backup', value: 'backup' },
+  { label: 'Output', value: 'output' },
+  { label: 'Thumbnail', value: 'thumbnail' }
 ]
 
+const sortByOptions = [
+  { label: 'Created Date', value: 'created_at' },
+  { label: 'Updated Date', value: 'updated_at' },
+  { label: 'Filename', value: 'filename' },
+  { label: 'File Size', value: 'file_size' },
+  { label: 'Type', value: 'type' },
+  { label: 'Purpose', value: 'purpose' },
+  { label: 'Status', value: 'status' },
+  { label: 'Width', value: 'width' },
+  { label: 'Height', value: 'height' },
+  { label: 'Duration', value: 'duration' },
+  { label: 'Last Accessed', value: 'last_accessed' },
+  { label: 'Access Count', value: 'access_count' }
+]
+
+const sortOrderOptions = [
+  { label: 'Ascending', value: 'asc' },
+  { label: 'Descending', value: 'desc' }
+]
+
+const limitOptions = [
+  { label: '16 per page', value: 16 },
+  { label: '32 per page', value: 32 },
+  { label: '48 per page', value: 48 }
+]
+
+
+// Search cancellation
+const searchController = ref(null)
 
 // Methods
 const searchMedia = async () => {
   isLoading.value = true
   hasSearched.value = true
+
+  // Create new AbortController for this search
+  searchController.value = new AbortController()
 
   try {
     const params = new URLSearchParams()
@@ -408,12 +598,75 @@ const searchMedia = async () => {
     if (purpose) params.append('purpose', purpose)
     if (filters.value.tags) params.append('tags', filters.value.tags)
     
-    params.append('limit', '50')
+    // Handle limit - extract value if it's an object
+    const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+    params.append('limit', limit.toString())
+    params.append('page', currentPage.value.toString())
+    
+    // Add sort parameters
+    const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
+    const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
+    
+    if (sortBy) params.append('sort_by', sortBy)
+    if (sortOrder) params.append('sort_order', sortOrder)
 
-    const response = await $fetch(`/api/media/search?${params.toString()}`)
-    mediaResults.value = response.results || []
+    const response = await $fetch(`/api/media/search?${params.toString()}`, {
+      signal: searchController.value.signal
+    })
+    const allResults = response.results || []
+    
+    console.log('📊 Media Gallery Search Results:')
+    console.log('Total results:', allResults.length)
+    console.log('First result:', JSON.stringify(allResults[0], null, 2))
+    
+    // Filter results based on media type selection
+    mediaResults.value = allResults.filter(media => {
+      // If searching specifically for images, exclude thumbnails to avoid duplicates
+      if (mediaType === 'image') {
+        return media.type === 'image' && media.purpose !== 'thumbnail'
+      }
+      // If searching specifically for videos, only include videos
+      if (mediaType === 'video') {
+        return media.type === 'video'
+      }
+      // For general searches, exclude thumbnails to avoid duplicates
+      return media.purpose !== 'thumbnail'
+    })
+    
+    console.log('📹 Video filtering debug:')
+    console.log('Media type filter:', mediaType)
+    console.log('All results count:', allResults.length)
+    console.log('Filtered results count:', mediaResults.value.length)
+    console.log('Video results:', mediaResults.value.filter(m => m.type === 'video').length)
+    
+    // Log any videos without thumbnails but don't filter them out
+    mediaResults.value.forEach(media => {
+      if (media.type === 'video' && !media.thumbnail) {
+        console.warn(`Video ${media.uuid} (${media.filename}) has no thumbnail data`)
+      }
+    })
+    
+    // Update pagination info if available
+    if (response.pagination) {
+      pagination.value = {
+        total: response.pagination.total || response.count || 0,
+        limit: typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit,
+        offset: response.pagination.offset || 0,
+        has_more: response.pagination.has_more || false
+      }
+    } else {
+      // Fallback for current API structure
+      pagination.value.total = response.count || mediaResults.value.length
+    }
+    
     
   } catch (err) {
+    // Don't show error if search was cancelled
+    if (err.name === 'AbortError') {
+      console.log('Search was cancelled')
+      return
+    }
+    
     console.error('Search error:', err)
     const toast = useToast()
     
@@ -434,46 +687,84 @@ const searchMedia = async () => {
     mediaResults.value = []
   } finally {
     isLoading.value = false
+    searchController.value = null
+  }
+}
+
+
+const cancelSearch = () => {
+  if (searchController.value) {
+    searchController.value.abort()
+    isLoading.value = false
+    searchController.value = null
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Search Cancelled',
+      description: 'Media search has been cancelled.',
+      color: 'yellow',
+      timeout: 3000
+    })
   }
 }
 
 const clearFilters = () => {
   filters.value = {
-    media_type: '',
+    media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
     purpose: '',
     tags: ''
   }
+  sortOptions.value = {
+    sort_by: 'created_at',
+    sort_order: 'desc'
+  }
+  pagination.value.limit = 16
+  currentPage.value = 1
   mediaResults.value = []
   hasSearched.value = false
 }
 
 const handleImageError = (event) => {
-  event.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm9yPC90ZXh0Pjwvc3ZnPg=='
+  console.error('❌ Image failed to load:', {
+    src: event.target.src,
+    displayImages: settingsStore.displayImages,
+    error: event
+  })
+  
+  // Hide the broken image and show placeholder instead
+  event.target.style.display = 'none'
+  
+  // Find the parent container and add a placeholder
+  const container = event.target.parentElement
+  if (container && !container.querySelector('.image-error-placeholder')) {
+    const placeholder = document.createElement('div')
+    placeholder.className = 'image-error-placeholder w-full h-full bg-muted flex items-center justify-center'
+    placeholder.innerHTML = '<div class="text-center"><svg class="w-8 h-8 text-muted-foreground mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>'
+    container.appendChild(placeholder)
+  }
 }
 
 const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString()
 }
 
-const confirmDelete = (media) => {
-  console.log('confirmDelete called for:', media.filename)
-  const toast = useToast()
+const confirmDelete = async (media) => {
+  const { confirm } = useConfirmDialog()
   
-  // Test if toast appears at all
-  toast.add({
+  const result = await confirm({
     title: 'Delete Media',
-    description: `Click to delete "${media.filename}"`,
-    color: 'error',
-    duration: 5000,
-    click: () => {
-      console.log('Toast clicked, calling deleteMedia')
-      deleteMedia(media.uuid)
-    }
+    message: `Are you sure you want to delete "${media.filename}"? This action cannot be undone.`,
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    variant: 'error'
   })
+  
+  if (result) {
+    deleteMedia(media.uuid)
+  }
 }
 
 const deleteMedia = async (uuid) => {
-  console.log('deleteMedia called for uuid:', uuid)
   const toast = useToast()
   
   try {
@@ -539,36 +830,167 @@ const deleteMedia = async (uuid) => {
   }
 }
 
-const openModal = (media) => {
-  console.log('Opening modal for:', media.filename)
+const openModal = async (media) => {
   selectedMedia.value = media
   isModalOpen.value = true
+  
+  // If it's a video, ensure it loads and plays
+  if (media.type === 'video') {
+    await nextTick()
+    // Wait a bit for the modal to fully render
+    setTimeout(() => {
+      const modalVideo = $refs.modalVideo || document.querySelector('video[controls]')
+      
+      if (modalVideo) {
+        // The src is already set in the template, just load and play
+        modalVideo.load()
+        modalVideo.play().catch(error => {
+          console.error('Modal video autoplay failed:', error)
+        })
+      }
+    }, 200)
+  }
 }
 
-const navigateImage = (direction) => {
-  const newIndex = currentImageIndex.value + direction
-  if (newIndex >= 0 && newIndex < imageResults.value.length) {
-    selectedMedia.value = imageResults.value[newIndex]
+const navigateMedia = (direction) => {
+  const newIndex = currentMediaIndex.value + direction
+  if (newIndex >= 0 && newIndex < allMediaResults.value.length) {
+    selectedMedia.value = allMediaResults.value[newIndex]
+  }
+}
+
+const handleVideoHover = async (videoId, isHovering) => {
+  if (isHovering) {
+    hoveredVideoId.value = videoId
+    await nextTick()
+    
+    // Find the video container using the data attribute
+    const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
+    
+    if (videoContainer) {
+      // Find the video element within this container
+      const targetVideo = videoContainer.querySelector('video')
+      
+      if (targetVideo) {
+        try {
+          // Clear any existing play promise to avoid conflicts
+          if (targetVideo._playPromise) {
+            await targetVideo._playPromise.catch(() => {})
+          }
+          
+          // Set the video source dynamically using Nuxt streaming endpoint
+          const videoSrc = `/api/stream/${videoId}`
+          
+          // Ensure video is properly configured for autoplay
+          targetVideo.muted = true
+          targetVideo.playsInline = true
+          targetVideo.autoplay = true
+          
+          // Set the source
+          targetVideo.src = videoSrc
+          
+          // Load the video first
+          targetVideo.load()
+          
+          // Wait for the video to be ready and then play
+          const playVideo = async () => {
+            try {
+              // Check again if we're still hovering
+              if (hoveredVideoId.value !== videoId) return
+              
+              targetVideo._playPromise = targetVideo.play()
+              await targetVideo._playPromise
+            } catch (error) {
+              console.error('Video autoplay failed:', error)
+            }
+          }
+          
+          // Try to play when video can start playing
+          targetVideo.addEventListener('canplay', playVideo, { once: true })
+          
+          // Also try to play immediately in case video loads quickly
+          if (targetVideo.readyState >= 3) { // HAVE_FUTURE_DATA
+            playVideo()
+          }
+          
+        } catch (error) {
+          console.error('Video setup failed:', error)
+        }
+      }
+    }
+  } else {
+    // Only clear hoveredVideoId if this video was the one being hovered
+    if (hoveredVideoId.value === videoId) {
+      hoveredVideoId.value = null
+    }
+    
+    // Find and pause the specific video immediately
+    const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
+    if (videoContainer) {
+      const targetVideo = videoContainer.querySelector('video')
+      if (targetVideo && targetVideo.src) {
+        // Wait for any pending play promise before pausing
+        if (targetVideo._playPromise) {
+          targetVideo._playPromise.then(() => {
+            targetVideo.pause()
+            targetVideo.currentTime = 0
+          }).catch(() => {
+            // Play was rejected, safe to pause
+            targetVideo.pause()
+            targetVideo.currentTime = 0
+          })
+        } else {
+          targetVideo.pause()
+          targetVideo.currentTime = 0
+        }
+        
+        // Remove the src to stop downloading
+        targetVideo.removeAttribute('src')
+        targetVideo.load()
+        targetVideo._playPromise = null
+      }
+    }
   }
 }
 
 // Keyboard shortcuts
 defineShortcuts({
   arrowleft: () => {
-    if (isModalOpen.value) navigateImage(-1)
+    if (isModalOpen.value) navigateMedia(-1)
   },
   arrowright: () => {
-    if (isModalOpen.value) navigateImage(1)
+    if (isModalOpen.value) navigateMedia(1)
   },
   escape: () => {
     if (isModalOpen.value) isModalOpen.value = false
   }
 })
 
-// Auto-search on mount
-onMounted(() => {
-  searchMedia()
+// Watch for page changes
+watch(currentPage, (newPage, oldPage) => {
+  if (newPage !== oldPage && hasSearched.value) {
+    searchMedia()
+  }
 })
+
+// Watch for modal close to clean up video sources
+watch(isModalOpen, (isOpen) => {
+  if (!isOpen) {
+    // Clean up modal video when modal closes
+    const modalVideo = document.querySelector('.max-w-full video[controls]')
+    if (modalVideo) {
+      modalVideo.pause()
+      modalVideo.currentTime = 0
+      // Don't remove src since it's bound to the template, just pause
+    }
+  }
+})
+
+// Initialize settings on mount (but don't auto-search)
+onMounted(async () => {
+  await settingsStore.initializeSettings()
+})
+
 
 // Page head
 useHead({

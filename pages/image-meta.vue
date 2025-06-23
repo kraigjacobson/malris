@@ -56,15 +56,30 @@ v-model="statusFilter" type="text" placeholder="Filter by status..."
       </div>
     </div>
 
-    <div v-if="pending" class="text-center">
+    <div v-if="!hasLoaded && !pending" class="text-center py-8">
+      <button
+        @click="loadData"
+        class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
+      >
+        Load Image Metadata
+      </button>
+    </div>
+
+    <div v-else-if="pending" class="text-center">
       <p>Loading image metadata...</p>
     </div>
 
     <div v-else-if="error" class="text-red-500">
       <p>Error loading data: {{ error }}</p>
+      <button
+        @click="loadData"
+        class="mt-2 px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
+      >
+        Retry
+      </button>
     </div>
 
-    <div v-else class="space-y-6">
+    <div v-else-if="hasLoaded" class="space-y-6">
       <div
 v-for="image in paginatedResults" :key="image.uuid"
         class="bg-neutral-50 shadow-lg rounded-lg p-6 border border-neutral-200">
@@ -151,14 +166,35 @@ v-if="page !== '...'" :class="[
 // Authentication check
 const user = useSupabaseUser()
 
-// Query both collections using our custom API endpoints
-const { data: allImageMeta, pending, error } = await useAsyncData('imageMeta', () =>
-  $fetch('/api/content/image-meta')
-)
+// Initialize reactive data without automatic fetching
+const allImageMeta = ref([])
+const subjects = ref([])
+const pending = ref(false)
+const error = ref(null)
+const hasLoaded = ref(false)
 
-const { data: subjects } = await useAsyncData('subjects', () =>
-  $fetch('/api/content/subjects')
-)
+// Function to load data when needed
+const loadData = async () => {
+  if (hasLoaded.value) return // Don't reload if already loaded
+  
+  pending.value = true
+  error.value = null
+  
+  try {
+    const [imageMetaResponse, subjectsResponse] = await Promise.all([
+      $fetch('/api/content/image-meta'),
+      $fetch('/api/content/subjects')
+    ])
+    
+    allImageMeta.value = imageMetaResponse
+    subjects.value = subjectsResponse
+    hasLoaded.value = true
+  } catch (err) {
+    error.value = err
+  } finally {
+    pending.value = false
+  }
+}
 
 // Reactive search and filter variables
 const searchQuery = ref('')

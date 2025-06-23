@@ -12,15 +12,15 @@ export default defineEventHandler(async (event) => {
 
     // Get query parameters for size
     const query = getQuery(event)
-    const size = query.size || 'md' // Default to medium size for thumbnails
+    const size = query.size || 'md' // Default to medium size
 
-    console.log('Serving image for UUID:', uuid, 'size:', size)
+    console.log('Serving video for UUID:', uuid, 'size:', size)
 
-    // Make request to media API to get the file stream with size parameter
+    // Make request to media API to get the video file stream
     const response = await fetch(`http://localhost:8000/media/${uuid}/download?size=${size}`, {
       method: 'GET',
       headers: {
-        'Accept': 'image/*'
+        'Accept': 'video/*'
       }
     })
 
@@ -32,17 +32,31 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Get content type from response headers
-    const contentType = response.headers.get('content-type') || 'image/jpeg'
-    
-    // Get the image data as buffer
+    // Get the video data as buffer
     const buffer = await response.arrayBuffer()
     
     if (buffer.byteLength === 0) {
       throw createError({
         statusCode: 404,
-        statusMessage: 'Image data is empty'
+        statusMessage: 'Video data is empty'
       })
+    }
+
+    // Determine content type based on the first few bytes or default to mp4
+    let contentType = 'video/mp4'
+    const uint8Array = new Uint8Array(buffer)
+    
+    // Check for MP4 signature (ftyp box)
+    if (uint8Array[4] === 0x66 && uint8Array[5] === 0x74 && uint8Array[6] === 0x79 && uint8Array[7] === 0x70) {
+      contentType = 'video/mp4'
+    }
+    // Check for WebM signature
+    else if (uint8Array[0] === 0x1A && uint8Array[1] === 0x45 && uint8Array[2] === 0xDF && uint8Array[3] === 0xA3) {
+      contentType = 'video/webm'
+    }
+    // Check for AVI signature
+    else if (uint8Array[8] === 0x41 && uint8Array[9] === 0x56 && uint8Array[10] === 0x49 && uint8Array[11] === 0x20) {
+      contentType = 'video/avi'
     }
     
     // Set response headers for inline display
@@ -51,14 +65,14 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'cache-control', 'public, max-age=3600')
     setHeader(event, 'access-control-allow-origin', '*')
     setHeader(event, 'access-control-allow-methods', 'GET')
+    setHeader(event, 'accept-ranges', 'bytes')
     
-    console.log(`Successfully serving image: ${uuid}, size: ${size}, type: ${contentType}, bytes: ${buffer.byteLength}`)
+    console.log(`Successfully serving video: ${uuid}, size: ${size}, type: ${contentType}, bytes: ${buffer.byteLength}`)
     
-    // Convert ArrayBuffer to Buffer for proper binary response
-    return Buffer.from(buffer)
+    return buffer
 
   } catch (error: any) {
-    console.error('Error serving image:', error)
+    console.error('Error serving video:', error)
     
     // Handle different types of errors
     if (error.cause?.code === 'ECONNREFUSED') {
@@ -83,7 +97,7 @@ export default defineEventHandler(async (event) => {
     // Generic error
     throw createError({
       statusCode: 500,
-      statusMessage: `Failed to serve image: ${error.message || 'Unknown error'}`
+      statusMessage: `Failed to serve video: ${error.message || 'Unknown error'}`
     })
   }
 })

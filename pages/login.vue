@@ -24,10 +24,10 @@
       </div>
       
       <!-- Login form if not logged in -->
-      <div v-else class="bg-neutral-50 p-6 rounded-lg border border-neutral-200">
+      <div v-else class="bg-neutral-600 p-6 rounded-lg border border-neutral-200">
         <form class="space-y-4" @submit.prevent="handleEmailLogin">
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-2">Email</label>
+            <label class="block text-sm font-medium text-neutral-200 mb-2">Email</label>
             <input
               v-model="email"
               type="email"
@@ -37,7 +37,7 @@
             >
           </div>
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-2">Password</label>
+            <label class="block text-sm font-medium text-neutral-200 mb-2">Password</label>
             <input
               v-model="password"
               type="password"
@@ -90,6 +90,15 @@ const handleEmailLogin = async () => {
     if (authError) {
       error.value = authError.message
     } else {
+      // Record login time for the auth middleware
+      if (import.meta.client) {
+        try {
+          const localforage = await import('localforage')
+          await localforage.default.setItem('lastLoginTime', Date.now())
+        } catch (error) {
+          console.error('Error setting login time:', error)
+        }
+      }
       await navigateTo('/')
     }
   } catch {
@@ -101,6 +110,15 @@ const handleEmailLogin = async () => {
 
 // Handle sign out
 const handleSignOut = async () => {
+  // Clear login time when signing out
+  if (import.meta.client) {
+    try {
+      const localforage = await import('localforage')
+      await localforage.default.removeItem('lastLoginTime')
+    } catch (error) {
+      console.error('Error clearing login time:', error)
+    }
+  }
   await supabase.auth.signOut()
   await navigateTo('/login')
 }
