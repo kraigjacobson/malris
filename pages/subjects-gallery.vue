@@ -23,11 +23,16 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Search Name
           </label>
-          <UInput
-            v-model="searchTerm"
+          <UInputMenu
+            v-model="selectedSearchSubject"
+            v-model:search-term="dropdownSearchTerm"
+            :items="searchSubjectItems"
             placeholder="Search subjects by name..."
             class="w-full"
-            @input="debouncedSearch"
+            by="value"
+            option-attribute="label"
+            searchable
+            @update:model-value="handleSearchSubjectSelection"
           />
         </div>
 
@@ -317,7 +322,6 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
-import { debounce } from 'lodash-es'
 
 // Page metadata
 definePageMeta({
@@ -329,8 +333,30 @@ const settingsStore = useSettingsStore()
 
 // Reactive data
 const searchTerm = ref('')
+const dropdownSearchTerm = ref('')
+const selectedSearchSubject = ref(null)
 const filters = ref({
   tags: ''
+})
+
+// Reactive subjects data for dropdown search
+const { data: searchSubjectItems } = await useFetch('/api/subjects', {
+  key: 'subjects-dropdown-search',
+  query: computed(() => ({
+    search: dropdownSearchTerm.value,
+    limit: 100
+  })),
+  transform: (data) => {
+    if (data.subjects && Array.isArray(data.subjects)) {
+      return data.subjects.map((subject) => ({
+        value: subject.name,
+        label: subject.name
+      }))
+    }
+    return []
+  },
+  lazy: true,
+  server: false
 })
 
 const sortOptions = ref({
@@ -370,13 +396,17 @@ const limitOptions = [
   { label: '48 per page', value: 48 }
 ]
 
-// Debounced search function
-const debouncedSearch = debounce(() => {
-  if (searchTerm.value.length >= 2 || searchTerm.value.length === 0) {
-    currentPage.value = 1 // Reset to first page when searching
-    searchSubjects()
+// Handle subject selection from dropdown
+const handleSearchSubjectSelection = (selectedSubject) => {
+  console.log('🎯 Selected subject from dropdown:', selectedSubject)
+  if (selectedSubject && selectedSubject.value) {
+    searchTerm.value = selectedSubject.value
+    console.log('✅ Updated searchTerm to:', searchTerm.value)
+    // Don't auto-search, let user click Search button
+  } else {
+    console.log('❌ No valid selection')
   }
-}, 500)
+}
 
 // Methods
 const searchSubjects = async () => {
@@ -386,6 +416,7 @@ const searchSubjects = async () => {
   try {
     const params = new URLSearchParams()
     
+    console.log('🔍 Search term being used:', searchTerm.value)
     if (searchTerm.value) params.append('name_pattern', searchTerm.value)
     if (filters.value.tags) params.append('tags', filters.value.tags)
     
@@ -399,6 +430,7 @@ const searchSubjects = async () => {
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
 
+    console.log('🌐 API URL:', `/api/subjects/search?${params.toString()}`)
     const response = await $fetch(`/api/subjects/search?${params.toString()}`)
     
     console.log('📊 Subjects Gallery Search Results:')
@@ -434,6 +466,8 @@ const searchSubjects = async () => {
 
 const clearFilters = () => {
   searchTerm.value = ''
+  dropdownSearchTerm.value = ''
+  selectedSearchSubject.value = null
   filters.value = {
     tags: ''
   }

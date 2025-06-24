@@ -5,7 +5,7 @@
         Submit Job
       </h1>
       <p class="text-gray-600 dark:text-gray-400">
-        Submit a test or video processing job
+        Submit a video processing job to the media server
       </p>
     </div>
 
@@ -23,72 +23,114 @@
             Job Type <span class="text-red-500">*</span>
           </label>
           <USelectMenu
-            v-model="form.jobtype"
+            v-model="form.job_type"
             :items="jobTypeOptions"
             placeholder="Select job type..."
             class="w-full"
           />
-          <p class="text-xs text-gray-500">Choose between 'test' for preview or 'vid' for full processing</p>
+          <p class="text-xs text-gray-500">Choose the type of processing job</p>
         </div>
 
-        <!-- Source Name -->
+        <!-- Source Media UUID -->
         <div class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Source Name <span class="text-red-500">*</span>
+            Source Media UUID <span class="text-red-500">*</span>
+          </label>
+          
+          <!-- Video Selection Button and Preview -->
+          <div class="flex items-center gap-4">
+            <UButton
+              variant="outline"
+              icon="i-heroicons-film-20-solid"
+              @click="showVideoModal = true"
+              :disabled="isSubmitting"
+              class="flex-shrink-0"
+            >
+              {{ selectedVideo ? 'Change Video' : 'Select Video' }}
+            </UButton>
+            
+            <!-- Selected Video Preview -->
+            <div v-if="selectedVideo" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
+              <div class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden flex-shrink-0">
+                <img
+                  v-if="selectedVideo.thumbnail"
+                  :src="selectedVideo.thumbnail"
+                  :alt="selectedVideo.filename"
+                  class="w-full h-full object-cover"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <UIcon name="i-heroicons-film-20-solid" class="w-4 h-4 text-gray-400" />
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {{ selectedVideo.filename }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                  {{ selectedVideo.uuid }}
+                </p>
+              </div>
+              <UButton
+                variant="ghost"
+                color="red"
+                icon="i-heroicons-x-mark-20-solid"
+                size="xs"
+                @click="clearSelectedVideo"
+                :disabled="isSubmitting"
+              />
+            </div>
+          </div>
+          
+          <p class="text-xs text-gray-500">Select a video from the media library</p>
+        </div>
+
+        <!-- Destination Media UUID (for vid_faceswap) -->
+        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Destination Media UUID <span class="text-red-500">*</span>
           </label>
           <UInput
-            v-model="form.source_name"
-            placeholder="e.g., asmrmadi"
+            v-model="form.dest_media_uuid"
+            placeholder="e.g., 456e7890-e12b-34d5-a678-901234567890"
             :disabled="isSubmitting"
             class="w-full"
           />
-          <p class="text-xs text-gray-500">Name of the source person/character</p>
+          <p class="text-xs text-gray-500">UUID of the destination media file for face swap</p>
         </div>
 
-        <!-- Video Filename -->
+        <!-- Subject Selection (for vid_faceswap_test_source) -->
+        <div v-if="form.job_type?.value === 'vid_faceswap_test_source' || form.job_type === 'vid_faceswap_test_source'" class="space-y-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Subject <span class="text-red-500">*</span>
+          </label>
+          <UInputMenu
+            v-model="selectedSubject"
+            v-model:search-term="searchQuery"
+            :items="subjectItems"
+            placeholder="Search for a subject..."
+            :disabled="isSubmitting"
+            class="w-full"
+            by="value"
+            option-attribute="label"
+            searchable
+            @update:model-value="handleSubjectSelection"
+          />
+          <p class="text-xs text-gray-500">Search and select a subject for testing</p>
+        </div>
+
+        <!-- Additional Parameters -->
         <div class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Video Filename <span class="text-red-500">*</span>
+            Additional Parameters (JSON)
           </label>
-          <UInput
-            v-model="form.video_filename"
-            placeholder="e.g., 058"
+          <UTextarea
+            v-model="form.parameters_json"
+            placeholder='{"skip_seconds": 0, "quality": "high"}'
             :disabled="isSubmitting"
             class="w-full"
+            rows="3"
           />
-          <p class="text-xs text-gray-500">Video file name without extension</p>
-        </div>
-
-        <!-- Source Index (only for vid mode) -->
-        <div v-if="form.jobtype === 'vid'" class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Source Index <span class="text-red-500">*</span>
-          </label>
-          <UInput
-            v-model.number="form.source_index"
-            type="number"
-            placeholder="0"
-            :disabled="isSubmitting"
-            min="0"
-            class="w-full"
-          />
-          <p class="text-xs text-gray-500">Index of the source image to use</p>
-        </div>
-
-        <!-- Skip Seconds -->
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Skip Seconds <span class="text-red-500">*</span>
-          </label>
-          <UInput
-            v-model.number="form.skip_seconds"
-            type="number"
-            placeholder="0"
-            :disabled="isSubmitting"
-            min="0"
-            class="w-full"
-          />
-          <p class="text-xs text-gray-500">Number of seconds to skip from the beginning</p>
+          <p class="text-xs text-gray-500">Optional JSON parameters for the job</p>
         </div>
 
         <!-- Submit Buttons -->
@@ -137,32 +179,38 @@
       <div class="space-y-2">
         <div class="flex justify-between">
           <span class="font-medium">Job Type:</span>
-          <span>{{ form.jobtype }}</span>
+          <span>{{ form.job_type?.label || form.job_type }}</span>
         </div>
         <div class="flex justify-between">
-          <span class="font-medium">Source Name:</span>
-          <span>{{ form.source_name }}</span>
+          <span class="font-medium">Source Media UUID:</span>
+          <span class="font-mono text-sm">{{ form.source_media_uuid }}</span>
         </div>
-        <div class="flex justify-between">
-          <span class="font-medium">Video Filename:</span>
-          <span>{{ form.video_filename }}</span>
+        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="flex justify-between">
+          <span class="font-medium">Dest Media UUID:</span>
+          <span class="font-mono text-sm">{{ form.dest_media_uuid }}</span>
         </div>
-        <div v-if="form.jobtype === 'vid'" class="flex justify-between">
-          <span class="font-medium">Source Index:</span>
-          <span>{{ form.source_index }}</span>
+        <div v-if="form.job_type?.value === 'vid_faceswap_test_source' || form.job_type === 'vid_faceswap_test_source'" class="flex justify-between">
+          <span class="font-medium">Subject:</span>
+          <span class="text-sm">{{ selectedSubject?.label || 'Not selected' }}</span>
         </div>
-        <div class="flex justify-between">
-          <span class="font-medium">Skip Seconds:</span>
-          <span>{{ form.skip_seconds }}</span>
+        <div v-if="form.parameters_json" class="flex justify-between">
+          <span class="font-medium">Parameters:</span>
+          <span class="font-mono text-sm">{{ form.parameters_json }}</span>
         </div>
       </div>
 
       <template #footer>
         <div class="text-sm text-gray-500">
-          <strong>API Endpoint:</strong> /api/submit-job → http://localhost:8001/runsync
+          <strong>API Endpoint:</strong> /api/submit-job → Media Server /jobs
         </div>
       </template>
     </UCard>
+
+    <!-- Video Selection Modal -->
+    <VideoSelectionModal
+      v-model="showVideoModal"
+      @select="handleVideoSelection"
+    />
 
   </div>
 </template>
@@ -175,15 +223,46 @@ definePageMeta({
 
 // Reactive form data
 const form = ref({
-  jobtype: '',
-  source_name: '',
-  video_filename: '',
-  source_index: 0,
-  skip_seconds: 0
+  job_type: '',
+  source_media_uuid: '',
+  dest_media_uuid: '',
+  subject_uuid: '',
+  parameters_json: ''
+})
+
+// Video selection data
+const selectedVideo = ref(null)
+const showVideoModal = ref(false)
+
+// Subject search data
+const selectedSubject = ref(null)
+const searchQuery = ref('')
+
+// Reactive subjects data with search
+const { data: subjectItems } = await useFetch('/api/subjects', {
+  key: 'subjects-search',
+  query: computed(() => ({
+    search: searchQuery.value,
+    limit: 100
+  })),
+  transform: (data) => {
+    if (data.subjects && Array.isArray(data.subjects)) {
+      return data.subjects.map((subject) => ({
+        value: subject.uuid,
+        label: subject.name
+      }))
+    }
+    return []
+  },
+  lazy: true,
+  server: false
 })
 
 // Job type options
-const jobTypeOptions = ['test', 'vid']
+const jobTypeOptions = [
+  { label: 'Face Swap', value: 'vid_faceswap' },
+  { label: 'Face Swap Test Source', value: 'vid_faceswap_test_source' }
+]
 
 // UI state
 const isSubmitting = ref(false)
@@ -191,16 +270,40 @@ const message = ref(null)
 
 // Computed properties
 const isFormValid = computed(() => {
-  const baseValid = form.value.jobtype && 
-                   form.value.source_name && 
-                   form.value.video_filename
+  const jobType = form.value.job_type?.value || form.value.job_type
+  const baseValid = jobType && form.value.source_media_uuid
 
-  if (form.value.jobtype === 'vid') {
-    return baseValid && form.value.source_index !== null && form.value.source_index !== undefined
+  if (jobType === 'vid_faceswap') {
+    return baseValid && form.value.dest_media_uuid
+  }
+  
+  if (jobType === 'vid_faceswap_test_source') {
+    return baseValid && form.value.subject_uuid
   }
   
   return baseValid
 })
+
+// Video selection handlers
+const handleVideoSelection = (video) => {
+  selectedVideo.value = video
+  form.value.source_media_uuid = video.uuid
+}
+
+const clearSelectedVideo = () => {
+  selectedVideo.value = null
+  form.value.source_media_uuid = ''
+}
+
+// Subject selection handler
+const handleSubjectSelection = (selectedSubject) => {
+  // selectedSubject is now the full object with value and label
+  if (selectedSubject && selectedSubject.value) {
+    form.value.subject_uuid = selectedSubject.value // Use the UUID
+  } else {
+    form.value.subject_uuid = ''
+  }
+}
 
 // Methods
 const submitJob = async () => {
@@ -210,19 +313,33 @@ const submitJob = async () => {
   message.value = null
 
   try {
-    // Prepare the payload based on job type
-    const payload = {
-      input: {
-        jobtype: form.value.jobtype,
-        source_name: form.value.source_name,
-        video_filename: form.value.video_filename,
-        skip_seconds: form.value.skip_seconds
+    // Parse parameters JSON if provided
+    let parameters = {}
+    if (form.value.parameters_json) {
+      try {
+        parameters = JSON.parse(form.value.parameters_json)
+      } catch (parseError) {
+        throw new Error(`Invalid JSON in parameters field: ${parseError.message}`)
       }
     }
 
-    // Add source_index for vid mode
-    if (form.value.jobtype === 'vid') {
-      payload.input.source_index = form.value.source_index
+    // Get the actual job type value
+    const jobTypeValue = form.value.job_type?.value || form.value.job_type
+
+    // Prepare the payload for the new API format
+    const payload = {
+      source_media_uuid: form.value.source_media_uuid,
+      job_type: jobTypeValue,
+      parameters: parameters
+    }
+
+    // Add conditional fields based on job type
+    if (jobTypeValue === 'vid_faceswap' && form.value.dest_media_uuid) {
+      payload.dest_media_uuid = form.value.dest_media_uuid
+    }
+
+    if (jobTypeValue === 'vid_faceswap_test_source' && form.value.subject_uuid) {
+      payload.subject_uuid = form.value.subject_uuid
     }
 
     // Submit the job via our server API
@@ -236,7 +353,7 @@ const submitJob = async () => {
 
     message.value = {
       type: 'success',
-      text: `Job submitted successfully! ${form.value.jobtype === 'test' ? 'Quick preview' : 'Full processing'} job started.`
+      text: `Job submitted successfully! Job ID: ${response.job_id}. Status: ${response.status}`
     }
 
     console.log('Job response:', response)
@@ -254,12 +371,15 @@ const submitJob = async () => {
 
 const resetForm = () => {
   form.value = {
-    jobtype: '',
-    source_name: '',
-    video_filename: '',
-    source_index: 0,
-    skip_seconds: 0
+    job_type: '',
+    source_media_uuid: '',
+    dest_media_uuid: '',
+    subject_uuid: '',
+    parameters_json: ''
   }
+  selectedVideo.value = null
+  selectedSubject.value = null
+  subjectItems.value = []
   message.value = null
 }
 
@@ -272,11 +392,22 @@ watch(message, (newMessage) => {
   }
 })
 
+// Watch for job type changes to clear subject selection when switching away from test source
+watch(() => form.value.job_type, (newJobType) => {
+  const jobTypeValue = newJobType?.value || newJobType
+  if (jobTypeValue !== 'vid_faceswap_test_source') {
+    // Clear subject selection when switching away from test source
+    selectedSubject.value = null
+    form.value.subject_uuid = ''
+    searchQuery.value = ''
+  }
+})
+
 // Page head
 useHead({
-  title: 'Submit Job - AI Job Tracking System',
+  title: 'Submit Job - Media Server Job System',
   meta: [
-    { name: 'description', content: 'Submit test or video processing jobs' }
+    { name: 'description', content: 'Submit video processing jobs to the media server' }
   ]
 })
 </script>

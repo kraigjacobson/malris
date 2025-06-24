@@ -3,72 +3,101 @@ export default defineEventHandler(async (event) => {
     // Get the request body
     const body = await readBody(event)
     
-    // Validate the input
-    if (!body || !body.input) {
+    // Validate the input - expecting new media server format
+    if (!body || !body.source_media_uuid) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Invalid request body. Expected format: { input: { ... } }'
+        statusMessage: 'Invalid request body. Expected format: { source_media_uuid: "...", job_type: "...", dest_media_uuid?: "...", subject_uuid?: "...", parameters?: {...} }'
       })
     }
 
-    const { input } = body
-    
     // Validate required fields
-    const requiredFields = ['jobtype', 'source_name', 'video_filename']
-    for (const field of requiredFields) {
-      if (!input[field]) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `Missing required field: ${field}`
-        })
-      }
-    }
-
-    // Validate jobtype-specific fields
-    if (input.jobtype === 'vid' && (input.source_index === null || input.source_index === undefined)) {
+    if (!body.source_media_uuid) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'source_index is required for vid jobtype'
+        statusMessage: 'Missing required field: source_media_uuid'
       })
     }
 
-    console.log('Submitting job to RunPod API:', input)
+    const jobData = {
+      source_media_uuid: body.source_media_uuid,
+      job_type: body.job_type || 'video_processing',
+      dest_media_uuid: body.dest_media_uuid,
+      subject_uuid: body.subject_uuid,
+      parameters: body.parameters || {}
+    }
 
-    // Make the request to the RunPod API
-    const runpodResponse = await $fetch('http://localhost:8001/runsync', {
+    // Validate job type specific requirements
+    if (jobData.job_type === 'vid_faceswap' && !jobData.dest_media_uuid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'dest_media_uuid is required for vid_faceswap job type'
+      })
+    }
+
+    if (jobData.job_type === 'vid_faceswap_test_source' && !jobData.subject_uuid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'subject_uuid is required for vid_faceswap_test_source job type'
+      })
+    }
+
+    console.log('Submitting job to Media Server API:', jobData)
+
+    // Get media server URL from runtime config
+    const config = useRuntimeConfig()
+    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
+
+    // Create FormData for the media server API
+    const formData = new FormData()
+    formData.append('source_media_uuid', jobData.source_media_uuid)
+    formData.append('job_type', jobData.job_type)
+    
+    if (jobData.dest_media_uuid) {
+      formData.append('dest_media_uuid', jobData.dest_media_uuid)
+    }
+    
+    if (jobData.subject_uuid) {
+      formData.append('subject_uuid', jobData.subject_uuid)
+    }
+    
+    formData.append('parameters', JSON.stringify(jobData.parameters))
+
+    // Make the request to the Media Server API
+    const mediaServerResponse = await $fetch(`${mediaServerUrl}/jobs`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: { input },
+      body: formData,
       // Add timeout to prevent hanging
       timeout: 30000
     })
 
-    console.log('RunPod API response:', runpodResponse)
+    console.log('Media Server API response:', mediaServerResponse)
 
-    // Return the response from RunPod API
+    // Return the response from Media Server API
+    const response = mediaServerResponse as any
     return {
       success: true,
-      data: runpodResponse,
-      message: `Job submitted successfully. Type: ${input.jobtype}`
+      data: mediaServerResponse,
+      job_id: response.job_id,
+      status: response.status,
+      message: `Job submitted successfully to media server. Type: ${jobData.job_type}`
     }
 
   } catch (error: any) {
-    console.error('Error submitting job to RunPod API:', error)
+    console.error('Error submitting job to Media Server API:', error)
     
     // Handle different types of errors
     if (error.cause?.code === 'ECONNREFUSED') {
       throw createError({
         statusCode: 503,
-        statusMessage: 'RunPod API is not available. Please ensure the service is running on localhost:8001'
+        statusMessage: 'Media Server API is not available. Please ensure the service is running.'
       })
     }
     
     if (error.cause?.code === 'ETIMEDOUT') {
       throw createError({
         statusCode: 504,
-        statusMessage: 'Request to RunPod API timed out. The service may be overloaded.'
+        statusMessage: 'Request to Media Server API timed out. The service may be overloaded.'
       })
     }
 

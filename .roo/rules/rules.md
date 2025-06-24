@@ -1,0 +1,3 @@
+nuxtui3. we can update the style of components globally in the app.config file or we can style specific components using :ui property like this
+{ overlay?: ClassNameValue; content?: ClassNameValue; header?: ClassNameValue; wrapper?: ClassNameValue; body?: ClassNameValue; footer?: ClassNameValue; title?: ClassNameValue; description?: ClassNameValue; close?: ClassNameValue; }
+you can run this to see the currently up to date media server api routes: http://localhost:8000/docs

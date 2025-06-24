@@ -10,31 +10,38 @@
         </div>
         
         <div class="flex items-center space-x-4">
-          <div v-if="user" class="flex items-center space-x-4">
-            <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span>
-            <UButton
-              variant="outline"
-              size="sm"
-              icon="i-heroicons-cog-6-tooth"
-              @click="showSettings = true"
+          <ClientOnly>
+            <div v-if="user" class="flex items-center space-x-4">
+              <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span>
+              <UButton
+                variant="outline"
+                size="sm"
+                icon="i-heroicons-cog-6-tooth"
+                @click="showSettings = true"
+              >
+                Settings
+              </UButton>
+              <UButton
+                variant="outline"
+                size="sm"
+                @click="handleSignOut"
+              >
+                Sign Out
+              </UButton>
+            </div>
+            <NuxtLink
+              v-else
+              to="/login"
+              class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
             >
-              Settings
-            </UButton>
-            <UButton
-              variant="outline"
-              size="sm"
-              @click="handleSignOut"
-            >
-              Sign Out
-            </UButton>
-          </div>
-          <NuxtLink
-            v-else
-            to="/login"
-            class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
-          >
-            Login
-          </NuxtLink>
+              Login
+            </NuxtLink>
+            <template #fallback>
+              <div class="px-4 py-2 bg-neutral-800 text-white rounded opacity-50">
+                Loading...
+              </div>
+            </template>
+          </ClientOnly>
         </div>
       </div>
 
@@ -86,9 +93,15 @@ const navigationItems = ref<NavigationMenuItem[]>([
     children: [
       {
         label: 'Submit Job',
-        description: 'Submit test or video processing jobs to the AI system.',
+        description: 'Submit video processing jobs to the media server.',
         icon: 'i-heroicons-play',
         to: '/submit-job'
+      },
+      {
+        label: 'Job Queue',
+        description: 'Monitor and manage processing jobs with search and filter.',
+        icon: 'i-heroicons-queue-list',
+        to: '/jobs'
       }
     ]
   }

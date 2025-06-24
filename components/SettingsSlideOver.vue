@@ -1,5 +1,10 @@
 <template>
-  <USlideover v-model:open="isOpen" title="Settings" side="right">
+  <USlideover
+    v-model:open="isOpen"
+    title="Settings"
+    description="Configure application settings and preferences"
+    side="right"
+  >
     <template #body>
       <div class="space-y-6 p-4">
         <!-- Display Images Setting -->

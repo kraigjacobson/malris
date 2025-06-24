@@ -17,7 +17,7 @@
         </h2>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <!-- Media Type Filter -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -41,6 +41,24 @@
             :items="purposeOptions"
             placeholder="All purposes"
             class="w-full"
+          />
+        </div>
+
+        <!-- Subject Filter -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Subject
+          </label>
+          <UInputMenu
+            v-model="selectedSubject"
+            v-model:search-term="subjectSearchQuery"
+            :items="subjectItems"
+            placeholder="Search for a subject..."
+            class="w-full"
+            by="value"
+            option-attribute="label"
+            searchable
+            @update:model-value="handleSubjectSelection"
           />
         </div>
 
@@ -97,21 +115,21 @@
       <div class="flex gap-4 mt-4">
         <UButton
           v-if="!isLoading"
-          @click="searchMedia"
           color="primary"
+          @click="searchMedia"
         >
           Search
         </UButton>
         <UButton
           v-else
-          @click="cancelSearch"
           color="red"
           variant="outline"
+          @click="cancelSearch"
         >
           <UIcon name="i-heroicons-x-mark" class="mr-2" />
           Cancel Search
         </UButton>
-        <UButton @click="clearFilters" variant="outline">
+        <UButton variant="outline" @click="clearFilters">
           Clear
         </UButton>
       </div>
@@ -132,16 +150,16 @@
         </p>
         <div class="flex gap-2">
           <UButton
-            @click="viewMode = 'grid'"
             :variant="viewMode === 'grid' ? 'solid' : 'outline'"
             size="sm"
+            @click="viewMode = 'grid'"
           >
             <UIcon name="i-heroicons-squares-2x2" />
           </UButton>
           <UButton
-            @click="viewMode = 'list'"
             :variant="viewMode === 'list' ? 'solid' : 'outline'"
             size="sm"
+            @click="viewMode = 'list'"
           >
             <UIcon name="i-heroicons-list-bullet" />
           </UButton>
@@ -168,7 +186,7 @@
               class="w-full h-full object-cover"
               loading="lazy"
               @error="handleImageError"
-            />
+            >
             <ImagePlaceholder v-else />
             <!-- Delete Button - Top Right Corner -->
             <div class="absolute top-2 right-2 z-10">
@@ -178,8 +196,8 @@
                 variant="solid"
                 size="lg"
                 class="opacity-0 group-hover:opacity-25 transition-opacity duration-200 shadow-lg"
-                @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
+                @click.stop="confirmDelete(media)"
               />
             </div>
           </div>
@@ -215,8 +233,8 @@
                 variant="solid"
                 size="lg"
                 class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg"
-                @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
+                @click.stop="confirmDelete(media)"
               />
             </div>
           </div>
@@ -259,7 +277,7 @@
                 class="w-full h-full object-cover rounded"
                 loading="lazy"
                 @error="handleImageError"
-              />
+              >
               <ImagePlaceholder v-else-if="media.type === 'image'" />
               <div
                 v-else-if="media.type === 'video'"
@@ -313,8 +331,8 @@
                 color="error"
                 variant="solid"
                 size="lg"
-                @click.stop="confirmDelete(media)"
                 :loading="deletingIds.includes(media.uuid)"
+                @click.stop="confirmDelete(media)"
               />
               <UIcon name="i-heroicons-chevron-right" class="text-gray-400" />
             </div>
@@ -362,8 +380,8 @@
                 icon="i-heroicons-trash"
                 color="error"
                 size="lg"
-                @click="confirmDelete(selectedMedia)"
                 :loading="deletingIds.includes(selectedMedia.uuid)"
+                @click="confirmDelete(selectedMedia)"
               />
               <UButton
                 variant="ghost"
@@ -392,7 +410,7 @@
                 :alt="selectedMedia.filename"
                 class="w-full h-auto max-h-[80vh] object-contain rounded"
                 @error="handleImageError"
-              />
+              >
               <div v-else class="w-full h-64 flex items-center justify-center">
                 <ImagePlaceholder />
               </div>
@@ -488,7 +506,35 @@ const settingsStore = useSettingsStore()
 const filters = ref({
   media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
   purpose: '',
+  subject_uuid: '',
   tags: ''
+})
+
+// Subject search data
+const selectedSubject = ref(null)
+const subjectSearchQuery = ref('')
+
+// Reactive subjects data with search
+const { data: subjectItems } = await useFetch('/api/subjects', {
+  key: 'subjects-search-gallery',
+  query: computed(() => ({
+    search: subjectSearchQuery.value,
+    limit: 100
+  })),
+  transform: (data) => {
+    if (data.subjects && Array.isArray(data.subjects)) {
+      return [
+        { value: '', label: 'All Subjects' }, // Add "All" option
+        ...data.subjects.map((subject) => ({
+          value: subject.uuid,
+          label: subject.name
+        }))
+      ]
+    }
+    return [{ value: '', label: 'All Subjects' }]
+  },
+  lazy: true,
+  server: false
 })
 
 const sortOptions = ref({
@@ -596,6 +642,7 @@ const searchMedia = async () => {
     
     if (mediaType) params.append('media_type', mediaType)
     if (purpose) params.append('purpose', purpose)
+    if (filters.value.subject_uuid) params.append('subject_uuid', filters.value.subject_uuid)
     if (filters.value.tags) params.append('tags', filters.value.tags)
     
     // Handle limit - extract value if it's an object
@@ -712,16 +759,29 @@ const clearFilters = () => {
   filters.value = {
     media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
     purpose: '',
+    subject_uuid: '',
     tags: ''
   }
+  selectedSubject.value = null
+  subjectSearchQuery.value = ''
   sortOptions.value = {
-    sort_by: 'created_at',
-    sort_order: 'desc'
+    sort_by: { label: 'Created Date', value: 'created_at' },
+    sort_order: { label: 'Descending', value: 'desc' }
   }
   pagination.value.limit = 16
   currentPage.value = 1
   mediaResults.value = []
   hasSearched.value = false
+}
+
+// Subject selection handler
+const handleSubjectSelection = (selectedSubject) => {
+  // selectedSubject is now the full object with value and label
+  if (selectedSubject && selectedSubject.value) {
+    filters.value.subject_uuid = selectedSubject.value // Use the UUID
+  } else {
+    filters.value.subject_uuid = ''
+  }
 }
 
 const handleImageError = (event) => {
