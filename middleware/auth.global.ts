@@ -1,4 +1,8 @@
-export default defineNuxtRouteMiddleware(async (to) => {
+export default defineNuxtRouteMiddleware(async (_to) => {
+  // TODO: Authentication temporarily disabled - uncomment the code below to re-enable
+  return
+  
+  /* COMMENTED OUT FOR NOW - UNCOMMENT TO RE-ENABLE AUTHENTICATION
   const user = useSupabaseUser()
   const supabase = useSupabaseClient()
   
@@ -43,4 +47,5 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return navigateTo('/login')
     }
   }
+  */
 })

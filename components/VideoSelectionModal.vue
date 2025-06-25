@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ content: 'max-w-7xl max-h-[90vh] overflow-y-auto' }">
+  <UModal v-model:open="isOpen" :ui="{ content: 'max-w-4xl max-h-[90vh] overflow-y-auto' }">
     <template #content>
       <UCard class="w-full mx-auto" :ui="{ ring: '', divide: 'divide-y divide-gray-200 dark:divide-gray-700', body: { padding: '' } }">
         <template #header>

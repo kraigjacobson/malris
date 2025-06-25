@@ -1,0 +1,17 @@
+media gallery should not change media type when clicking clear
+jobs page should auto refresh
+way to delete jobs in cascade to delete test images
+test image purpose should be test not dest - will know if test if the job doesn't have a source_media_uuid
+test job should not have source_media_uuid yet (it's setting the source_media_uuid to the dest_media_uuid)
+job parameter source_media_uuid needs to be in the source_media_uuid column not in the parameters
+jobs need a subject_uuid column and needs to use that column instead of the parameters
+clicking delete job should delete any images with that job_id and purpose test
+need to be able to cancel an active job, this will set the status to paused so it doesn't get pulled into the queue again and will cancel the runpod job letting the next job begin processing. need a button to resume which will update the status to queued again.
+need a front of queue button which will update the updatedAt field to be 10 years ago so it get's queued next (can cancel current job after this to make it start processing)
+need to make sure the output_uuid for the job is set when the final job is done.
+
+later
+need to import finals and have it create jobs/thumbnails/subjects uuid/ src/dest and mark completed.
+add slideshow functionality from the media gallery search
+real tags
+lookalike feature to sort subjects by likeness when selecting subjects for dest videos.

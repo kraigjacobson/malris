@@ -6,7 +6,7 @@ export default defineNuxtConfig({
     '@nuxt/icon',
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@nuxtjs/supabase',
+    // '@nuxtjs/supabase', // Temporarily disabled to bypass auth
     '@nuxt/content',
     '@nuxt/image',
     '@pinia/nuxt'
@@ -14,13 +14,13 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  supabase: {
-    redirectOptions: {
-      login: '/login',
-      callback: '/login',
-      exclude: ['/', '/api/media/**', '/api/stream/**']
-    }
-  },
+  // supabase: {
+  //   redirectOptions: {
+  //     login: '/login',
+  //     callback: '/login',
+  //     exclude: ['/', '/api/**', '/image-meta', '/media-gallery', '/subjects-gallery', '/submit-job', '/jobs']
+  //   }
+  // },
 
   runtimeConfig: {
     public: {

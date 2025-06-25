@@ -4,42 +4,41 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     
     // Validate the input - expecting new media server format
-    if (!body || !body.source_media_uuid) {
+    if (!body || !body.job_type || !body.subject_uuid || !body.dest_media_uuid) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Invalid request body. Expected format: { source_media_uuid: "...", job_type: "...", dest_media_uuid?: "...", subject_uuid?: "...", parameters?: {...} }'
+        statusMessage: 'Invalid request body. Expected format: { job_type: "...", subject_uuid: "...", dest_media_uuid: "...", source_media_uuid?: "...", parameters?: {...} }'
       })
     }
 
     // Validate required fields
-    if (!body.source_media_uuid) {
+    if (!body.job_type) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Missing required field: source_media_uuid'
+        statusMessage: 'Missing required field: job_type'
+      })
+    }
+
+    if (!body.subject_uuid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing required field: subject_uuid'
+      })
+    }
+
+    if (!body.dest_media_uuid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing required field: dest_media_uuid'
       })
     }
 
     const jobData = {
-      source_media_uuid: body.source_media_uuid,
-      job_type: body.job_type || 'video_processing',
-      dest_media_uuid: body.dest_media_uuid,
+      job_type: body.job_type,
       subject_uuid: body.subject_uuid,
+      dest_media_uuid: body.dest_media_uuid,
+      source_media_uuid: body.source_media_uuid, // Optional
       parameters: body.parameters || {}
-    }
-
-    // Validate job type specific requirements
-    if (jobData.job_type === 'vid_faceswap' && !jobData.dest_media_uuid) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'dest_media_uuid is required for vid_faceswap job type'
-      })
-    }
-
-    if (jobData.job_type === 'vid_faceswap_test_source' && !jobData.subject_uuid) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'subject_uuid is required for vid_faceswap_test_source job type'
-      })
     }
 
     console.log('Submitting job to Media Server API:', jobData)
@@ -50,15 +49,13 @@ export default defineEventHandler(async (event) => {
 
     // Create FormData for the media server API
     const formData = new FormData()
-    formData.append('source_media_uuid', jobData.source_media_uuid)
     formData.append('job_type', jobData.job_type)
+    formData.append('subject_uuid', jobData.subject_uuid)
+    formData.append('dest_media_uuid', jobData.dest_media_uuid)
     
-    if (jobData.dest_media_uuid) {
-      formData.append('dest_media_uuid', jobData.dest_media_uuid)
-    }
-    
-    if (jobData.subject_uuid) {
-      formData.append('subject_uuid', jobData.subject_uuid)
+    // Only include source_media_uuid if provided
+    if (jobData.source_media_uuid) {
+      formData.append('source_media_uuid', jobData.source_media_uuid)
     }
     
     formData.append('parameters', JSON.stringify(jobData.parameters))

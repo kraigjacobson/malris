@@ -11,8 +11,8 @@
         
         <div class="flex items-center space-x-4">
           <ClientOnly>
-            <div v-if="user" class="flex items-center space-x-4">
-              <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span>
+            <!-- <div v-if="user" class="flex items-center space-x-4"> -->
+              <!-- <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span> -->
               <UButton
                 variant="outline"
                 size="sm"
@@ -28,14 +28,14 @@
               >
                 Sign Out
               </UButton>
-            </div>
-            <NuxtLink
+            <!-- </div> -->
+            <!-- <NuxtLink
               v-else
               to="/login"
               class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
             >
               Login
-            </NuxtLink>
+            </NuxtLink> -->
             <template #fallback>
               <div class="px-4 py-2 bg-neutral-800 text-white rounded opacity-50">
                 Loading...
@@ -46,7 +46,7 @@
       </div>
 
       <!-- Navigation Menu -->
-      <UNavigationMenu :items="navigationItems" class="w-full" />
+      <UNavigationMenu content-orientation="vertical" :items="navigationItems" class="w-full" />
     </div>
 
     <!-- Settings Slideover -->
@@ -57,8 +57,10 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const user = useSupabaseUser()
-const supabase = useSupabaseClient()
+// Supabase is temporarily disabled
+// const user = useSupabaseUser()
+// const supabase = useSupabaseClient()
+const _user = ref(null) // Temporarily disabled
 const showSettings = ref(false)
 
 // Navigation items
@@ -67,12 +69,6 @@ const navigationItems = ref<NavigationMenuItem[]>([
     label: 'Data Management',
     icon: 'i-heroicons-folder',
     children: [
-      {
-        label: 'Image Metadata',
-        description: 'Browse, search, and filter AI job image records with pagination support.',
-        icon: 'i-heroicons-photo',
-        to: '/image-meta'
-      },
       {
         label: 'Media Gallery',
         description: 'Browse encrypted media storage with images and videos.',
@@ -107,9 +103,10 @@ const navigationItems = ref<NavigationMenuItem[]>([
   }
 ])
 
-// Handle sign out
+// Handle sign out (temporarily disabled)
 const handleSignOut = async () => {
-  await supabase.auth.signOut()
-  await navigateTo('/login')
+  // await supabase.auth.signOut()
+  console.log('Sign out clicked - Supabase temporarily disabled')
+  // await navigateTo('/login')
 }
 </script>

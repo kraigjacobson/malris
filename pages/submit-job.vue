@@ -31,10 +31,10 @@
           <p class="text-xs text-gray-500">Choose the type of processing job</p>
         </div>
 
-        <!-- Source Media UUID -->
-        <div class="space-y-2">
+        <!-- Destination Video Selection (for vid_faceswap) -->
+        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Source Media UUID <span class="text-red-500">*</span>
+            Destination Video <span class="text-red-500">*</span>
           </label>
           
           <!-- Video Selection Button and Preview -->
@@ -46,7 +46,7 @@
               :disabled="isSubmitting"
               class="flex-shrink-0"
             >
-              {{ selectedVideo ? 'Change Video' : 'Select Video' }}
+              {{ selectedVideo ? 'Change Video' : 'Select Destination Video' }}
             </UButton>
             
             <!-- Selected Video Preview -->
@@ -81,25 +81,11 @@
             </div>
           </div>
           
-          <p class="text-xs text-gray-500">Select a video from the media library</p>
+          <p class="text-xs text-gray-500">Select the destination video for face swapping</p>
         </div>
 
-        <!-- Destination Media UUID (for vid_faceswap) -->
+        <!-- Subject Selection (for vid_faceswap) -->
         <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Destination Media UUID <span class="text-red-500">*</span>
-          </label>
-          <UInput
-            v-model="form.dest_media_uuid"
-            placeholder="e.g., 456e7890-e12b-34d5-a678-901234567890"
-            :disabled="isSubmitting"
-            class="w-full"
-          />
-          <p class="text-xs text-gray-500">UUID of the destination media file for face swap</p>
-        </div>
-
-        <!-- Subject Selection (for vid_faceswap_test_source) -->
-        <div v-if="form.job_type?.value === 'vid_faceswap_test_source' || form.job_type === 'vid_faceswap_test_source'" class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Subject <span class="text-red-500">*</span>
           </label>
@@ -181,15 +167,11 @@
           <span class="font-medium">Job Type:</span>
           <span>{{ form.job_type?.label || form.job_type }}</span>
         </div>
-        <div class="flex justify-between">
-          <span class="font-medium">Source Media UUID:</span>
-          <span class="font-mono text-sm">{{ form.source_media_uuid }}</span>
-        </div>
         <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="flex justify-between">
-          <span class="font-medium">Dest Media UUID:</span>
+          <span class="font-medium">Destination Video:</span>
           <span class="font-mono text-sm">{{ form.dest_media_uuid }}</span>
         </div>
-        <div v-if="form.job_type?.value === 'vid_faceswap_test_source' || form.job_type === 'vid_faceswap_test_source'" class="flex justify-between">
+        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="flex justify-between">
           <span class="font-medium">Subject:</span>
           <span class="text-sm">{{ selectedSubject?.label || 'Not selected' }}</span>
         </div>
@@ -223,8 +205,7 @@ definePageMeta({
 
 // Reactive form data
 const form = ref({
-  job_type: '',
-  source_media_uuid: '',
+  job_type: { label: 'Face Swap', value: 'vid_faceswap' },
   dest_media_uuid: '',
   subject_uuid: '',
   parameters_json: ''
@@ -260,8 +241,7 @@ const { data: subjectItems } = await useFetch('/api/subjects', {
 
 // Job type options
 const jobTypeOptions = [
-  { label: 'Face Swap', value: 'vid_faceswap' },
-  { label: 'Face Swap Test Source', value: 'vid_faceswap_test_source' }
+  { label: 'Face Swap', value: 'vid_faceswap' }
 ]
 
 // UI state
@@ -271,28 +251,23 @@ const message = ref(null)
 // Computed properties
 const isFormValid = computed(() => {
   const jobType = form.value.job_type?.value || form.value.job_type
-  const baseValid = jobType && form.value.source_media_uuid
-
+  
   if (jobType === 'vid_faceswap') {
-    return baseValid && form.value.dest_media_uuid
+    return jobType && form.value.dest_media_uuid && form.value.subject_uuid
   }
   
-  if (jobType === 'vid_faceswap_test_source') {
-    return baseValid && form.value.subject_uuid
-  }
-  
-  return baseValid
+  return false
 })
 
 // Video selection handlers
 const handleVideoSelection = (video) => {
   selectedVideo.value = video
-  form.value.source_media_uuid = video.uuid
+  form.value.dest_media_uuid = video.uuid
 }
 
 const clearSelectedVideo = () => {
   selectedVideo.value = null
-  form.value.source_media_uuid = ''
+  form.value.dest_media_uuid = ''
 }
 
 // Subject selection handler
@@ -328,17 +303,13 @@ const submitJob = async () => {
 
     // Prepare the payload for the new API format
     const payload = {
-      source_media_uuid: form.value.source_media_uuid,
       job_type: jobTypeValue,
       parameters: parameters
     }
 
-    // Add conditional fields based on job type
-    if (jobTypeValue === 'vid_faceswap' && form.value.dest_media_uuid) {
+    // Add required fields based on job type
+    if (jobTypeValue === 'vid_faceswap') {
       payload.dest_media_uuid = form.value.dest_media_uuid
-    }
-
-    if (jobTypeValue === 'vid_faceswap_test_source' && form.value.subject_uuid) {
       payload.subject_uuid = form.value.subject_uuid
     }
 
@@ -371,8 +342,7 @@ const submitJob = async () => {
 
 const resetForm = () => {
   form.value = {
-    job_type: '',
-    source_media_uuid: '',
+    job_type: { label: 'Face Swap', value: 'vid_faceswap' },
     dest_media_uuid: '',
     subject_uuid: '',
     parameters_json: ''
@@ -392,13 +362,15 @@ watch(message, (newMessage) => {
   }
 })
 
-// Watch for job type changes to clear subject selection when switching away from test source
+// Watch for job type changes to clear selections when switching job types
 watch(() => form.value.job_type, (newJobType) => {
   const jobTypeValue = newJobType?.value || newJobType
-  if (jobTypeValue !== 'vid_faceswap_test_source') {
-    // Clear subject selection when switching away from test source
+  if (jobTypeValue !== 'vid_faceswap') {
+    // Clear selections when switching away from vid_faceswap
     selectedSubject.value = null
     form.value.subject_uuid = ''
+    selectedVideo.value = null
+    form.value.dest_media_uuid = ''
     searchQuery.value = ''
   }
 })

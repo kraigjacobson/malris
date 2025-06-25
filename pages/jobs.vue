@@ -23,7 +23,7 @@
         </div>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
         <div
           class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-2"
           :class="{ 'border-blue-500 ring-2 ring-blue-200': filters.status === '' }"
@@ -74,6 +74,16 @@
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Failed</div>
         </div>
+        <div
+          class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors border-2"
+          :class="{ 'border-orange-500 ring-2 ring-orange-200': filters.status === 'need_input' }"
+          @click="filterByStatus('need_input')"
+        >
+          <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+            {{ queueStatus?.queue?.need_input || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+        </div>
       </div>
 
       <div v-if="queueStatus?.queue?.is_paused" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -112,6 +122,7 @@
             v-model="filters.status"
             :items="statusOptions"
             placeholder="All statuses"
+            by="value"
             @change="applyFilters"
           />
         </div>
@@ -124,6 +135,7 @@
             v-model="filters.jobType"
             :items="jobTypeOptions"
             placeholder="All types"
+            by="value"
             @change="applyFilters"
           />
         </div>
@@ -155,75 +167,65 @@
         No jobs found
       </div>
 
-      <div v-else class="space-y-4">
+      <div v-else class="space-y-2">
         <div
           v-for="job in paginatedJobs"
           :key="job.id"
-          class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+          @click="viewJobDetails(job.id)"
         >
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center space-x-3">
+          <!-- Main job info row -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3 min-w-0 flex-1">
               <UBadge
                 :color="getStatusColor(job.status)"
-                variant="subtle"
+                variant="solid"
                 size="sm"
               >
                 {{ job.status }}
               </UBadge>
-              <span class="font-mono text-sm text-gray-600 dark:text-gray-400">
+              <span class="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
                 {{ job.id }}
               </span>
+              <span class="text-xs text-gray-500 dark:text-gray-500">
+                {{ job.job_type }}
+              </span>
+              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-2">
+                <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                  <div
+                    class="bg-blue-600 h-1 rounded-full transition-all duration-300"
+                    :style="{ width: `${job.progress}%` }"
+                  />
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
+              </div>
             </div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">
-              {{ formatDate(job.created_at) }}
+            
+            <div class="flex items-center space-x-2 flex-shrink-0">
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ formatDateCompact(job.created_at) }}
+              </span>
+              <div class="flex gap-1">
+                <UButton
+                  v-if="job.output_uuid"
+                  size="2xs"
+                  color="green"
+                  variant="ghost"
+                  @click.stop="viewOutput(job.output_uuid)"
+                >
+                  <UIcon name="i-heroicons-play" class="w-3 h-3" />
+                </UButton>
+                <UButton
+                  v-if="job.status === 'need_input'"
+                  size="sm"
+                  color="warning"
+                  variant="outline"
+                  @click.stop="openImageSelection(job)"
+                >
+                  Select Source Image
+                </UButton>
+              </div>
             </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <span class="font-medium text-gray-700 dark:text-gray-300">Type:</span>
-              <span class="ml-2 text-gray-600 dark:text-gray-400">{{ job.job_type }}</span>
-            </div>
-            <div>
-              <span class="font-medium text-gray-700 dark:text-gray-300">Progress:</span>
-              <span class="ml-2 text-gray-600 dark:text-gray-400">{{ job.progress || 0 }}%</span>
-            </div>
-            <div>
-              <span class="font-medium text-gray-700 dark:text-gray-300">Source UUID:</span>
-              <span class="ml-2 font-mono text-xs text-gray-600 dark:text-gray-400">{{ job.source_media_uuid }}</span>
-            </div>
-            <div v-if="job.output_uuid">
-              <span class="font-medium text-gray-700 dark:text-gray-300">Output UUID:</span>
-              <span class="ml-2 font-mono text-xs text-gray-600 dark:text-gray-400">{{ job.output_uuid }}</span>
-            </div>
-          </div>
-
-          <div v-if="job.error_message" class="mt-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
-            <strong>Error:</strong> {{ job.error_message }}
-          </div>
-
-          <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="mt-3">
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div
-                class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                :style="{ width: `${job.progress}%` }"
-              />
-            </div>
-          </div>
-
-          <div class="mt-3 flex gap-2">
-            <UButton size="xs" variant="outline" @click="viewJobDetails(job.id)">
-              View Details
-            </UButton>
-            <UButton
-              v-if="job.output_uuid"
-              size="xs"
-              color="green"
-              variant="outline"
-              @click="viewOutput(job.output_uuid)"
-            >
-              View Output
-            </UButton>
           </div>
         </div>
       </div>
@@ -240,11 +242,18 @@
     </UCard>
 
     <!-- Job Details Modal -->
-    <UModal v-model="showJobModal">
+    <UModal v-model:open="showJobModal">
       <template #content>
         <UCard>
           <template #header>
-            <h3 class="text-lg font-semibold">Job Details</h3>
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold">Job Details</h3>
+              <UButton
+                variant="ghost"
+                icon="i-heroicons-x-mark"
+                @click="showJobModal = false"
+              />
+            </div>
           </template>
 
           <div v-if="selectedJob" class="space-y-4">
@@ -306,6 +315,13 @@
         </UCard>
       </template>
     </UModal>
+
+    <!-- Source Image Selection Modal -->
+    <SourceImageSelectionModal
+      v-model="showImageModal"
+      :job="selectedJobForImage"
+      @image-selected="handleImageSelected"
+    />
   </div>
 </template>
 
@@ -322,6 +338,10 @@ const isLoading = ref(false)
 const showJobModal = ref(false)
 const selectedJob = ref(null)
 
+// Image selection modal data
+const showImageModal = ref(false)
+const selectedJobForImage = ref(null)
+
 // Filters
 const filters = ref({
   jobId: '',
@@ -331,7 +351,7 @@ const filters = ref({
 
 // Pagination
 const currentPage = ref(1)
-const itemsPerPage = 10
+const itemsPerPage = 20
 
 // Filter options
 const statusOptions = [
@@ -340,7 +360,8 @@ const statusOptions = [
   { label: 'Running', value: 'active' },
   { label: 'Completed', value: 'completed' },
   { label: 'Failed', value: 'failed' },
-  { label: 'Cancelled', value: 'cancelled' }
+  { label: 'Cancelled', value: 'cancelled' },
+  { label: 'Needs Input', value: 'need_input' }
 ]
 
 const jobTypeOptions = [
@@ -504,12 +525,13 @@ const viewOutput = (outputUuid) => {
 
 const getStatusColor = (status) => {
   switch (status?.toLowerCase()) {
-    case 'queued': return 'yellow'
-    case 'active': return 'blue'
-    case 'completed': return 'green'
-    case 'failed': return 'red'
-    case 'cancelled': return 'gray'
-    default: return 'gray'
+    case 'queued': return 'warning'
+    case 'active': return 'info'
+    case 'completed': return 'success'
+    case 'failed': return 'error'
+    case 'cancelled': return 'neutral'
+    case 'need_input': return 'warning'
+    default: return 'neutral'
   }
 }
 
@@ -517,6 +539,26 @@ const formatDate = (dateString) => {
   if (!dateString) return 'N/A'
   return new Date(dateString).toLocaleString()
 }
+
+const formatDateCompact = (dateString) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  
+  if (diffMins < 1) return 'now'
+  if (diffMins < 60) return `${diffMins}m`
+  if (diffHours < 24) return `${diffHours}h`
+  if (diffDays < 7) return `${diffDays}d`
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
+}
+
 
 const filterByStatus = async (status) => {
   // Prevent double execution by checking if we're already loading
@@ -530,6 +572,17 @@ const filterByStatus = async (status) => {
   
   // Trigger job search with the new filter
   await applyFilters()
+}
+
+// Image selection methods
+const openImageSelection = (job) => {
+  selectedJobForImage.value = job
+  showImageModal.value = true
+}
+
+const handleImageSelected = async () => {
+  // Refresh the jobs list to show updated status
+  await refreshData()
 }
 
 // Lifecycle
