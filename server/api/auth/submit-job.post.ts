@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
     if (!body || !body.job_type || !body.subject_uuid || !body.dest_media_uuid) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Invalid request body. Expected format: { job_type: "...", subject_uuid: "...", dest_media_uuid: "...", source_media_uuid?: "...", parameters?: {...} }'
+        statusMessage: 'Invalid request body. Expected format: { job_type: "...", subject_uuid: "...", dest_media_uuid: "...", parameters?: {...} }'
       })
     }
 
@@ -37,7 +37,6 @@ export default defineEventHandler(async (event) => {
       job_type: body.job_type,
       subject_uuid: body.subject_uuid,
       dest_media_uuid: body.dest_media_uuid,
-      source_media_uuid: body.source_media_uuid, // Optional
       parameters: body.parameters || {}
     }
 
@@ -53,12 +52,10 @@ export default defineEventHandler(async (event) => {
     formData.append('subject_uuid', jobData.subject_uuid)
     formData.append('dest_media_uuid', jobData.dest_media_uuid)
     
-    // Only include source_media_uuid if provided
-    if (jobData.source_media_uuid) {
-      formData.append('source_media_uuid', jobData.source_media_uuid)
+    // Only include parameters if there are any additional parameters beyond the main fields
+    if (Object.keys(jobData.parameters).length > 0) {
+      formData.append('parameters', JSON.stringify(jobData.parameters))
     }
-    
-    formData.append('parameters', JSON.stringify(jobData.parameters))
 
     // Make the request to the Media Server API
     const mediaServerResponse = await $fetch(`${mediaServerUrl}/jobs`, {

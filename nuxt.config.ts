@@ -6,7 +6,7 @@ export default defineNuxtConfig({
     '@nuxt/icon',
     '@nuxt/eslint',
     '@nuxt/ui',
-    // '@nuxtjs/supabase', // Temporarily disabled to bypass auth
+    '@nuxtjs/supabase',
     '@nuxt/content',
     '@nuxt/image',
     '@pinia/nuxt'
@@ -14,18 +14,24 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  // supabase: {
-  //   redirectOptions: {
-  //     login: '/login',
-  //     callback: '/login',
-  //     exclude: ['/', '/api/**', '/image-meta', '/media-gallery', '/subjects-gallery', '/submit-job', '/jobs']
-  //   }
-  // },
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_KEY,
+    redirectOptions: {
+      login: '/login',
+      callback: '/login',
+      exclude: ['/', '/api/**', '/image-meta', '/media-gallery', '/subjects-gallery', '/submit-job', '/jobs']
+    }
+  },
 
   runtimeConfig: {
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseKey: process.env.SUPABASE_KEY,
     public: {
       apiUrl: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
-      apiBasePath: process.env.NUXT_PUBLIC_API_BASE
+      apiBasePath: process.env.NUXT_PUBLIC_API_BASE,
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseAnonKey: process.env.SUPABASE_KEY
     }
   },
 })

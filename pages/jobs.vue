@@ -23,7 +23,7 @@
         </div>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-7 gap-4">
         <div
           class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-2"
           :class="{ 'border-blue-500 ring-2 ring-blue-200': filters.status === '' }"
@@ -83,6 +83,16 @@
             {{ queueStatus?.queue?.need_input || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+        </div>
+        <div
+          class="text-center p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-900/30 transition-colors border-2"
+          :class="{ 'border-gray-500 ring-2 ring-gray-200': filters.status === 'cancelled' }"
+          @click="filterByStatus('cancelled')"
+        >
+          <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
+            {{ queueStatus?.queue?.cancelled || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Cancelled</div>
         </div>
       </div>
 
@@ -223,6 +233,15 @@
                   @click.stop="openImageSelection(job)"
                 >
                   Select Source Image
+                </UButton>
+                <UButton
+                  v-if="['queued', 'active'].includes(job.status)"
+                  size="sm"
+                  color="red"
+                  variant="outline"
+                  @click.stop="cancelJob(job)"
+                >
+                  Cancel
                 </UButton>
               </div>
             </div>
@@ -394,7 +413,7 @@ const fetchAllData = async () => {
     // First get queue status for the status cards
     console.log('📊 Fetching queue status...')
     const queueStartTime = Date.now()
-    const queueResponse = await $fetch('/api/jobs')
+    const queueResponse = await useAuthFetch('jobs')
     console.log(`✅ Queue status fetched in ${Date.now() - queueStartTime}ms`)
     queueStatus.value = queueResponse
     
@@ -407,8 +426,8 @@ const fetchAllData = async () => {
     if (filters.value.jobId) searchParams.append('source_media_uuid', filters.value.jobId)
     searchParams.append('limit', '100') // Get more jobs for better filtering
     
-    console.log(`🌐 Calling: /api/jobs/search?${searchParams.toString()}`)
-    const jobsResponse = await $fetch(`/api/jobs/search?${searchParams.toString()}`)
+    console.log(`🌐 Calling: /api/auth/jobs/search?${searchParams.toString()}`)
+    const jobsResponse = await useAuthFetch(`jobs/search?${searchParams.toString()}`)
     console.log(`✅ Jobs search fetched in ${Date.now() - searchStartTime}ms`)
     
     // Handle different response formats from the new API
@@ -461,8 +480,8 @@ const applyFilters = async () => {
     if (filters.value.jobType) searchParams.append('job_type', filters.value.jobType)
     if (filters.value.jobId) searchParams.append('source_media_uuid', filters.value.jobId)
     searchParams.append('limit', '100')
-    
-    const response = await $fetch(`/api/jobs/search?${searchParams.toString()}`)
+    const response = await useAuthFetch(`jobs/search?${searchParams.toString()}`)
+
     
     if (response.results) {
       jobs.value = response.results
@@ -510,7 +529,7 @@ function debounce(func, wait) {
 
 const viewJobDetails = async (jobId) => {
   try {
-    const response = await $fetch(`/api/jobs/${jobId}`)
+    const response = await useAuthFetch(`jobs/${jobId}`)
     selectedJob.value = response.job
     showJobModal.value = true
   } catch (error) {
@@ -583,6 +602,46 @@ const openImageSelection = (job) => {
 const handleImageSelected = async () => {
   // Refresh the jobs list to show updated status
   await refreshData()
+}
+
+// Job cancellation method
+const cancelJob = async (job) => {
+  try {
+    const confirmed = confirm(`Are you sure you want to cancel job ${job.id}?`)
+    if (!confirmed) return
+    
+    console.log(`Cancelling job ${job.id}...`)
+    
+    // Show loading state
+    isLoading.value = true
+    
+    // Call the cancel API
+    const response = await useAuthFetch(`jobs/${job.id}/cancel`, {
+      method: 'POST'
+    })
+    
+    console.log('Job cancelled successfully:', response)
+    
+    // Show success message
+    // You could add a toast notification here if you have one set up
+    
+    // Refresh the jobs list after cancellation
+    await refreshData()
+  } catch (error) {
+    console.error('Failed to cancel job:', error)
+    
+    // Show error message
+    let errorMessage = 'Failed to cancel job'
+    if (error.data?.statusMessage) {
+      errorMessage = error.data.statusMessage
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    alert(`Error: ${errorMessage}`)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // Lifecycle

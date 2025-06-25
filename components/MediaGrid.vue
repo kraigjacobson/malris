@@ -22,7 +22,7 @@
           >
             <img
               v-if="settingsStore.displayImages"
-              :src="`/api/media/${media.uuid}/image?size=sm`"
+              :src="`/api/auth/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover"
               loading="lazy"
@@ -221,7 +221,7 @@ const handleVideoHover = async (videoId, isHovering) => {
           
           // Set the video source dynamically using Nuxt streaming endpoint
           const videoSrc = `/api/stream/${videoId}`
-          
+
           // Ensure video is properly configured for autoplay
           targetVideo.muted = true
           targetVideo.playsInline = true

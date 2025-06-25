@@ -183,7 +183,7 @@
 
       <template #footer>
         <div class="text-sm text-gray-500">
-          <strong>API Endpoint:</strong> /api/submit-job → Media Server /jobs
+          <strong>API Endpoint:</strong> /api/auth/submit-job → Media Server /jobs
         </div>
       </template>
     </UCard>
@@ -220,7 +220,7 @@ const selectedSubject = ref(null)
 const searchQuery = ref('')
 
 // Reactive subjects data with search
-const { data: subjectItems } = await useFetch('/api/subjects', {
+const { data: subjectItems } = await useAuthUseFetch('subjects', {
   key: 'subjects-search',
   query: computed(() => ({
     search: searchQuery.value,
@@ -314,7 +314,7 @@ const submitJob = async () => {
     }
 
     // Submit the job via our server API
-    const response = await $fetch('/api/submit-job', {
+    const response = await useAuthFetch('submit-job', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

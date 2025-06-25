@@ -181,7 +181,7 @@
           >
             <img
               v-if="settingsStore.displayImages"
-              :src="`/api/media/${media.uuid}/image?size=sm`"
+              :src="`/api/auth/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover"
               loading="lazy"
@@ -272,7 +272,7 @@
             <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded flex-shrink-0 cursor-pointer" @click="openModal(media)">
               <img
                 v-if="media.type === 'image' && settingsStore.displayImages"
-                :src="`/api/media/${media.uuid}/image?size=sm`"
+                :src="`/api/auth/media/${media.uuid}/image?size=sm`"
                 :alt="media.filename"
                 class="w-full h-full object-cover rounded"
                 loading="lazy"
@@ -406,7 +406,7 @@
               
               <img
                 v-if="settingsStore.displayImages"
-                :src="`/api/media/${selectedMedia.uuid}/image?size=lg`"
+                :src="`/api/auth/media/${selectedMedia.uuid}/image?size=lg`"
                 :alt="selectedMedia.filename"
                 class="w-full h-auto max-h-[80vh] object-contain rounded"
                 @error="handleImageError"
@@ -515,7 +515,7 @@ const selectedSubject = ref(null)
 const subjectSearchQuery = ref('')
 
 // Reactive subjects data with search
-const { data: subjectItems } = await useFetch('/api/subjects', {
+const { data: subjectItems } = await useAuthUseFetch('subjects', {
   key: 'subjects-search-gallery',
   query: computed(() => ({
     search: subjectSearchQuery.value,
@@ -657,7 +657,7 @@ const searchMedia = async () => {
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
 
-    const response = await $fetch(`/api/media/search?${params.toString()}`, {
+    const response = await useAuthFetch(`media/search?${params.toString()}`, {
       signal: searchController.value.signal
     })
     const allResults = response.results || []
@@ -756,8 +756,11 @@ const cancelSearch = () => {
 }
 
 const clearFilters = () => {
+  // Preserve the current media type selection
+  const currentMediaType = filters.value.media_type
+  
   filters.value = {
-    media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
+    media_type: currentMediaType, // Keep the currently selected media type
     purpose: '',
     subject_uuid: '',
     tags: ''
@@ -832,7 +835,7 @@ const deleteMedia = async (uuid) => {
     deletingIds.value.push(uuid)
     
     // Call delete API
-    await $fetch(`/api/media/${uuid}/delete`, {
+    await useAuthFetch(`media/${uuid}/delete`, {
       method: 'DELETE'
     })
     
@@ -940,7 +943,7 @@ const handleVideoHover = async (videoId, isHovering) => {
           
           // Set the video source dynamically using Nuxt streaming endpoint
           const videoSrc = `/api/stream/${videoId}`
-          
+
           // Ensure video is properly configured for autoplay
           targetVideo.muted = true
           targetVideo.playsInline = true

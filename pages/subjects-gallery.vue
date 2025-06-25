@@ -340,7 +340,7 @@ const filters = ref({
 })
 
 // Reactive subjects data for dropdown search
-const { data: searchSubjectItems } = await useFetch('/api/subjects', {
+const { data: searchSubjectItems } = await useAuthUseFetch('subjects', {
   key: 'subjects-dropdown-search',
   query: computed(() => ({
     search: dropdownSearchTerm.value,
@@ -429,9 +429,9 @@ const searchSubjects = async () => {
     
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
+console.log('🌐 API URL:', `/api/auth/subjects/search?${params.toString()}`)
+const response = await useAuthFetch(`subjects/search?${params.toString()}`)
 
-    console.log('🌐 API URL:', `/api/subjects/search?${params.toString()}`)
-    const response = await $fetch(`/api/subjects/search?${params.toString()}`)
     
     console.log('📊 Subjects Gallery Search Results:')
     console.log('Total results:', response.subjects?.length || 0)
