@@ -220,24 +220,31 @@ const selectedSubject = ref(null)
 const searchQuery = ref('')
 
 // Reactive subjects data with search
-const { data: subjectItems } = await useAuthUseFetch('subjects', {
-  key: 'subjects-search',
-  query: computed(() => ({
-    search: searchQuery.value,
-    limit: 100
-  })),
-  transform: (data) => {
+const subjectItems = ref([])
+
+const loadSubjects = async () => {
+  try {
+    const data = await useAuthFetch('subjects', {
+      query: {
+        search: searchQuery.value,
+        limit: 100
+      }
+    })
+    
     if (data.subjects && Array.isArray(data.subjects)) {
-      return data.subjects.map((subject) => ({
+      subjectItems.value = data.subjects.map((subject) => ({
         value: subject.uuid,
         label: subject.name
       }))
     }
-    return []
-  },
-  lazy: true,
-  server: false
-})
+  } catch (error) {
+    console.error('Failed to load subjects:', error)
+  }
+}
+
+// Load subjects on mount and when search changes
+onMounted(() => loadSubjects())
+watch(searchQuery, () => loadSubjects())
 
 // Job type options
 const jobTypeOptions = [

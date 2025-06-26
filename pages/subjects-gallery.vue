@@ -340,24 +340,31 @@ const filters = ref({
 })
 
 // Reactive subjects data for dropdown search
-const { data: searchSubjectItems } = await useAuthUseFetch('subjects', {
-  key: 'subjects-dropdown-search',
-  query: computed(() => ({
-    search: dropdownSearchTerm.value,
-    limit: 100
-  })),
-  transform: (data) => {
+const searchSubjectItems = ref([])
+
+const loadSearchSubjects = async () => {
+  try {
+    const data = await useAuthFetch('subjects', {
+      query: {
+        search: dropdownSearchTerm.value,
+        limit: 100
+      }
+    })
+    
     if (data.subjects && Array.isArray(data.subjects)) {
-      return data.subjects.map((subject) => ({
+      searchSubjectItems.value = data.subjects.map((subject) => ({
         value: subject.name,
         label: subject.name
       }))
     }
-    return []
-  },
-  lazy: true,
-  server: false
-})
+  } catch (error) {
+    console.error('Failed to load search subjects:', error)
+  }
+}
+
+// Load subjects on mount and when search changes
+onMounted(() => loadSearchSubjects())
+watch(dropdownSearchTerm, () => loadSearchSubjects())
 
 const sortOptions = ref({
   sort_by: 'name',

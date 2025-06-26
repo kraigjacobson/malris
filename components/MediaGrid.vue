@@ -22,7 +22,7 @@
           >
             <img
               v-if="settingsStore.displayImages"
-              :src="`/api/auth/media/${media.uuid}/image?size=sm`"
+              :src="`/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover"
               loading="lazy"

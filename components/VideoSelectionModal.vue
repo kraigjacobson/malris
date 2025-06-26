@@ -126,7 +126,7 @@ const loadVideos = async (reset = false) => {
       params.tags = searchQuery.value.trim()
     }
 
-    const response = await useAuthFetch('media/search', {
+    const response = await useApiFetch('media/search', {
       query: params
     })
 

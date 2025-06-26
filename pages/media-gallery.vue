@@ -181,7 +181,7 @@
           >
             <img
               v-if="settingsStore.displayImages"
-              :src="`/api/auth/media/${media.uuid}/image?size=sm`"
+              :src="`/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover"
               loading="lazy"
@@ -272,7 +272,7 @@
             <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded flex-shrink-0 cursor-pointer" @click="openModal(media)">
               <img
                 v-if="media.type === 'image' && settingsStore.displayImages"
-                :src="`/api/auth/media/${media.uuid}/image?size=sm`"
+                :src="`/api/media/${media.uuid}/image?size=sm`"
                 :alt="media.filename"
                 class="w-full h-full object-cover rounded"
                 loading="lazy"
@@ -406,7 +406,7 @@
               
               <img
                 v-if="settingsStore.displayImages"
-                :src="`/api/auth/media/${selectedMedia.uuid}/image?size=lg`"
+                :src="`/api/media/${selectedMedia.uuid}/image?size=lg`"
                 :alt="selectedMedia.filename"
                 class="w-full h-auto max-h-[80vh] object-contain rounded"
                 @error="handleImageError"
@@ -515,15 +515,19 @@ const selectedSubject = ref(null)
 const subjectSearchQuery = ref('')
 
 // Reactive subjects data with search
-const { data: subjectItems } = await useAuthUseFetch('subjects', {
-  key: 'subjects-search-gallery',
-  query: computed(() => ({
-    search: subjectSearchQuery.value,
-    limit: 100
-  })),
-  transform: (data) => {
+const subjectItems = ref([{ value: '', label: 'All Subjects' }])
+
+const loadSubjects = async () => {
+  try {
+    const data = await useAuthFetch('subjects', {
+      query: {
+        search: subjectSearchQuery.value,
+        limit: 100
+      }
+    })
+    
     if (data.subjects && Array.isArray(data.subjects)) {
-      return [
+      subjectItems.value = [
         { value: '', label: 'All Subjects' }, // Add "All" option
         ...data.subjects.map((subject) => ({
           value: subject.uuid,
@@ -531,11 +535,14 @@ const { data: subjectItems } = await useAuthUseFetch('subjects', {
         }))
       ]
     }
-    return [{ value: '', label: 'All Subjects' }]
-  },
-  lazy: true,
-  server: false
-})
+  } catch (error) {
+    console.error('Failed to load subjects:', error)
+  }
+}
+
+// Load subjects on mount and when search changes
+onMounted(() => loadSubjects())
+watch(subjectSearchQuery, () => loadSubjects())
 
 const sortOptions = ref({
   sort_by: 'created_at',
@@ -657,7 +664,7 @@ const searchMedia = async () => {
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
 
-    const response = await useAuthFetch(`media/search?${params.toString()}`, {
+    const response = await useApiFetch(`media/search?${params.toString()}`, {
       signal: searchController.value.signal
     })
     const allResults = response.results || []
@@ -835,7 +842,7 @@ const deleteMedia = async (uuid) => {
     deletingIds.value.push(uuid)
     
     // Call delete API
-    await useAuthFetch(`media/${uuid}/delete`, {
+    await useApiFetch(`media/${uuid}/delete`, {
       method: 'DELETE'
     })
     

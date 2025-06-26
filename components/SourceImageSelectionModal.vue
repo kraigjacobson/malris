@@ -58,7 +58,7 @@
         <div v-if="currentImage" class="text-center">
           <div class="relative inline-block max-w-full">
             <img
-              :src="currentImage.thumbnail || `/api/auth/media/${currentImage.uuid}/image?size=md`"
+              :src="currentImage.thumbnail || `/api/media/${currentImage.uuid}/image?size=md`"
               :alt="currentImage.filename"
               class="max-w-full max-h-96 rounded-lg shadow-lg"
             />
@@ -97,7 +97,7 @@
             @click="currentImageIndex = index"
           >
             <img
-              :src="image.thumbnail || `/api/auth/media/${image.uuid}/image?size=thumb`"
+              :src="image.thumbnail || `/api/media/${image.uuid}/image?size=thumb`"
               :alt="image.filename"
               class="w-full h-full object-cover rounded"
             />
@@ -168,7 +168,7 @@ const loadImagesForJob = async (jobId) => {
   isLoadingImages.value = true
   try {
     // Search for images that match this job_id
-    const response = await useAuthFetch('media/search', {
+    const response = await useApiFetch('media/search', {
       query: {
         media_type: 'image',
         job_id: jobId,

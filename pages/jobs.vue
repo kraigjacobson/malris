@@ -24,11 +24,6 @@
             />
             <span class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
               Auto-refresh {{ jobsStore.autoRefreshEnabled ? 'ON' : 'OFF' }}
-              <UIcon 
-                v-if="jobsStore.autoRefreshEnabled && jobsStore.autoRefreshInterval" 
-                name="i-heroicons-arrow-path" 
-                class="w-3 h-3 animate-spin text-green-500" 
-              />
             </span>
             <UButton 
               type="button" 
