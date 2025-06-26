@@ -16,87 +16,107 @@
           <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
             Queue Status
           </h2>
-          <UButton :loading="isLoading" size="sm" variant="outline" @click="refreshData">
-            <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 mr-2" />
-            Refresh
-          </UButton>
+          <div class="flex items-center gap-2">
+            <USwitch
+              v-model="jobsStore.autoRefreshEnabled"
+              :disabled="jobsStore.isLoading"
+              @update:model-value="jobsStore.toggleAutoRefresh"
+            />
+            <span class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+              Auto-refresh {{ jobsStore.autoRefreshEnabled ? 'ON' : 'OFF' }}
+              <UIcon 
+                v-if="jobsStore.autoRefreshEnabled && jobsStore.autoRefreshInterval" 
+                name="i-heroicons-arrow-path" 
+                class="w-3 h-3 animate-spin text-green-500" 
+              />
+            </span>
+            <UButton 
+              type="button" 
+              size="sm" 
+              variant="outline" 
+              @click.prevent="() => jobsStore.refreshJobs(true)"
+            >
+              <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 mr-2" :class="{ 'animate-spin': jobsStore.isLoading }" />
+              Refresh
+            </UButton>
+          </div>
         </div>
       </template>
 
       <div class="grid grid-cols-1 md:grid-cols-7 gap-4">
         <div
           class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-2"
-          :class="{ 'border-blue-500 ring-2 ring-blue-200': filters.status === '' }"
+          :class="{ 'border-blue-500 ring-2 ring-blue-200': jobsStore.filters.status === '' }"
           @click="filterByStatus('')"
         >
           <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
-            {{ queueStatus?.queue?.total || 0 }}
+            {{ jobsStore.queueStatus?.queue?.total || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
         </div>
         <div
           class="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors border-2"
-          :class="{ 'border-yellow-500 ring-2 ring-yellow-200': filters.status === 'queued' }"
+          :class="{ 'border-yellow-500 ring-2 ring-yellow-200': jobsStore.filters.status === 'queued' }"
           @click="filterByStatus('queued')"
         >
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-            {{ queueStatus?.queue?.queued || 0 }}
+            {{ jobsStore.queueStatus?.queue?.queued || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Queued</div>
         </div>
         <div
           class="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors border-2"
-          :class="{ 'border-green-500 ring-2 ring-green-200': filters.status === 'active' }"
+          :class="{ 'border-green-500 ring-2 ring-green-200': jobsStore.filters.status === 'active' }"
           @click="filterByStatus('active')"
         >
           <div class="text-2xl font-bold text-green-600 dark:text-green-400">
-            {{ queueStatus?.queue?.active || 0 }}
+            {{ jobsStore.queueStatus?.queue?.active || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Active</div>
         </div>
         <div
           class="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors border-2"
-          :class="{ 'border-purple-500 ring-2 ring-purple-200': filters.status === 'completed' }"
+          :class="{ 'border-purple-500 ring-2 ring-purple-200': jobsStore.filters.status === 'completed' }"
           @click="filterByStatus('completed')"
         >
           <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
-            {{ queueStatus?.queue?.completed || 0 }}
+            {{ jobsStore.queueStatus?.queue?.completed || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Completed</div>
         </div>
         <div
           class="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border-2"
-          :class="{ 'border-red-500 ring-2 ring-red-200': filters.status === 'failed' }"
+          :class="{ 'border-red-500 ring-2 ring-red-200': jobsStore.filters.status === 'failed' }"
           @click="filterByStatus('failed')"
         >
           <div class="text-2xl font-bold text-red-600 dark:text-red-400">
-            {{ queueStatus?.queue?.failed || 0 }}
+            {{ jobsStore.queueStatus?.queue?.failed || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Failed</div>
         </div>
         <div
           class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors border-2"
-          :class="{ 'border-orange-500 ring-2 ring-orange-200': filters.status === 'need_input' }"
+          :class="{ 'border-orange-500 ring-2 ring-orange-200': jobsStore.filters.status === 'need_input' }"
           @click="filterByStatus('need_input')"
         >
           <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
-            {{ queueStatus?.queue?.need_input || 0 }}
+            {{ jobsStore.queueStatus?.queue?.need_input || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
         </div>
         <div
           class="text-center p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-900/30 transition-colors border-2"
-          :class="{ 'border-gray-500 ring-2 ring-gray-200': filters.status === 'cancelled' }"
+          :class="{ 'border-gray-500 ring-2 ring-gray-200': jobsStore.filters.status === 'cancelled' }"
           @click="filterByStatus('cancelled')"
         >
           <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
-            {{ queueStatus?.queue?.cancelled || 0 }}
+            {{ jobsStore.queueStatus?.queue?.cancelled || 0 }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400">Cancelled</div>
         </div>
       </div>
 
-      <div v-if="queueStatus?.queue?.is_paused" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+      <div v-if="jobsStore.queueStatus?.queue?.is_paused" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
         <div class="flex items-center">
           <UIcon name="i-heroicons-pause-circle" class="w-5 h-5 text-red-500 mr-2" />
           <span class="text-red-700 dark:text-red-300 font-medium">Queue is paused</span>
@@ -118,9 +138,8 @@
             Job ID
           </label>
           <UInput
-            v-model="filters.jobId"
+            v-model="jobsStore.filters.jobId"
             placeholder="Search by job ID..."
-            @input="debouncedSearch"
           />
         </div>
         
@@ -129,11 +148,10 @@
             Status
           </label>
           <USelectMenu
-            v-model="filters.status"
+            v-model="jobsStore.filters.status"
             :items="statusOptions"
             placeholder="All statuses"
             by="value"
-            @change="applyFilters"
           />
         </div>
         
@@ -142,20 +160,19 @@
             Job Type
           </label>
           <USelectMenu
-            v-model="filters.jobType"
+            v-model="jobsStore.filters.jobType"
             :items="jobTypeOptions"
             placeholder="All types"
             by="value"
-            @change="applyFilters"
           />
         </div>
       </div>
 
       <div class="mt-4 flex gap-2">
-        <UButton variant="outline" size="sm" @click="clearFilters">
+        <UButton type="button" variant="outline" size="sm" @click.prevent="jobsStore.clearFilters">
           Clear Filters
         </UButton>
-        <UButton :loading="isLoading" size="sm" @click="refreshData">
+        <UButton type="button" size="sm" @click.prevent="() => {}">
           Apply Filters
         </UButton>
       </div>
@@ -165,21 +182,21 @@
     <UCard>
       <template #header>
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-          Jobs ({{ filteredJobs.length }})
+          Jobs ({{ jobsStore.jobs.length }})
         </h3>
       </template>
 
-      <div v-if="isLoading" class="flex justify-center py-8">
-        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" />
-      </div>
-
-      <div v-else-if="filteredJobs.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
+      <div v-if="jobsStore.jobs.length === 0 && !jobsStore.isLoading" class="text-center py-8 text-gray-500 dark:text-gray-400">
         No jobs found
       </div>
 
-      <div v-else class="space-y-2">
+      <div v-else-if="jobsStore.jobs.length === 0 && jobsStore.isLoading" class="flex justify-center py-8">
+        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" />
+      </div>
+
+      <div v-else class="h-96 overflow-y-auto space-y-2 pr-2">
         <div
-          v-for="job in paginatedJobs"
+          v-for="job in displayedJobs"
           :key="job.id"
           class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
           @click="viewJobDetails(job.id)"
@@ -254,7 +271,7 @@
         <UPagination
           v-model="currentPage"
           :page-count="itemsPerPage"
-          :total="filteredJobs.length"
+          :total="jobsStore.jobs.length"
           :max="5"
         />
       </div>
@@ -350,10 +367,10 @@ definePageMeta({
   title: 'Jobs'
 })
 
-// Reactive data
-const queueStatus = ref(null)
-const jobs = ref([])
-const isLoading = ref(false)
+// Use the jobs store
+const jobsStore = useJobsStore()
+
+// Local modal state
 const showJobModal = ref(false)
 const selectedJob = ref(null)
 
@@ -361,16 +378,13 @@ const selectedJob = ref(null)
 const showImageModal = ref(false)
 const selectedJobForImage = ref(null)
 
-// Filters
-const filters = ref({
-  jobId: '',
-  status: '',
-  jobType: ''
-})
-
 // Pagination
 const currentPage = ref(1)
 const itemsPerPage = 20
+
+// Local reactive filter state
+const currentFilter = ref('')
+const displayedJobs = ref([])
 
 // Filter options
 const statusOptions = [
@@ -391,141 +405,33 @@ const jobTypeOptions = [
 ]
 
 // Computed properties
-const filteredJobs = computed(() => {
-  // Since we're doing server-side filtering, just return the jobs
-  return jobs.value
-})
+const totalPages = computed(() => Math.ceil(jobsStore.jobs.length / itemsPerPage))
 
-const totalPages = computed(() => Math.ceil(filteredJobs.value.length / itemsPerPage))
 
-const paginatedJobs = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage
-  const end = start + itemsPerPage
-  return filteredJobs.value.slice(start, end)
-})
 
 // Methods
-const fetchAllData = async () => {
-  try {
-    console.log('🚀 Starting fetchAllData...')
-    const startTime = Date.now()
-    
-    // First get queue status for the status cards
-    console.log('📊 Fetching queue status...')
-    const queueStartTime = Date.now()
-    const queueResponse = await useAuthFetch('jobs')
-    console.log(`✅ Queue status fetched in ${Date.now() - queueStartTime}ms`)
-    queueStatus.value = queueResponse
-    
-    // Then get job details with any filters applied
-    console.log('🔍 Fetching jobs search...')
-    const searchStartTime = Date.now()
-    const searchParams = new URLSearchParams()
-    if (filters.value.status) searchParams.append('status', filters.value.status)
-    if (filters.value.jobType) searchParams.append('job_type', filters.value.jobType)
-    if (filters.value.jobId) searchParams.append('source_media_uuid', filters.value.jobId)
-    searchParams.append('limit', '100') // Get more jobs for better filtering
-    
-    console.log(`🌐 Calling: /api/auth/jobs/search?${searchParams.toString()}`)
-    const jobsResponse = await useAuthFetch(`jobs/search?${searchParams.toString()}`)
-    console.log(`✅ Jobs search fetched in ${Date.now() - searchStartTime}ms`)
-    
-    // Handle different response formats from the new API
-    console.log('🔄 Processing response...')
-    const processStartTime = Date.now()
-    if (jobsResponse.results) {
-      jobs.value = jobsResponse.results
-    } else if (jobsResponse.jobs) {
-      jobs.value = jobsResponse.jobs
-    } else if (Array.isArray(jobsResponse)) {
-      jobs.value = jobsResponse
-    } else {
-      jobs.value = []
-    }
-    console.log(`✅ Response processed in ${Date.now() - processStartTime}ms`)
-    console.log(`🎉 Total fetchAllData completed in ${Date.now() - startTime}ms`)
-  } catch (error) {
-    console.error('❌ Failed to fetch data:', error)
-    // Initialize with empty data on error
-    queueStatus.value = {
-      queue: {
-        total: 0,
-        queued: 0,
-        active: 0,
-        completed: 0,
-        failed: 0,
-        is_paused: false
-      }
-    }
-    jobs.value = []
-  }
-}
-
-const refreshData = async () => {
-  isLoading.value = true
-  try {
-    await fetchAllData()
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const applyFilters = async () => {
+const filterByStatus = async (status) => {
+  console.log(`🖱️ Filter button clicked: status = '${status}'`)
+  console.log('📊 jobs count:', jobsStore.jobs?.length || 0)
+  console.log('📊 Sample job statuses:', jobsStore.jobs?.slice(0, 3).map(j => j.status) || [])
+  
+  // Update local filter immediately
+  currentFilter.value = status
   currentPage.value = 1
-  isLoading.value = true
-  try {
-    // Only fetch jobs when applying filters, keep existing queue status
-    const searchParams = new URLSearchParams()
-    if (filters.value.status) searchParams.append('status', filters.value.status)
-    if (filters.value.jobType) searchParams.append('job_type', filters.value.jobType)
-    if (filters.value.jobId) searchParams.append('source_media_uuid', filters.value.jobId)
-    searchParams.append('limit', '100')
-    const response = await useAuthFetch(`jobs/search?${searchParams.toString()}`)
-
-    
-    if (response.results) {
-      jobs.value = response.results
-    } else if (response.jobs) {
-      jobs.value = response.jobs
-    } else if (Array.isArray(response)) {
-      jobs.value = response
-    } else {
-      jobs.value = []
-    }
-  } catch (error) {
-    console.error('Failed to fetch jobs:', error)
-    jobs.value = []
-  } finally {
-    isLoading.value = false
-  }
+  
+  // Also update store for UI consistency
+  jobsStore.filters.status = status
+  jobsStore.filters.jobId = ''
+  jobsStore.filters.jobType = ''
+  
+  // Force Vue to update immediately
+  await nextTick()
+  
+  console.log('📋 Updated local filter:', currentFilter.value)
+  console.log('🔍 Jobs that should show:', jobsStore.jobs?.filter(j => !status || j.status === status).length || 0)
+  console.log('✅ Filter applied instantly')
 }
 
-const clearFilters = async () => {
-  filters.value = {
-    jobId: '',
-    status: '',
-    jobType: ''
-  }
-  currentPage.value = 1
-  await applyFilters()
-}
-
-const debouncedSearch = debounce(() => {
-  applyFilters()
-}, 300)
-
-// Debounce function
-function debounce(func, wait) {
-  let timeout
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout)
-      func(...args)
-    }
-    clearTimeout(timeout)
-    timeout = setTimeout(later, wait)
-  }
-}
 
 const viewJobDetails = async (jobId) => {
   try {
@@ -538,7 +444,6 @@ const viewJobDetails = async (jobId) => {
 }
 
 const viewOutput = (outputUuid) => {
-  // Navigate to media gallery with the output UUID
   navigateTo(`/media-gallery?uuid=${outputUuid}`)
 }
 
@@ -578,21 +483,6 @@ const formatDateCompact = (dateString) => {
   }).format(date)
 }
 
-
-const filterByStatus = async (status) => {
-  // Prevent double execution by checking if we're already loading
-  if (isLoading.value) return
-  
-  filters.value.status = status
-  currentPage.value = 1
-  // Clear other filters when clicking status cards for cleaner filtering
-  filters.value.jobId = ''
-  filters.value.jobType = ''
-  
-  // Trigger job search with the new filter
-  await applyFilters()
-}
-
 // Image selection methods
 const openImageSelection = (job) => {
   selectedJobForImage.value = job
@@ -600,8 +490,7 @@ const openImageSelection = (job) => {
 }
 
 const handleImageSelected = async () => {
-  // Refresh the jobs list to show updated status
-  await refreshData()
+  await jobsStore.refreshJobs()
 }
 
 // Job cancellation method
@@ -612,25 +501,17 @@ const cancelJob = async (job) => {
     
     console.log(`Cancelling job ${job.id}...`)
     
-    // Show loading state
-    isLoading.value = true
-    
-    // Call the cancel API
     const response = await useAuthFetch(`jobs/${job.id}/cancel`, {
       method: 'POST'
     })
     
     console.log('Job cancelled successfully:', response)
     
-    // Show success message
-    // You could add a toast notification here if you have one set up
-    
     // Refresh the jobs list after cancellation
-    await refreshData()
+    await jobsStore.refreshJobs()
   } catch (error) {
     console.error('Failed to cancel job:', error)
     
-    // Show error message
     let errorMessage = 'Failed to cancel job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
@@ -639,16 +520,46 @@ const cancelJob = async (job) => {
     }
     
     alert(`Error: ${errorMessage}`)
-  } finally {
-    isLoading.value = false
   }
 }
 
+// Handle page visibility changes
+const handleVisibilityChange = () => {
+  if (document.hidden) {
+    jobsStore.stopAutoRefresh()
+  } else if (jobsStore.autoRefreshEnabled) {
+    jobsStore.startAutoRefresh()
+  }
+}
+
+// Watcher to update displayed jobs immediately
+watch([currentFilter, () => jobsStore.jobs], () => {
+  console.log('🔄 Watcher triggered - updating displayed jobs')
+  if (!currentFilter.value) {
+    displayedJobs.value = [...jobsStore.jobs]
+  } else {
+    displayedJobs.value = jobsStore.jobs.filter(job => job.status === currentFilter.value)
+  }
+  console.log(`📊 Displayed jobs updated: ${displayedJobs.value.length} jobs`)
+}, { immediate: true })
+
 // Lifecycle
 onMounted(() => {
-  refreshData()
+  jobsStore.fetchInitialData()
+  
+  // Start auto-refresh if enabled
+  if (jobsStore.autoRefreshEnabled) {
+    jobsStore.startAutoRefresh()
+  }
+  
+  // Listen for page visibility changes
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
+onUnmounted(() => {
+  jobsStore.stopAutoRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 
 // Page head
 useHead({

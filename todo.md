@@ -11,7 +11,7 @@ arrow keys and swipe work in test selection
 if comfy crashes need to set the job with the latest updatedAt back to queued
 don't show test purpose images by unless specifically setting the purpose dropdown to test
 re-add supabase auth
-job progress for vid workflow every time a number of batches complete
+job progress for vid workflow every time a number of batches complete, send total elapsed time when done and save to job in db
 
 later
 healthcheck for runpod to include if it's actually ready or not. have indicator and error response
