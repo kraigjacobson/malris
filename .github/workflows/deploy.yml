@@ -1,0 +1,33 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        
+    - name: Build and push Docker image
+      run: |
+        docker build \
+          --build-arg NUXT_PUBLIC_SUPABASE_URL="${{ secrets.NUXT_PUBLIC_SUPABASE_URL }}" \
+          --build-arg NUXT_PUBLIC_SUPABASE_KEY="${{ secrets.NUXT_PUBLIC_SUPABASE_KEY }}" \
+          -t registry.digitalocean.com/kraig-registry/malris:latest .
+        
+        doctl registry login
+        docker push registry.digitalocean.com/kraig-registry/malris:latest
+        
+    - name: Deploy to droplet
+      run: |
+        doctl compute ssh girlfriend-bot --ssh-command="docker pull registry.digitalocean.com/kraig-registry/malris:latest && docker stop malris-app && docker rm malris-app && docker run -d --name malris-app -p 3001:3000 registry.digitalocean.com/kraig-registry/malris:latest"
