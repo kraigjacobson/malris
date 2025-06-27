@@ -37,4 +37,4 @@ jobs:
         
     - name: Deploy to droplet
       run: |
-        doctl compute ssh girlfriend-bot --ssh-command="docker pull registry.digitalocean.com/kraig-registry/malris:latest && docker stop malris-app && docker rm malris-app && docker run -d --name malris-app -p 3001:3000 registry.digitalocean.com/kraig-registry/malris:latest"
+        doctl compute ssh girlfriend-bot --ssh-command="cd /root/malris && docker-compose pull && docker-compose up -d"
