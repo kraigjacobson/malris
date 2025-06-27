@@ -1,67 +1,69 @@
 <template>
-  <div class="container mx-auto p-6">
-    <div class="max-w-md mx-auto">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-lg">
       
       <!-- Show user info if logged in -->
-      <div v-if="user" class="bg-green-50 p-6 rounded-lg border border-green-200 mb-6">
-        <p class="text-green-800 text-center mb-4">
-          Welcome back, {{ user.email }}!
-        </p>
+      <UCard v-if="user" class="p-6">
+        <p class="text-center mb-4">{{ user.email }}</p>
         <div class="space-y-3">
-          <NuxtLink
-            to="/"
-            class="block w-full text-center px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
+          <UButton
+            to="/jobs"
+            block
+            size="lg"
           >
-            Go to Dashboard
-          </NuxtLink>
-          <button
-            class="block w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            Job Queue
+          </UButton>
+          <UButton
+            block
+            size="lg"
+            variant="outline"
             @click="handleSignOut"
           >
             Sign Out
-          </button>
+          </UButton>
         </div>
-      </div>
+      </UCard>
       
       <!-- Login form if not logged in -->
-      <div v-else class="bg-neutral-600 p-6 rounded-lg border border-neutral-200">
-        <form class="space-y-4" @submit.prevent="handleEmailLogin">
-          <div>
-            <label class="block text-sm font-medium text-neutral-200 mb-2">Email</label>
-            <input
+      <UCard v-else class="p-6">
+        <form @submit.prevent="handleEmailLogin" class="space-y-4">
+          <UFormField label="Email" name="email">
+            <UInput
               v-model="email"
               type="email"
               required
               placeholder="Enter your email"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-500"
-            >
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-neutral-200 mb-2">Password</label>
-            <input
+              autocomplete="email"
+            />
+          </UFormField>
+
+          <UFormField label="Password" name="password">
+            <UInput
               v-model="password"
               type="password"
               required
               placeholder="Enter your password"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-500"
-            >
-          </div>
+              autocomplete="new-password"
+            />
+          </UFormField>
           
-          <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-            {{ error }}
-          </div>
+          <UAlert
+            v-if="error"
+            color="red"
+            variant="soft"
+            :description="error"
+          />
           
-          <div class="space-y-3">
-            <button
-              type="submit"
-              :disabled="loading"
-              class="w-full px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors disabled:opacity-50"
-            >
-              {{ loading ? 'Signing In...' : 'Sign In' }}
-            </button>
-          </div>
+          <UButton
+            type="submit"
+            :loading="loading"
+            block
+            color="green"
+          >
+            {{ loading ? 'Signing In...' : 'Login' }}
+          </UButton>
         </form>
-      </div>
+      </UCard>
     </div>
   </div>
 </template>
@@ -99,7 +101,7 @@ const handleEmailLogin = async () => {
           console.error('Error setting login time:', error)
         }
       }
-      await navigateTo('/')
+      await navigateTo('/jobs')
     }
   } catch {
     error.value = 'An unexpected error occurred'
@@ -126,7 +128,7 @@ const handleSignOut = async () => {
 // Redirect if already logged in
 watchEffect(() => {
   if (user.value && import.meta.client) {
-    navigateTo('/')
+    navigateTo('/jobs')
   }
 })
 

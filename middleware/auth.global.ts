@@ -14,16 +14,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   
   // Only check authentication on client side
   if (import.meta.client) {
-    // Check if we should require login everytime
+    // Check if we should require login everytime for time-based expiry
     try {
       // Import localforage dynamically to avoid SSR issues
       const localforage = await import('localforage')
       const requireLoginEverytime = await localforage.default.getItem<boolean>('requireLoginEverytime')
       
-      // Only enforce "require login everytime" if explicitly set to true
-      // We'll use a different approach - check if user just came from login page
+      // Only enforce time-based expiry if explicitly set to true and user is authenticated
       if (requireLoginEverytime === true && user.value) {
-        // Check if user has a fresh login flag
+        // Check if user has a fresh login flag for time-based expiry
         const lastLoginTime = await localforage.default.getItem<number>('lastLoginTime')
         const now = Date.now()
         

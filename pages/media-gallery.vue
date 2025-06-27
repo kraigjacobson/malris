@@ -510,34 +510,23 @@ const filters = ref({
   tags: ''
 })
 
-// Subject search data
-const selectedSubject = ref(null)
-const subjectSearchQuery = ref('')
+// Subject search using composable
+const {
+  selectedSubject,
+  searchQuery: subjectSearchQuery,
+  subjectItems: baseSubjectItems,
+  loadSubjects: loadBaseSubjects,
+  handleSubjectSelection: handleComposableSubjectSelection
+} = useSubjects()
 
-// Reactive subjects data with search
-const subjectItems = ref([{ value: '', label: 'All Subjects' }])
+// Add "All Subjects" option to the composable items
+const subjectItems = computed(() => [
+  { value: '', label: 'All Subjects' },
+  ...baseSubjectItems.value
+])
 
 const loadSubjects = async () => {
-  try {
-    const data = await useAuthFetch('subjects', {
-      query: {
-        search: subjectSearchQuery.value,
-        limit: 100
-      }
-    })
-    
-    if (data.subjects && Array.isArray(data.subjects)) {
-      subjectItems.value = [
-        { value: '', label: 'All Subjects' }, // Add "All" option
-        ...data.subjects.map((subject) => ({
-          value: subject.uuid,
-          label: subject.name
-        }))
-      ]
-    }
-  } catch (error) {
-    console.error('Failed to load subjects:', error)
-  }
+  await loadBaseSubjects()
 }
 
 // Load subjects on mount and when search changes
@@ -772,8 +761,7 @@ const clearFilters = () => {
     subject_uuid: '',
     tags: ''
   }
-  selectedSubject.value = null
-  subjectSearchQuery.value = ''
+  handleComposableSubjectSelection(null)
   sortOptions.value = {
     sort_by: { label: 'Created Date', value: 'created_at' },
     sort_order: { label: 'Descending', value: 'desc' }
@@ -785,10 +773,13 @@ const clearFilters = () => {
 }
 
 // Subject selection handler
-const handleSubjectSelection = (selectedSubject) => {
-  // selectedSubject is now the full object with value and label
-  if (selectedSubject && selectedSubject.value) {
-    filters.value.subject_uuid = selectedSubject.value // Use the UUID
+const handleSubjectSelection = (selected) => {
+  // Update the composable state
+  handleComposableSubjectSelection(selected)
+  
+  // Update filters
+  if (selected && selected.value) {
+    filters.value.subject_uuid = selected.value // Use the UUID
   } else {
     filters.value.subject_uuid = ''
   }

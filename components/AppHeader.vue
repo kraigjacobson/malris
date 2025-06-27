@@ -11,8 +11,8 @@
         
         <div class="flex items-center space-x-4">
           <ClientOnly>
-            <!-- <div v-if="user" class="flex items-center space-x-4"> -->
-              <!-- <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span> -->
+            <div v-if="user" class="flex items-center space-x-4">
+              <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span>
               <UButton
                 variant="outline"
                 size="sm"
@@ -28,14 +28,14 @@
               >
                 Sign Out
               </UButton>
-            <!-- </div> -->
-            <!-- <NuxtLink
+            </div>
+            <NuxtLink
               v-else
               to="/login"
               class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
             >
               Login
-            </NuxtLink> -->
+            </NuxtLink>
             <template #fallback>
               <div class="px-4 py-2 bg-neutral-800 text-white rounded opacity-50">
                 Loading...
@@ -57,10 +57,9 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-// Supabase is temporarily disabled
-// const user = useSupabaseUser()
-// const supabase = useSupabaseClient()
-const _user = ref(null) // Temporarily disabled
+// Supabase authentication re-enabled
+const user = useSupabaseUser()
+const supabase = useSupabaseClient()
 const showSettings = ref(false)
 
 // Navigation items
@@ -103,10 +102,27 @@ const navigationItems = ref<NavigationMenuItem[]>([
   }
 ])
 
-// Handle sign out (temporarily disabled)
+// Handle sign out using Supabase
 const handleSignOut = async () => {
-  // await supabase.auth.signOut()
-  console.log('Sign out clicked - Supabase temporarily disabled')
-  // await navigateTo('/login')
+  try {
+    // Clear login time when signing out
+    if (import.meta.client) {
+      try {
+        const localforage = await import('localforage')
+        await localforage.default.removeItem('lastLoginTime')
+      } catch (error) {
+        console.error('Error clearing login time:', error)
+      }
+    }
+    
+    // Sign out from Supabase
+    await supabase.auth.signOut()
+    console.log('Sign out successful')
+    
+    // Navigate to login page
+    await navigateTo('/login')
+  } catch (error) {
+    console.error('Error during sign out:', error)
+  }
 }
 </script>

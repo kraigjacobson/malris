@@ -40,8 +40,8 @@
 
       <div class="grid grid-cols-1 md:grid-cols-7 gap-4">
         <div
-          class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-2"
-          :class="{ 'border-blue-500 ring-2 ring-blue-200': jobsStore.filters.status === '' }"
+          class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          :class="{ 'border-2 border-blue-500': jobsStore.filters.status === '' }"
           @click="filterByStatus('')"
         >
           <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -50,8 +50,8 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
         </div>
         <div
-          class="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors border-2"
-          :class="{ 'border-yellow-500 ring-2 ring-yellow-200': jobsStore.filters.status === 'queued' }"
+          class="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
+          :class="{ 'border-2 border-yellow-500': jobsStore.filters.status === 'queued' }"
           @click="filterByStatus('queued')"
         >
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
@@ -60,8 +60,8 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Queued</div>
         </div>
         <div
-          class="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors border-2"
-          :class="{ 'border-green-500 ring-2 ring-green-200': jobsStore.filters.status === 'active' }"
+          class="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+          :class="{ 'border-2 border-green-500': jobsStore.filters.status === 'active' }"
           @click="filterByStatus('active')"
         >
           <div class="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -70,8 +70,8 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Active</div>
         </div>
         <div
-          class="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors border-2"
-          :class="{ 'border-purple-500 ring-2 ring-purple-200': jobsStore.filters.status === 'completed' }"
+          class="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+          :class="{ 'border-2 border-purple-500': jobsStore.filters.status === 'completed' }"
           @click="filterByStatus('completed')"
         >
           <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
@@ -80,8 +80,8 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Completed</div>
         </div>
         <div
-          class="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border-2"
-          :class="{ 'border-red-500 ring-2 ring-red-200': jobsStore.filters.status === 'failed' }"
+          class="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+          :class="{ 'border-2 border-red-500': jobsStore.filters.status === 'failed' }"
           @click="filterByStatus('failed')"
         >
           <div class="text-2xl font-bold text-red-600 dark:text-red-400">
@@ -90,8 +90,8 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Failed</div>
         </div>
         <div
-          class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors border-2"
-          :class="{ 'border-orange-500 ring-2 ring-orange-200': jobsStore.filters.status === 'need_input' }"
+          class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+          :class="{ 'border-2 border-orange-500': jobsStore.filters.status === 'need_input' }"
           @click="filterByStatus('need_input')"
         >
           <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
@@ -100,14 +100,14 @@
           <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
         </div>
         <div
-          class="text-center p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-900/30 transition-colors border-2"
-          :class="{ 'border-gray-500 ring-2 ring-gray-200': jobsStore.filters.status === 'cancelled' }"
+          class="text-center p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          :class="{ 'border-2 border-gray-500': jobsStore.filters.status === 'cancelled' }"
           @click="filterByStatus('cancelled')"
         >
-          <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
+          <div class="text-2xl font-bold text-gray-700 dark:text-gray-300">
             {{ jobsStore.queueStatus?.queue?.cancelled || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Cancelled</div>
+          <div class="text-sm text-gray-700 dark:text-gray-300">Cancelled</div>
         </div>
       </div>
 
@@ -119,57 +119,44 @@
       </div>
     </UCard>
 
-    <!-- Search and Filters -->
+    <!-- Subject Filter -->
     <UCard class="mb-6">
       <template #header>
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-          Search & Filter
+          Filter by Subject
         </h3>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Job ID
+            Subject
           </label>
-          <UInput
-            v-model="jobsStore.filters.jobId"
-            placeholder="Search by job ID..."
+          <UInputMenu
+            v-model="selectedSubjectFilter"
+            v-model:search-term="subjectSearchQuery"
+            :items="subjectFilterItems"
+            placeholder="Search for a subject to filter jobs..."
+            class="w-full"
+            by="value"
+            option-attribute="label"
+            searchable
+            @update:model-value="handleSubjectFilterSelection"
           />
+          <p class="text-xs text-gray-500 mt-1">Filter jobs by the subject they were created for</p>
         </div>
         
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Status
-          </label>
-          <USelectMenu
-            v-model="jobsStore.filters.status"
-            :items="statusOptions"
-            placeholder="All statuses"
-            by="value"
-          />
+        <div class="flex items-end">
+          <UButton
+            type="button"
+            variant="outline"
+            size="sm"
+            @click="clearSubjectFilter"
+            :disabled="!selectedSubjectFilter"
+          >
+            Clear Subject Filter
+          </UButton>
         </div>
-        
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Job Type
-          </label>
-          <USelectMenu
-            v-model="jobsStore.filters.jobType"
-            :items="jobTypeOptions"
-            placeholder="All types"
-            by="value"
-          />
-        </div>
-      </div>
-
-      <div class="mt-4 flex gap-2">
-        <UButton type="button" variant="outline" size="sm" @click.prevent="jobsStore.clearFilters">
-          Clear Filters
-        </UButton>
-        <UButton type="button" size="sm" @click.prevent="() => {}">
-          Apply Filters
-        </UButton>
       </div>
     </UCard>
 
@@ -381,23 +368,35 @@ const itemsPerPage = 20
 const currentFilter = ref('')
 const displayedJobs = ref([])
 
-// Filter options
-const statusOptions = [
-  { label: 'All Statuses', value: '' },
-  { label: 'Queued', value: 'queued' },
-  { label: 'Running', value: 'active' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Failed', value: 'failed' },
-  { label: 'Cancelled', value: 'cancelled' },
-  { label: 'Needs Input', value: 'need_input' }
-]
+// Subject filtering using composable
+const {
+  selectedSubject: selectedSubjectFilter,
+  searchQuery: subjectSearchQuery,
+  subjectItems: subjectFilterItems,
+  loadSubjects: _loadSubjects,
+  handleSubjectSelection,
+  clearSubject
+} = useSubjects()
 
-const jobTypeOptions = [
-  { label: 'All Types', value: '' },
-  { label: 'Video Processing', value: 'video_processing' },
-  { label: 'Face Swap', value: 'vid_faceswap' },
-  { label: 'Face Swap Test', value: 'vid_faceswap_test_source' }
-]
+// Subject filter handlers
+const handleSubjectFilterSelection = (selected) => {
+  handleSubjectSelection(selected)
+  if (selected && selected.value) {
+    // Filter jobs by subject UUID
+    currentFilter.value = `subject:${selected.value}`
+    currentPage.value = 1
+    console.log('🎯 Filtering jobs by subject:', selected.label, selected.value)
+  } else {
+    clearSubjectFilter()
+  }
+}
+
+const clearSubjectFilter = () => {
+  clearSubject()
+  currentFilter.value = ''
+  currentPage.value = 1
+  console.log('🧹 Cleared subject filter')
+}
 
 // Computed properties
 const totalPages = computed(() => Math.ceil(jobsStore.jobs.length / itemsPerPage))
@@ -532,7 +531,12 @@ watch([currentFilter, () => jobsStore.jobs], () => {
   console.log('🔄 Watcher triggered - updating displayed jobs')
   if (!currentFilter.value) {
     displayedJobs.value = [...jobsStore.jobs]
+  } else if (currentFilter.value.startsWith('subject:')) {
+    // Subject filtering
+    const subjectUuid = currentFilter.value.replace('subject:', '')
+    displayedJobs.value = jobsStore.jobs.filter(job => job.subject_uuid === subjectUuid)
   } else {
+    // Status filtering
     displayedJobs.value = jobsStore.jobs.filter(job => job.status === currentFilter.value)
   }
   console.log(`📊 Displayed jobs updated: ${displayedJobs.value.length} jobs`)
@@ -541,6 +545,9 @@ watch([currentFilter, () => jobsStore.jobs], () => {
 // Lifecycle
 onMounted(() => {
   jobsStore.fetchInitialData()
+  
+  // Load subjects for filtering
+  _loadSubjects()
   
   // Start auto-refresh if enabled
   if (jobsStore.autoRefreshEnabled) {

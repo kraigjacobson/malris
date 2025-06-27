@@ -32,7 +32,7 @@
               Require Login Everytime
             </label>
             <p class="text-sm text-muted-foreground">
-              When enabled, you will be logged out each time you visit the site and need to login again. This provides maximum security.
+              When enabled, you will be logged out when refreshing the page or after 5 minutes of inactivity. This provides maximum security.
             </p>
           </div>
           <div class="flex-shrink-0 mt-1">

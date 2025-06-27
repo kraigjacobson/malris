@@ -41,7 +41,12 @@ export const useSettingsStore = defineStore('settings', {
     async setRequireLoginEverytime(value: boolean) {
       this.requireLoginEverytime = value
       try {
+        // Save to both localforage and cookie for reliability
         await localforage.setItem('requireLoginEverytime', value)
+        // Set cookie that expires in 1 year
+        const expires = new Date()
+        expires.setFullYear(expires.getFullYear() + 1)
+        document.cookie = `requireLoginEverytime=${value}; expires=${expires.toUTCString()}; path=/`
       } catch (error) {
         console.error('Failed to save requireLoginEverytime setting:', error)
       }

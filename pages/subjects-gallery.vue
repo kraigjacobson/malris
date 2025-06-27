@@ -333,34 +333,27 @@ const settingsStore = useSettingsStore()
 
 // Reactive data
 const searchTerm = ref('')
-const dropdownSearchTerm = ref('')
 const selectedSearchSubject = ref(null)
 const filters = ref({
   tags: ''
 })
 
-// Reactive subjects data for dropdown search
-const searchSubjectItems = ref([])
+// Subject search using composable for dropdown
+const {
+  selectedSubject: _selectedDropdownSubject,
+  searchQuery: dropdownSearchTerm,
+  subjectItems: baseSearchSubjectItems,
+  loadSubjects: loadSearchSubjects,
+  handleSubjectSelection: _handleDropdownSubjectSelection
+} = useSubjects()
 
-const loadSearchSubjects = async () => {
-  try {
-    const data = await useAuthFetch('subjects', {
-      query: {
-        search: dropdownSearchTerm.value,
-        limit: 100
-      }
-    })
-    
-    if (data.subjects && Array.isArray(data.subjects)) {
-      searchSubjectItems.value = data.subjects.map((subject) => ({
-        value: subject.name,
-        label: subject.name
-      }))
-    }
-  } catch (error) {
-    console.error('Failed to load search subjects:', error)
-  }
-}
+// Map composable items to match the expected format (name as value)
+const searchSubjectItems = computed(() =>
+  baseSearchSubjectItems.value.map(item => ({
+    value: item.label, // Use name as value for subjects gallery
+    label: item.label
+  }))
+)
 
 // Load subjects on mount and when search changes
 onMounted(() => loadSearchSubjects())

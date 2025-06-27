@@ -215,36 +215,17 @@ const form = ref({
 const selectedVideo = ref(null)
 const showVideoModal = ref(false)
 
-// Subject search data
-const selectedSubject = ref(null)
-const searchQuery = ref('')
+// Subject search using composable
+const {
+  selectedSubject,
+  searchQuery,
+  subjectItems,
+  loadSubjects,
+  handleSubjectSelection: handleComposableSubjectSelection
+} = useSubjects()
 
-// Reactive subjects data with search
-const subjectItems = ref([])
-
-const loadSubjects = async () => {
-  try {
-    const data = await useAuthFetch('subjects', {
-      query: {
-        search: searchQuery.value,
-        limit: 100
-      }
-    })
-    
-    if (data.subjects && Array.isArray(data.subjects)) {
-      subjectItems.value = data.subjects.map((subject) => ({
-        value: subject.uuid,
-        label: subject.name
-      }))
-    }
-  } catch (error) {
-    console.error('Failed to load subjects:', error)
-  }
-}
-
-// Load subjects on mount and when search changes
+// Load subjects on mount
 onMounted(() => loadSubjects())
-watch(searchQuery, () => loadSubjects())
 
 // Job type options
 const jobTypeOptions = [
@@ -278,10 +259,13 @@ const clearSelectedVideo = () => {
 }
 
 // Subject selection handler
-const handleSubjectSelection = (selectedSubject) => {
-  // selectedSubject is now the full object with value and label
-  if (selectedSubject && selectedSubject.value) {
-    form.value.subject_uuid = selectedSubject.value // Use the UUID
+const handleSubjectSelection = (selected) => {
+  // Update the composable state
+  handleComposableSubjectSelection(selected)
+  
+  // Update the form
+  if (selected && selected.value) {
+    form.value.subject_uuid = selected.value // Use the UUID
   } else {
     form.value.subject_uuid = ''
   }
@@ -355,8 +339,7 @@ const resetForm = () => {
     parameters_json: ''
   }
   selectedVideo.value = null
-  selectedSubject.value = null
-  subjectItems.value = []
+  handleComposableSubjectSelection(null)
   message.value = null
 }
 
@@ -374,11 +357,10 @@ watch(() => form.value.job_type, (newJobType) => {
   const jobTypeValue = newJobType?.value || newJobType
   if (jobTypeValue !== 'vid_faceswap') {
     // Clear selections when switching away from vid_faceswap
-    selectedSubject.value = null
+    handleComposableSubjectSelection(null)
     form.value.subject_uuid = ''
     selectedVideo.value = null
     form.value.dest_media_uuid = ''
-    searchQuery.value = ''
   }
 })
 
