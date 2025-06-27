@@ -21,6 +21,19 @@ export default defineNuxtConfig({
       login: '/login',
       callback: '/login',
       exclude: ['/', '/api/**', '/image-meta', '/media-gallery', '/subjects-gallery', '/submit-job', '/jobs']
+    },
+    cookieOptions: {
+      maxAge: 60 * 60 * 8,
+      sameSite: 'lax',
+      secure: true
+    },
+    clientOptions: {
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true
+      }
     }
   },
 
