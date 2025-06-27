@@ -19,13 +19,13 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseKey: process.env.SUPABASE_KEY,
+    supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
+    supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
     public: {
       apiUrl: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
       apiBasePath: process.env.NUXT_PUBLIC_API_BASE,
-      supabaseUrl: process.env.SUPABASE_URL,
-      supabaseAnonKey: process.env.SUPABASE_KEY
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY
     }
   },
 })
