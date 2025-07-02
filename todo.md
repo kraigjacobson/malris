@@ -17,11 +17,11 @@ option button next to dropdown to show images grid for selection
 remove the dumb opera shit on image hover
 
 later
+faceanalysis feature to sort subjects by likeness when selecting subjects for dest videos. https://github.com/cubiq/ComfyUI_FaceAnalysis
 healthcheck for runpod to include if it's actually ready or not. have indicator and error response
 need to import finals and have it create jobs/thumbnails/subjects uuid/ src/dest and mark completed.
 add slideshow functionality from the media gallery search
 real tags
-lookalike feature to sort subjects by likeness when selecting subjects for dest videos.
 add api keys
 allow access to malris on wifi
 make encrypted backups stored in cloud

@@ -341,11 +341,11 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="pagination.total > (typeof pagination.limit === 'object' ? pagination.limit.value : pagination.limit)" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-4 z-50">
+      <div v-if="pagination.total > pagination.limit || pagination.has_more" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-4 z-50">
         <div class="flex justify-center">
           <UPagination
             v-model:page="currentPage"
-            :items-per-page="typeof pagination.limit === 'object' ? pagination.limit.value : pagination.limit"
+            :items-per-page="pagination.limit"
             :total="pagination.total"
             show-last
             show-first
@@ -689,17 +689,28 @@ const searchMedia = async () => {
       }
     })
     
-    // Update pagination info if available
-    if (response.pagination) {
-      pagination.value = {
-        total: response.pagination.total || response.count || 0,
-        limit: typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit,
-        offset: response.pagination.offset || 0,
-        has_more: response.pagination.has_more || false
-      }
+    // Update pagination info based on API response
+    const currentLimit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+    const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
+    
+    // Check if there are more results by seeing if we got a full page
+    const hasMore = response.count === currentLimit
+    
+    // For pagination display, we need to estimate total based on current results
+    // If we have a full page, assume there might be more
+    if (hasMore) {
+      // Estimate total as at least current offset + current count + 1 (to show next page)
+      pagination.value.total = currentOffset + response.count + 1
     } else {
-      // Fallback for current API structure
-      pagination.value.total = response.count || mediaResults.value.length
+      // This is the last page, so total is offset + actual count
+      pagination.value.total = currentOffset + response.count
+    }
+    
+    pagination.value = {
+      ...pagination.value,
+      limit: currentLimit,
+      offset: currentOffset,
+      has_more: hasMore
     }
     
     
