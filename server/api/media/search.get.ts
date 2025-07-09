@@ -107,28 +107,12 @@ export default defineEventHandler(async (event) => {
 
     const jsonResponse = await response.json()
     
-    console.log('📊 Media API Response:')
-    console.log('- Total results:', jsonResponse.results?.length || 0)
-    console.log('- Thumbnails included:', jsonResponse.thumbnails_included || false)
-    console.log('- First result keys:', jsonResponse.results?.[0] ? Object.keys(jsonResponse.results[0]) : 'No results')
-    
-    // Check if we have thumbnail-related fields
-    const videoResults = jsonResponse.results?.filter((r: any) => r.type === 'video') || []
-    console.log('- Video results count:', videoResults.length)
-    if (videoResults.length > 0) {
-      const firstVideo = videoResults[0]
-      console.log('- First video has_thumbnail:', firstVideo.has_thumbnail)
-      console.log('- First video thumbnail length:', firstVideo.thumbnail?.length || 'No thumbnail')
-      console.log('- First video base_image_uuid:', firstVideo.base_image_uuid)
-    }
-    
     // Process results to convert base64 thumbnail data to data URLs for video elements
     if (jsonResponse.results) {
       jsonResponse.results = jsonResponse.results.map((result: any) => {
         if (result.type === 'video' && result.has_thumbnail && result.thumbnail) {
           // The thumbnail field already contains base64 data, convert to data URL for video poster
           result.thumbnail = `data:image/jpeg;base64,${result.thumbnail}`
-          console.log(`✅ Added thumbnail data URL for video ${result.uuid}`)
         }
         return result
       })

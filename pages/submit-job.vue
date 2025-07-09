@@ -1,22 +1,22 @@
 <template>
-  <div class="container mx-auto p-6 max-w-2xl">
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+  <div class="container mx-auto p-3 sm:p-6 max-w-2xl">
+    <div class="mb-4 sm:mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Submit Job
       </h1>
-      <p class="text-gray-600 dark:text-gray-400">
+      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
         Submit a video processing job to the media server
       </p>
     </div>
 
     <UCard class="w-full">
       <template #header>
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
           Job Configuration
         </h2>
       </template>
 
-      <form @submit.prevent="submitJob" class="space-y-6">
+      <form @submit.prevent="submitJob" class="space-y-4 sm:space-y-6">
         <!-- Job Type Selection -->
         <div class="space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -28,7 +28,7 @@
             placeholder="Select job type..."
             class="w-full"
           />
-          <p class="text-xs text-gray-500">Choose the type of processing job</p>
+          <p class="text-xs text-gray-500 hidden sm:block">Choose the type of processing job</p>
         </div>
 
         <!-- Destination Video Selection (for vid_faceswap) -->
@@ -38,20 +38,22 @@
           </label>
           
           <!-- Video Selection Button and Preview -->
-          <div class="flex items-center gap-4">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
             <UButton
               variant="outline"
               icon="i-heroicons-film-20-solid"
               @click="showVideoModal = true"
               :disabled="isSubmitting"
-              class="flex-shrink-0"
+              size="sm"
+              class="shrink-0 w-full sm:w-auto"
             >
-              {{ selectedVideo ? 'Change Video' : 'Select Destination Video' }}
+              <span class="hidden sm:inline">{{ selectedVideo ? 'Change Video' : 'Select Destination Video' }}</span>
+              <span class="sm:hidden">{{ selectedVideo ? 'Change' : 'Select Video' }}</span>
             </UButton>
             
             <!-- Selected Video Preview -->
             <div v-if="selectedVideo" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
-              <div class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden flex-shrink-0">
+              <div class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
                 <img
                   v-if="selectedVideo.thumbnail"
                   :src="selectedVideo.thumbnail"
@@ -72,7 +74,7 @@
               </div>
               <UButton
                 variant="ghost"
-                color="red"
+                color="error"
                 icon="i-heroicons-x-mark-20-solid"
                 size="xs"
                 @click="clearSelectedVideo"
@@ -148,7 +150,7 @@
     <!-- Success/Error Messages -->
     <div v-if="message" class="mt-6">
       <UAlert
-        :color="message.type === 'success' ? 'green' : 'red'"
+        :color="message.type === 'success' ? 'success' : 'error'"
         :title="message.type === 'success' ? 'Success' : 'Error'"
         :description="message.text"
         :close-button="{ icon: 'i-heroicons-x-mark-20-solid', color: 'gray', variant: 'link', padded: false }"
@@ -305,7 +307,7 @@ const submitJob = async () => {
     }
 
     // Submit the job via our server API
-    const response = await useAuthFetch('submit-job', {
+    const response = await useApiFetch('submit-job', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

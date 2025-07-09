@@ -1,23 +1,23 @@
 <template>
-  <div class="container mx-auto p-6 pb-24">
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+  <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
+    <div class="mb-4 sm:mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Media Gallery
       </h1>
-      <p class="text-gray-600 dark:text-gray-400">
+      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
         Browse encrypted media storage
       </p>
     </div>
 
     <!-- Search Filters -->
-    <UCard class="mb-6">
+    <UCard class="mb-3 sm:mb-6">
       <template #header>
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
           Search Filters
         </h2>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <!-- Media Type Filter -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -76,7 +76,7 @@
       </div>
 
       <!-- Sort Options and Limit -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Sort By
@@ -112,24 +112,27 @@
         </div>
       </div>
 
-      <div class="flex gap-4 mt-4">
+      <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
         <UButton
           v-if="!isLoading"
           color="primary"
+          size="sm"
           @click="searchMedia"
         >
           Search
         </UButton>
         <UButton
           v-else
-          color="red"
+          color="error"
           variant="outline"
+          size="sm"
           @click="cancelSearch"
         >
-          <UIcon name="i-heroicons-x-mark" class="mr-2" />
-          Cancel Search
+          <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
+          <span class="hidden sm:inline">Cancel Search</span>
+          <span class="sm:hidden">Cancel</span>
         </UButton>
-        <UButton variant="outline" @click="clearFilters">
+        <UButton variant="outline" size="sm" @click="clearFilters">
           Clear
         </UButton>
       </div>
@@ -144,21 +147,21 @@
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Results Header -->
-      <div class="flex justify-between items-center mb-4">
-        <p class="text-gray-600 dark:text-gray-400">
+      <div class="flex justify-between items-center mb-3 sm:mb-4">
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
           Found {{ mediaResults.length }} media files
         </p>
-        <div class="flex gap-2">
+        <div class="flex gap-1 sm:gap-2">
           <UButton
             :variant="viewMode === 'grid' ? 'solid' : 'outline'"
-            size="sm"
+            size="xs"
             @click="viewMode = 'grid'"
           >
             <UIcon name="i-heroicons-squares-2x2" />
           </UButton>
           <UButton
             :variant="viewMode === 'list' ? 'solid' : 'outline'"
-            size="sm"
+            size="xs"
             @click="viewMode = 'list'"
           >
             <UIcon name="i-heroicons-list-bullet" />
@@ -167,7 +170,7 @@
       </div>
 
       <!-- Grid View -->
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3">
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
@@ -176,7 +179,7 @@
           <!-- Image Preview -->
           <div
             v-if="media.type === 'image'"
-            class="aspect-square relative cursor-pointer"
+            class="aspect-[3/4] relative cursor-pointer"
             @click="openModal(media)"
           >
             <img
@@ -189,13 +192,13 @@
             >
             <ImagePlaceholder v-else />
             <!-- Delete Button - Top Right Corner -->
-            <div class="absolute top-2 right-2 z-10">
+            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
               <UButton
                 icon="i-heroicons-trash"
                 color="error"
                 variant="solid"
-                size="lg"
-                class="opacity-0 group-hover:opacity-25 transition-opacity duration-200 shadow-lg"
+                size="xs"
+                class="opacity-0 group-hover:opacity-75 sm:group-hover:opacity-25 transition-opacity duration-200 shadow-lg"
                 :loading="deletingIds.includes(media.uuid)"
                 @click.stop="confirmDelete(media)"
               />
@@ -205,7 +208,7 @@
           <!-- Video Preview -->
           <div
             v-else-if="media.type === 'video'"
-            class="aspect-square relative cursor-pointer"
+            class="aspect-[3/4] relative cursor-pointer"
             :data-video-uuid="media.uuid"
             @click="openModal(media)"
             @mouseenter="handleVideoHover(media.uuid, true)"
@@ -226,12 +229,12 @@
             </video>
             
             <!-- Delete Button - Top Right Corner -->
-            <div class="absolute top-2 right-2 z-10">
+            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
               <UButton
                 icon="i-heroicons-trash"
                 color="error"
                 variant="solid"
-                size="lg"
+                size="xs"
                 class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg"
                 :loading="deletingIds.includes(media.uuid)"
                 @click.stop="confirmDelete(media)"
@@ -240,18 +243,18 @@
           </div>
 
           <!-- Media Info -->
-          <div class="p-3 cursor-pointer" @click="openModal(media)">
-            <h3 class="font-medium text-sm text-gray-900 dark:text-white truncate">
+          <div class="p-2 sm:p-3 cursor-pointer" @click="openModal(media)">
+            <h3 class="font-medium text-xs sm:text-sm text-gray-900 dark:text-white truncate">
               {{ media.filename }}
             </h3>
-            <p class="text-xs text-gray-500 mt-1">
+            <p class="text-xs text-gray-500 mt-1 hidden sm:block">
               {{ media.type }} • {{ media.purpose }}
             </p>
-            <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-2">
+            <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
               <span
-                v-for="tag in media.tags.slice(0, 3)"
+                v-for="tag in media.tags.slice(0, 2)"
                 :key="tag"
-                class="px-2 py-1 text-xs rounded"
+                class="px-1 sm:px-2 py-1 text-xs rounded"
               >
                 {{ tag }}
               </span>
@@ -261,15 +264,15 @@
       </div>
 
       <!-- List View -->
-      <div v-else class="space-y-2">
+      <div v-else class="space-y-1 sm:space-y-2">
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-neutral-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow group"
+          class="bg-neutral-800 rounded-lg p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group"
         >
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
-            <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded flex-shrink-0 cursor-pointer" @click="openModal(media)">
+            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 rounded shrink-0 cursor-pointer" @click="openModal(media)">
               <img
                 v-if="media.type === 'image' && settingsStore.displayImages"
                 :src="`/api/media/${media.uuid}/image?size=sm`"
@@ -307,15 +310,15 @@
 
             <!-- Info -->
             <div class="flex-1 min-w-0 cursor-pointer" @click="openModal(media)">
-              <h3 class="font-medium text-gray-900 dark:text-white truncate">
+              <h3 class="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
                 {{ media.filename }}
               </h3>
-              <p class="text-sm text-gray-500">
-                {{ media.type }} • {{ media.purpose }} • {{ formatDate(media.created_at) }}
+              <p class="text-xs sm:text-sm text-gray-500">
+                {{ media.type }} • {{ media.purpose }}<span class="hidden sm:inline"> • {{ formatDate(media.created_at) }}</span>
               </p>
-              <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-1">
+              <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
                 <span
-                  v-for="tag in media.tags"
+                  v-for="tag in media.tags.slice(0, 3)"
                   :key="tag"
                   class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
                 >
@@ -325,23 +328,23 @@
             </div>
 
             <!-- Actions -->
-            <div class="flex-shrink-0 flex items-center gap-2">
+            <div class="shrink-0 flex items-center gap-1 sm:gap-2">
               <UButton
                 icon="i-heroicons-trash"
                 color="error"
                 variant="solid"
-                size="lg"
+                size="xs"
                 :loading="deletingIds.includes(media.uuid)"
                 @click.stop="confirmDelete(media)"
               />
-              <UIcon name="i-heroicons-chevron-right" class="text-gray-400" />
+              <UIcon name="i-heroicons-chevron-right" class="text-gray-400 hidden sm:block" />
             </div>
           </div>
         </div>
       </div>
 
       <!-- Pagination -->
-      <div v-if="pagination.total > pagination.limit || pagination.has_more" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-4 z-50">
+      <div v-if="pagination.total > pagination.limit || pagination.has_more" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4 z-50">
         <div class="flex justify-center">
           <UPagination
             v-model:page="currentPage"
@@ -369,23 +372,24 @@
     <!-- Media Detail Modal -->
     <UModal v-model:open="isModalOpen">
       <template #content>
-        <div v-if="selectedMedia" class="p-6">
+        <div v-if="selectedMedia" class="p-3 sm:p-6">
           <!-- Header -->
-          <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-semibold">{{ selectedMedia.filename }}</h3>
-            <div class="flex items-center gap-2">
-              <span class="text-sm text-gray-500">{{ currentMediaIndex + 1 }} / {{ allMediaResults.length }}</span>
+          <div class="flex justify-between items-center mb-3 sm:mb-6">
+            <h3 class="text-base sm:text-lg font-semibold truncate pr-2">{{ selectedMedia.filename }}</h3>
+            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+              <span class="text-xs sm:text-sm text-gray-500 hidden sm:inline">{{ currentMediaIndex + 1 }} / {{ allMediaResults.length }}</span>
               <UButton
                 variant="solid"
                 icon="i-heroicons-trash"
                 color="error"
-                size="lg"
+                size="xs"
                 :loading="deletingIds.includes(selectedMedia.uuid)"
                 @click="confirmDelete(selectedMedia)"
               />
               <UButton
                 variant="ghost"
                 icon="i-heroicons-x-mark"
+                size="xs"
                 @click="isModalOpen = false"
               />
             </div>
@@ -444,7 +448,7 @@
             </div>
 
             <!-- Media Details -->
-            <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
               <div>
                 <span class="font-medium">Type:</span>
                 <span class="ml-2">{{ selectedMedia.type }}</span>

@@ -1,117 +1,117 @@
 <template>
-  <div class="container mx-auto p-6">
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+  <div class="container mx-auto p-3 sm:p-6">
+    <div class="mb-4 sm:mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Job Queue
       </h1>
-      <p class="text-gray-600 dark:text-gray-400">
+      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
         Monitor and manage processing jobs
       </p>
     </div>
 
     <!-- Queue Status Card -->
-    <UCard class="mb-6">
+    <UCard class="mb-3 sm:mb-6">
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
             Queue Status
           </h2>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1 sm:gap-2">
             <USwitch
               v-model="jobsStore.autoRefreshEnabled"
               :disabled="jobsStore.isLoading"
               @update:model-value="jobsStore.toggleAutoRefresh"
             />
-            <span class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <span class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1 hidden sm:flex">
               Auto-refresh {{ jobsStore.autoRefreshEnabled ? 'ON' : 'OFF' }}
             </span>
-            <UButton 
-              type="button" 
-              size="sm" 
-              variant="outline" 
+            <UButton
+              type="button"
+              size="xs"
+              variant="outline"
               @click.prevent="() => jobsStore.refreshJobs(true)"
             >
-              <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 mr-2" :class="{ 'animate-spin': jobsStore.isLoading }" />
-              Refresh
+              <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" :class="{ 'animate-spin': jobsStore.isLoading }" />
+              <span class="hidden sm:inline">Refresh</span>
             </UButton>
           </div>
         </div>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-7 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-4">
         <div
-          class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           :class="{ 'border-2 border-blue-500': jobsStore.filters.status === '' }"
           @click="filterByStatus('')"
         >
-          <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div class="text-lg sm:text-2xl font-bold text-blue-600 dark:text-blue-400">
             {{ jobsStore.queueStatus?.queue?.total || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
         </div>
         <div
-          class="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
           :class="{ 'border-2 border-yellow-500': jobsStore.filters.status === 'queued' }"
           @click="filterByStatus('queued')"
         >
-          <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+          <div class="text-lg sm:text-2xl font-bold text-yellow-600 dark:text-yellow-400">
             {{ jobsStore.queueStatus?.queue?.queued || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Queued</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Queued</div>
         </div>
         <div
-          class="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
           :class="{ 'border-2 border-green-500': jobsStore.filters.status === 'active' }"
           @click="filterByStatus('active')"
         >
-          <div class="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div class="text-lg sm:text-2xl font-bold text-green-600 dark:text-green-400">
             {{ jobsStore.queueStatus?.queue?.active || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Active</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Active</div>
         </div>
         <div
-          class="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
           :class="{ 'border-2 border-purple-500': jobsStore.filters.status === 'completed' }"
           @click="filterByStatus('completed')"
         >
-          <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+          <div class="text-lg sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
             {{ jobsStore.queueStatus?.queue?.completed || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Completed</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed</div>
         </div>
         <div
-          class="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
           :class="{ 'border-2 border-red-500': jobsStore.filters.status === 'failed' }"
           @click="filterByStatus('failed')"
         >
-          <div class="text-2xl font-bold text-red-600 dark:text-red-400">
+          <div class="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400">
             {{ jobsStore.queueStatus?.queue?.failed || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Failed</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Failed</div>
         </div>
         <div
-          class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+          class="text-center p-2 sm:p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
           :class="{ 'border-2 border-orange-500': jobsStore.filters.status === 'need_input' }"
           @click="filterByStatus('need_input')"
         >
-          <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div class="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
             {{ jobsStore.queueStatus?.queue?.need_input || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
         </div>
         <div
-          class="text-center p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          class="text-center p-2 sm:p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
           :class="{ 'border-2 border-gray-500': jobsStore.filters.status === 'cancelled' }"
           @click="filterByStatus('cancelled')"
         >
-          <div class="text-2xl font-bold text-gray-700 dark:text-gray-300">
+          <div class="text-lg sm:text-2xl font-bold text-gray-700 dark:text-gray-300">
             {{ jobsStore.queueStatus?.queue?.cancelled || 0 }}
           </div>
-          <div class="text-sm text-gray-700 dark:text-gray-300">Cancelled</div>
+          <div class="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Cancelled</div>
         </div>
       </div>
 
-      <div v-if="jobsStore.queueStatus?.queue?.is_paused" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+      <div v-if="jobsStore.queueStatus?.queue?.is_paused" class="mt-2 sm:mt-4 p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
         <div class="flex items-center">
           <UIcon name="i-heroicons-pause-circle" class="w-5 h-5 text-red-500 mr-2" />
           <span class="text-red-700 dark:text-red-300 font-medium">Queue is paused</span>
@@ -120,14 +120,14 @@
     </UCard>
 
     <!-- Subject Filter -->
-    <UCard class="mb-6">
+    <UCard class="mb-3 sm:mb-6">
       <template #header>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
           Filter by Subject
         </h3>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Subject
@@ -143,18 +143,19 @@
             searchable
             @update:model-value="handleSubjectFilterSelection"
           />
-          <p class="text-xs text-gray-500 mt-1">Filter jobs by the subject they were created for</p>
+          <p class="text-xs text-gray-500 mt-1 hidden sm:block">Filter jobs by the subject they were created for</p>
         </div>
         
         <div class="flex items-end">
           <UButton
             type="button"
             variant="outline"
-            size="sm"
+            size="xs"
             @click="clearSubjectFilter"
             :disabled="!selectedSubjectFilter"
           >
-            Clear Subject Filter
+            <span class="hidden sm:inline">Clear Subject Filter</span>
+            <span class="sm:hidden">Clear</span>
           </UButton>
         </div>
       </div>
@@ -163,7 +164,7 @@
     <!-- Jobs List -->
     <UCard>
       <template #header>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
           Jobs ({{ jobsStore.jobs.length }})
         </h3>
       </template>
@@ -176,31 +177,31 @@
         <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" />
       </div>
 
-      <div v-else class="h-96 overflow-y-auto space-y-2 pr-2">
+      <div v-else class="h-80 sm:h-96 overflow-y-auto space-y-1 sm:space-y-2 pr-1 sm:pr-2">
         <div
           v-for="job in displayedJobs"
           :key="job.id"
-          class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
           @click="viewJobDetails(job.id)"
         >
           <!-- Main job info row -->
           <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3 min-w-0 flex-1">
+            <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
               <UBadge
                 :color="getStatusColor(job.status)"
                 variant="solid"
-                size="sm"
+                size="xs"
               >
                 {{ job.status }}
               </UBadge>
-              <span class="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
+              <span class="font-mono text-xs text-gray-600 dark:text-gray-400 truncate hidden sm:inline">
                 {{ job.id }}
               </span>
-              <span class="text-xs text-gray-500 dark:text-gray-500">
+              <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
                 {{ job.job_type }}
               </span>
-              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-2">
-                <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
+                <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
                   <div
                     class="bg-blue-600 h-1 rounded-full transition-all duration-300"
                     :style="{ width: `${job.progress}%` }"
@@ -210,15 +211,15 @@
               </div>
             </div>
             
-            <div class="flex items-center space-x-2 flex-shrink-0">
-              <span class="text-xs text-gray-500 dark:text-gray-400">
+            <div class="flex items-center space-x-1 sm:space-x-2 shrink-0">
+              <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
                 {{ formatDateCompact(job.created_at) }}
               </span>
               <div class="flex gap-1">
                 <UButton
                   v-if="job.output_uuid"
                   size="2xs"
-                  color="green"
+                  color="success"
                   variant="ghost"
                   @click.stop="viewOutput(job.output_uuid)"
                 >
@@ -226,17 +227,18 @@
                 </UButton>
                 <UButton
                   v-if="job.status === 'need_input'"
-                  size="sm"
+                  size="xs"
                   color="warning"
                   variant="outline"
                   @click.stop="openImageSelection(job)"
                 >
-                  Select Source Image
+                  <span class="hidden sm:inline">Select Source Image</span>
+                  <span class="sm:hidden">Select</span>
                 </UButton>
                 <UButton
                   v-if="['queued', 'active'].includes(job.status)"
-                  size="sm"
-                  color="red"
+                  size="xs"
+                  color="error"
                   variant="outline"
                   @click.stop="cancelJob(job)"
                 >
@@ -249,7 +251,7 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="mt-6 flex justify-center">
+      <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
         <UPagination
           v-model="currentPage"
           :page-count="itemsPerPage"
@@ -275,7 +277,56 @@
           </template>
 
           <div v-if="selectedJob" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4 text-sm">
+            <!-- Thumbnails Section -->
+            <div class="space-y-3">
+              <h4 class="font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <!-- Subject Thumbnail -->
+                <div v-if="selectedJob.subject_thumbnail" class="text-center">
+                  <div class="mb-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
+                  </div>
+                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
+                    <img
+                      :src="`data:image/jpeg;base64,${selectedJob.subject_thumbnail}`"
+                      alt="Subject thumbnail"
+                      class="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+                
+                <!-- Destination Media Thumbnail -->
+                <div v-if="selectedJob.dest_media_thumbnail" class="text-center">
+                  <div class="mb-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination</span>
+                  </div>
+                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
+                    <img
+                      :src="`data:image/jpeg;base64,${selectedJob.dest_media_thumbnail}`"
+                      alt="Destination media thumbnail"
+                      class="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+                
+                <!-- Output Thumbnail -->
+                <div v-if="selectedJob.output_thumbnail" class="text-center">
+                  <div class="mb-2">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output</span>
+                  </div>
+                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
+                    <img
+                      :src="`data:image/jpeg;base64,${selectedJob.output_thumbnail}`"
+                      alt="Output thumbnail"
+                      class="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Job Details Section -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
               <div>
                 <span class="font-medium">ID:</span>
                 <span class="ml-2 font-mono">{{ selectedJob.id }}</span>
@@ -298,6 +349,14 @@
                 <span class="font-medium">Source UUID:</span>
                 <span class="ml-2 font-mono text-xs">{{ selectedJob.source_media_uuid }}</span>
               </div>
+              <div v-if="selectedJob.dest_media_uuid" class="col-span-2">
+                <span class="font-medium">Destination UUID:</span>
+                <span class="ml-2 font-mono text-xs">{{ selectedJob.dest_media_uuid }}</span>
+              </div>
+              <div v-if="selectedJob.subject_uuid" class="col-span-2">
+                <span class="font-medium">Subject UUID:</span>
+                <span class="ml-2 font-mono text-xs">{{ selectedJob.subject_uuid }}</span>
+              </div>
               <div v-if="selectedJob.output_uuid" class="col-span-2">
                 <span class="font-medium">Output UUID:</span>
                 <span class="ml-2 font-mono text-xs">{{ selectedJob.output_uuid }}</span>
@@ -309,6 +368,24 @@
               <div v-if="selectedJob.completed_at" class="col-span-2">
                 <span class="font-medium">Completed:</span>
                 <span class="ml-2">{{ formatDate(selectedJob.completed_at) }}</span>
+              </div>
+            </div>
+
+            <!-- Video Player for Completed Jobs -->
+            <div v-if="selectedJob.status === 'completed' && selectedJob.output_uuid" class="mt-4">
+              <span class="font-medium">Output Video:</span>
+              <div class="mt-2 bg-black rounded-lg overflow-hidden">
+                <video
+                  :src="`/api/stream/${selectedJob.output_uuid}`"
+                  controls
+                  autoplay
+                  muted
+                  class="w-full h-auto max-h-96"
+                  preload="auto"
+                >
+                  <source :src="`/api/stream/${selectedJob.output_uuid}`" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
               </div>
             </div>
 
@@ -429,9 +506,16 @@ const filterByStatus = async (status) => {
 
 const viewJobDetails = async (jobId) => {
   try {
-    const response = await useAuthFetch(`jobs/${jobId}`)
-    selectedJob.value = response.job
+    const response = await useApiFetch(`jobs/${jobId}?include_thumbnails=true&thumbnail_size=md`)
+    selectedJob.value = response.job  // The media server returns {success: true, job: {...}}
     showJobModal.value = true
+    console.log('Job details loaded:', response)
+    console.log('Selected job:', response.job)
+    console.log('Thumbnail fields check:')
+    console.log('- subject_thumbnail:', !!response.job?.subject_thumbnail)
+    console.log('- dest_media_thumbnail:', !!response.job?.dest_media_thumbnail)
+    console.log('- output_thumbnail:', !!response.job?.output_thumbnail)
+    console.log('- source_media_thumbnail:', !!response.job?.source_media_thumbnail)
   } catch (error) {
     console.error('Failed to fetch job details:', error)
   }
@@ -495,7 +579,7 @@ const cancelJob = async (job) => {
     
     console.log(`Cancelling job ${job.id}...`)
     
-    const response = await useAuthFetch(`jobs/${job.id}/cancel`, {
+    const response = await useApiFetch(`jobs/${job.id}/cancel`, {
       method: 'POST'
     })
     

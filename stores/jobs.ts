@@ -8,9 +8,16 @@ interface Job {
   created_at: string
   completed_at?: string
   source_media_uuid: string
+  dest_media_uuid?: string
+  subject_uuid?: string
   output_uuid?: string
   parameters?: any
   error_message?: string
+  // Thumbnail data (base64 encoded)
+  subject_thumbnail?: string
+  dest_media_thumbnail?: string
+  source_media_thumbnail?: string
+  output_thumbnail?: string
 }
 
 interface QueueStatus {
@@ -51,7 +58,7 @@ export const useJobsStore = defineStore('jobs', () => {
   // Actions
   const fetchQueueStatus = async () => {
     try {
-      const response = await useAuthFetch('jobs') as QueueStatus
+      const response = await useApiFetch('jobs') as QueueStatus
       queueStatus.value = response
     } catch (error) {
       console.error('❌ Failed to fetch queue status:', error)
@@ -80,7 +87,7 @@ export const useJobsStore = defineStore('jobs', () => {
       const searchParams = new URLSearchParams()
       searchParams.append('limit', '100') // Get all jobs, no server-side filtering
 
-      const response = await useAuthFetch(`jobs/search?${searchParams.toString()}`) as any
+      const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
 
       // Handle different response formats from the API and only update after successful fetch
       let newJobs: Job[] = []

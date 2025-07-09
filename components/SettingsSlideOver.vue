@@ -17,7 +17,7 @@
               Show images in the media gallery. When disabled, placeholders will be shown instead.
             </p>
           </div>
-          <div class="flex-shrink-0 mt-1">
+          <div class="shrink-0 mt-1">
             <USwitch
               v-model="settingsStore.displayImages"
               @update:model-value="handleDisplayImagesChange"
@@ -35,7 +35,7 @@
               When enabled, you will be logged out when refreshing the page or after 5 minutes of inactivity. This provides maximum security.
             </p>
           </div>
-          <div class="flex-shrink-0 mt-1">
+          <div class="shrink-0 mt-1">
             <USwitch
               v-model="settingsStore.requireLoginEverytime"
               @update:model-value="handleRequireLoginEverytimeChange"

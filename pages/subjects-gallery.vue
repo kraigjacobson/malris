@@ -1,23 +1,23 @@
 <template>
-  <div class="container mx-auto p-6 pb-24">
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+  <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
+    <div class="mb-4 sm:mb-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Subjects Gallery
       </h1>
-      <p class="text-gray-600 dark:text-gray-400">
+      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
         Browse and search subjects with their associated media
       </p>
     </div>
 
     <!-- Search Filters -->
-    <UCard class="mb-6">
+    <UCard class="mb-3 sm:mb-6">
       <template #header>
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
           Search Filters
         </h2>
       </template>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         <!-- Search Term -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -50,7 +50,7 @@
       </div>
 
       <!-- Sort Options and Limit -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Sort By
@@ -86,11 +86,11 @@
         </div>
       </div>
 
-      <div class="flex gap-4 mt-4">
-        <UButton @click="searchSubjects" :loading="isLoading" color="primary">
+      <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+        <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
           Search
         </UButton>
-        <UButton @click="clearFilters" variant="outline">
+        <UButton @click="clearFilters" variant="outline" size="sm">
           Clear
         </UButton>
       </div>
@@ -104,22 +104,22 @@
     <!-- Results -->
     <div v-else-if="subjectResults.length > 0">
       <!-- Results Header -->
-      <div class="flex justify-between items-center mb-4">
-        <p class="text-gray-600 dark:text-gray-400">
+      <div class="flex justify-between items-center mb-3 sm:mb-4">
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
           Found {{ pagination.total }} subjects
         </p>
-        <div class="flex gap-2">
+        <div class="flex gap-1 sm:gap-2">
           <UButton
             @click="viewMode = 'grid'"
             :variant="viewMode === 'grid' ? 'solid' : 'outline'"
-            size="sm"
+            size="xs"
           >
             <UIcon name="i-heroicons-squares-2x2" />
           </UButton>
           <UButton
             @click="viewMode = 'list'"
             :variant="viewMode === 'list' ? 'solid' : 'outline'"
-            size="sm"
+            size="xs"
           >
             <UIcon name="i-heroicons-list-bullet" />
           </UButton>
@@ -127,7 +127,7 @@
       </div>
 
       <!-- Grid View -->
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div v-if="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
         <div
           v-for="subject in subjectResults"
           :key="subject.id"
@@ -150,23 +150,23 @@
           </div>
 
           <!-- Subject Info -->
-          <div class="p-3">
-            <h3 class="font-medium text-sm text-gray-900 dark:text-white truncate">
+          <div class="p-2 sm:p-3">
+            <h3 class="font-medium text-xs sm:text-sm text-gray-900 dark:text-white truncate">
               {{ subject.name }}
             </h3>
-            <p class="text-xs text-gray-500 mt-1">
+            <p class="text-xs text-gray-500 mt-1 hidden sm:block">
               Created {{ formatDate(subject.created_at) }}
             </p>
-            <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-2">
+            <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
               <span
-                v-for="tag in subject.tags.slice(0, 3)"
+                v-for="tag in subject.tags.slice(0, 2)"
                 :key="tag"
-                class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
+                class="px-1 sm:px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
               >
                 {{ tag }}
               </span>
             </div>
-            <p v-if="subject.note" class="text-xs text-gray-600 dark:text-gray-400 mt-2 line-clamp-2">
+            <p v-if="subject.note" class="text-xs text-gray-600 dark:text-gray-400 mt-1 sm:mt-2 line-clamp-2 hidden sm:block">
               {{ subject.note }}
             </p>
           </div>
@@ -174,16 +174,16 @@
       </div>
 
       <!-- List View -->
-      <div v-else class="space-y-2">
+      <div v-else class="space-y-1 sm:space-y-2">
         <div
           v-for="subject in subjectResults"
           :key="subject.id"
-          class="bg-neutral-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+          class="bg-neutral-800 rounded-lg p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
           @click="openModal(subject)"
         >
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
-            <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded flex-shrink-0">
+            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 rounded shrink-0">
               <img
                 v-if="subject.has_thumbnail && subject.thumbnail_data && settingsStore.displayImages"
                 :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
@@ -199,28 +199,28 @@
 
             <!-- Info -->
             <div class="flex-1 min-w-0">
-              <h3 class="font-medium text-gray-900 dark:text-white truncate">
+              <h3 class="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
                 {{ subject.name }}
               </h3>
-              <p class="text-sm text-gray-500">
+              <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">
                 Created {{ formatDate(subject.created_at) }}
               </p>
-              <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-1">
+              <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
                 <span
-                  v-for="tag in subject.tags"
+                  v-for="tag in subject.tags.slice(0, 3)"
                   :key="tag"
                   class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
                 >
                   {{ tag }}
                 </span>
               </div>
-              <p v-if="subject.note" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <p v-if="subject.note" class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-1 sm:line-clamp-none hidden sm:block">
                 {{ subject.note }}
               </p>
             </div>
 
             <!-- Actions -->
-            <div class="flex-shrink-0 flex items-center gap-2">
+            <div class="shrink-0 flex items-center gap-2">
               <UIcon name="i-heroicons-chevron-right" class="text-gray-400" />
             </div>
           </div>
@@ -228,7 +228,7 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="pagination.total > pagination.limit" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-4 z-50">
+      <div v-if="pagination.total > pagination.limit" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4 z-50">
         <div class="flex justify-center">
           <UPagination
             v-model:page="currentPage"
@@ -256,13 +256,14 @@
     <!-- Subject Detail Modal -->
     <UModal v-model:open="isModalOpen">
       <template #content>
-        <div v-if="selectedSubject" class="p-6">
+        <div v-if="selectedSubject" class="p-3 sm:p-6">
           <!-- Header -->
-          <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-semibold">{{ selectedSubject.name }}</h3>
+          <div class="flex justify-between items-center mb-3 sm:mb-6">
+            <h3 class="text-base sm:text-lg font-semibold">{{ selectedSubject.name }}</h3>
             <UButton
               variant="ghost"
               icon="i-heroicons-x-mark"
+              size="sm"
               @click="isModalOpen = false"
             />
           </div>
@@ -283,7 +284,7 @@
             </div>
 
             <!-- Subject Details -->
-            <div class="grid grid-cols-1 gap-4 text-sm">
+            <div class="grid grid-cols-1 gap-2 sm:gap-4 text-sm">
               <div v-if="selectedSubject.note">
                 <span class="font-medium">Note:</span>
                 <p class="mt-1 text-gray-600 dark:text-gray-400">{{ selectedSubject.note }}</p>
@@ -430,7 +431,7 @@ const searchSubjects = async () => {
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
 console.log('🌐 API URL:', `/api/auth/subjects/search?${params.toString()}`)
-const response = await useAuthFetch(`subjects/search?${params.toString()}`)
+const response = await useApiFetch(`subjects/search?${params.toString()}`)
 
     
     console.log('📊 Subjects Gallery Search Results:')

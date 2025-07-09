@@ -1,14 +1,14 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ content: 'max-w-4xl max-h-[90vh] overflow-y-auto' }">
+  <UModal v-model:open="isOpen" :ui="{ width: 'max-w-6xl' }">
     <template #content>
-      <UCard class="w-full mx-auto" :ui="{ ring: '', divide: 'divide-y divide-gray-200 dark:divide-gray-700', body: { padding: '' } }">
+      <UCard>
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
               Select Video
             </h3>
             <UButton
-              color="gray"
+              color="neutral"
               variant="ghost"
               icon="i-heroicons-x-mark-20-solid"
               class="-my-1"
@@ -18,7 +18,7 @@
         </template>
 
         <!-- Search Bar -->
-        <div class="p-2 border-b border-gray-200 dark:border-gray-700">
+        <div class="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
           <UInput
             v-model="searchQuery"
             placeholder="Search videos by tags..."
@@ -29,10 +29,10 @@
         </div>
 
         <!-- Video Grid -->
-        <div class="p-2">
+        <div class="p-3 sm:p-4 max-h-[60vh] overflow-y-auto">
           <div v-if="error" class="text-center py-12">
             <UAlert
-              color="red"
+              color="error"
               title="Error"
               :description="error"
               variant="subtle"
@@ -116,6 +116,7 @@ const loadVideos = async (reset = false) => {
   try {
     const params = {
       media_type: 'video',
+      purpose: 'dest',
       limit: limit,
       page: currentPage.value,
       sort_by: 'created_at',

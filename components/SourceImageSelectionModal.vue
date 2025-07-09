@@ -92,7 +92,7 @@
           <div
             v-for="(image, index) in availableImages"
             :key="image.uuid"
-            class="flex-shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
+            class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
             :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
             @click="currentImageIndex = index"
           >
@@ -213,7 +213,7 @@ const selectCurrentImage = async () => {
   
   isSubmittingSource.value = true
   try {
-    await useAuthFetch(`jobs/${props.job.id}/add-source`, {
+    await useApiFetch(`jobs/${props.job.id}/add-source`, {
       method: 'POST',
       body: {
         source_media_uuid: currentImage.value.uuid

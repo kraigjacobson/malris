@@ -11,7 +11,7 @@
         <div class="flex justify-end gap-3">
           <UButton
             :label="cancelLabel"
-            color="gray"
+            color="neutral"
             variant="outline"
             size="md"
             @click="handleCancel"

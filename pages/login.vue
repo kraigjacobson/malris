@@ -49,7 +49,7 @@
           
           <UAlert
             v-if="error"
-            color="red"
+            color="error"
             variant="soft"
             :description="error"
           />
@@ -58,7 +58,7 @@
             type="submit"
             :loading="loading"
             block
-            color="green"
+            color="success"
           >
             {{ loading ? 'Signing In...' : 'Login' }}
           </UButton>

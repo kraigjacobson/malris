@@ -1,44 +1,47 @@
 <template>
   <header class="bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700">
-    <div class="container mx-auto px-6 py-4">
+    <div class="container mx-auto px-3 sm:px-6 py-2 sm:py-4">
       <!-- Top Section with Title and User Info -->
-      <div class="flex justify-between items-center mb-4">
+      <div class="flex justify-between items-center mb-2 sm:mb-4">
         <div>
-          <NuxtLink to="/" class="text-2xl font-bold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors">
-            AI Job Tracking System
+          <NuxtLink to="/" class="text-lg sm:text-2xl font-bold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors">
+            <span class="hidden sm:inline">AI Job Tracking System</span>
+            <span class="sm:hidden">AI Jobs</span>
           </NuxtLink>
         </div>
         
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-1 sm:space-x-4">
           <ClientOnly>
-            <div v-if="user" class="flex items-center space-x-4">
-              <span class="text-sm text-neutral-600 dark:text-neutral-400">Welcome, {{ user.email }}</span>
+            <div v-if="user" class="flex items-center space-x-1 sm:space-x-4">
+              <span class="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:inline">Welcome, {{ user.email }}</span>
               <UButton
                 variant="outline"
-                size="sm"
+                size="xs"
                 icon="i-heroicons-cog-6-tooth"
                 @click="showSettings = true"
               >
-                Settings
+                <span class="hidden sm:inline">Settings</span>
               </UButton>
               <UButton
                 variant="outline"
-                size="sm"
+                size="xs"
                 @click="handleSignOut"
               >
-                Sign Out
+                <span class="hidden sm:inline">Sign Out</span>
+                <span class="sm:hidden">Out</span>
               </UButton>
             </div>
             <NuxtLink
               v-else
               to="/login"
-              class="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors"
+              class="px-2 py-1 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition-colors text-sm"
             >
               Login
             </NuxtLink>
             <template #fallback>
-              <div class="px-4 py-2 bg-neutral-800 text-white rounded opacity-50">
-                Loading...
+              <div class="px-2 py-1 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded opacity-50 text-sm">
+                <span class="hidden sm:inline">Loading...</span>
+                <span class="sm:hidden">...</span>
               </div>
             </template>
           </ClientOnly>

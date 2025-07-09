@@ -21,7 +21,7 @@ export const useSubjects = () => {
   const loadSubjects = async () => {
     isLoading.value = true
     try {
-      const data = await useAuthFetch('subjects', {
+      const data = await useApiFetch('subjects', {
         query: {
           search: searchQuery.value,
           limit: 100

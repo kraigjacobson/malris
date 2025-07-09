@@ -1,0 +1,5 @@
+// kill all node processes
+powershell -Command "Stop-Process -Name 'node' -Force"
+
+// Run migration in pro
+doctl compute ssh girlfriend-bot --ssh-command "docker exec girlfriend-bot-app-1 npx prisma migrate deploy"

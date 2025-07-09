@@ -8,7 +8,7 @@
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Grid View -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-2 sm:gap-3">
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
@@ -18,7 +18,7 @@
           <!-- Image Preview -->
           <div
             v-if="media.type === 'image'"
-            class="aspect-square relative"
+            class="aspect-[3/4] relative"
           >
             <img
               v-if="settingsStore.displayImages"
@@ -34,7 +34,7 @@
           <!-- Video Preview -->
           <div
             v-else-if="media.type === 'video'"
-            class="aspect-square relative"
+            class="aspect-[3/4] relative"
             :data-video-uuid="media.uuid"
             @mouseenter="handleVideoHover(media.uuid, true)"
             @mouseleave="handleVideoHover(media.uuid, false)"
@@ -79,7 +79,7 @@
       <div
         v-if="hasMore && !loading"
         ref="infiniteScrollTrigger"
-        class="h-10 flex items-center justify-center"
+        class="h-16 flex items-center justify-center touch-none"
       >
         <div v-if="loadingMore" class="flex items-center gap-2">
           <UIcon name="i-heroicons-arrow-path" class="animate-spin text-lg" />
