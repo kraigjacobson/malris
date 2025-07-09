@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import localforage from 'localforage'
 
 interface Job {
   id: string
@@ -54,6 +55,35 @@ export const useJobsStore = defineStore('jobs', () => {
   const autoRefreshEnabled = ref(true)
   const autoRefreshInterval = ref<NodeJS.Timeout | null>(null)
   const REFRESH_INTERVAL = 5000 // 5 seconds
+  
+  // LocalForage key for auto-refresh setting
+  const AUTO_REFRESH_KEY = 'jobs-auto-refresh-enabled'
+  
+  // Load auto-refresh setting from storage
+  const loadAutoRefreshSetting = async () => {
+    try {
+      const saved = await localforage.getItem<boolean>(AUTO_REFRESH_KEY)
+      if (saved !== null) {
+        autoRefreshEnabled.value = saved
+      }
+    } catch (error) {
+      console.error('❌ Failed to load auto-refresh setting:', error)
+    }
+  }
+  
+  // Save auto-refresh setting to storage
+  const saveAutoRefreshSetting = async (enabled: boolean) => {
+    try {
+      await localforage.setItem(AUTO_REFRESH_KEY, enabled)
+    } catch (error) {
+      console.error('❌ Failed to save auto-refresh setting:', error)
+    }
+  }
+  
+  // Watch for changes to auto-refresh setting and save to storage
+  watch(autoRefreshEnabled, async (newValue) => {
+    await saveAutoRefreshSetting(newValue)
+  })
 
   // Actions
   const fetchQueueStatus = async () => {
@@ -120,8 +150,15 @@ export const useJobsStore = defineStore('jobs', () => {
   const fetchInitialData = async () => {
     isLoading.value = true
     try {
+      // Load auto-refresh setting first
+      await loadAutoRefreshSetting()
       await fetchQueueStatus()
       await fetchJobs()
+      
+      // Only start auto-refresh if it's enabled
+      if (autoRefreshEnabled.value) {
+        startAutoRefresh()
+      }
     } finally {
       isLoading.value = false
     }
@@ -183,11 +220,16 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  const toggleAutoRefresh = () => {
-    if (autoRefreshEnabled.value) {
+  const toggleAutoRefresh = (enabled?: boolean) => {
+    // If enabled is passed, use it; otherwise use the current value
+    const shouldEnable = enabled !== undefined ? enabled : autoRefreshEnabled.value
+    console.log('🔄 Toggling auto-refresh:', { enabled: shouldEnable, current: autoRefreshEnabled.value })
+    
+    // Always stop first to clear any existing interval
+    stopAutoRefresh()
+    
+    if (shouldEnable) {
       startAutoRefresh()
-    } else {
-      stopAutoRefresh()
     }
   }
 
@@ -208,6 +250,8 @@ export const useJobsStore = defineStore('jobs', () => {
     setFilter,
     startAutoRefresh,
     stopAutoRefresh,
-    toggleAutoRefresh
+    toggleAutoRefresh,
+    loadAutoRefreshSetting,
+    saveAutoRefreshSetting
   }
 })

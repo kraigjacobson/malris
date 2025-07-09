@@ -20,7 +20,7 @@
             <USwitch
               v-model="jobsStore.autoRefreshEnabled"
               :disabled="jobsStore.isLoading"
-              @update:model-value="jobsStore.toggleAutoRefresh"
+              @update:model-value="(value) => jobsStore.toggleAutoRefresh(value)"
             />
             <span class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1 hidden sm:flex">
               Auto-refresh {{ jobsStore.autoRefreshEnabled ? 'ON' : 'OFF' }}
@@ -574,7 +574,16 @@ const handleImageSelected = async () => {
 // Job cancellation method
 const cancelJob = async (job) => {
   try {
-    const confirmed = confirm(`Are you sure you want to cancel job ${job.id}?`)
+    const { confirm } = useConfirmDialog()
+    
+    const confirmed = await confirm({
+      title: 'Cancel Job',
+      message: `Are you sure you want to cancel job ${job.id}? This action cannot be undone.`,
+      confirmLabel: 'Cancel Job',
+      cancelLabel: 'Keep Job',
+      variant: 'error'
+    })
+    
     if (!confirmed) return
     
     console.log(`Cancelling job ${job.id}...`)
@@ -597,7 +606,15 @@ const cancelJob = async (job) => {
       errorMessage = error.message
     }
     
-    alert(`Error: ${errorMessage}`)
+    // Use confirm dialog for error messages too
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'Error',
+      message: errorMessage,
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'error'
+    })
   }
 }
 
@@ -632,11 +649,6 @@ onMounted(() => {
   
   // Load subjects for filtering
   _loadSubjects()
-  
-  // Start auto-refresh if enabled
-  if (jobsStore.autoRefreshEnabled) {
-    jobsStore.startAutoRefresh()
-  }
   
   // Listen for page visibility changes
   document.addEventListener('visibilitychange', handleVisibilityChange)
