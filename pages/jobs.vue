@@ -165,7 +165,7 @@
     <UCard>
       <template #header>
         <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-          Jobs ({{ jobsStore.jobs.length }})
+          Jobs ({{ displayedJobs.length }})
         </h3>
       </template>
 
@@ -482,7 +482,6 @@ const handleSubjectFilterSelection = (selected) => {
     // Filter jobs by subject UUID
     currentFilter.value = `subject:${selected.value}`
     currentPage.value = 1
-    console.log('🎯 Filtering jobs by subject:', selected.label, selected.value)
   } else {
     clearSubjectFilter()
   }
@@ -492,7 +491,6 @@ const clearSubjectFilter = () => {
   clearSubject()
   currentFilter.value = ''
   currentPage.value = 1
-  console.log('🧹 Cleared subject filter')
 }
 
 // Computed properties
@@ -502,9 +500,6 @@ const totalPages = computed(() => Math.ceil(jobsStore.jobs.length / itemsPerPage
 
 // Methods
 const filterByStatus = async (status) => {
-  console.log(`🖱️ Filter button clicked: status = '${status}'`)
-  console.log('📊 jobs count:', jobsStore.jobs?.length || 0)
-  console.log('📊 Sample job statuses:', jobsStore.jobs?.slice(0, 3).map(j => j.status) || [])
   
   // Update local filter immediately
   currentFilter.value = status
@@ -517,10 +512,6 @@ const filterByStatus = async (status) => {
   
   // Force Vue to update immediately
   await nextTick()
-  
-  console.log('📋 Updated local filter:', currentFilter.value)
-  console.log('🔍 Jobs that should show:', jobsStore.jobs?.filter(j => !status || j.status === status).length || 0)
-  console.log('✅ Filter applied instantly')
 }
 
 
@@ -532,13 +523,6 @@ const viewJobDetails = async (jobId) => {
     const response = await useApiFetch(`jobs/${jobId}?include_thumbnails=true&thumbnail_size=md`)
     selectedJob.value = response.job  // The media server returns {success: true, job: {...}}
     showJobModal.value = true
-    console.log('Job details loaded:', response)
-    console.log('Selected job:', response.job)
-    console.log('Thumbnail fields check:')
-    console.log('- subject_thumbnail:', !!response.job?.subject_thumbnail)
-    console.log('- dest_media_thumbnail:', !!response.job?.dest_media_thumbnail)
-    console.log('- output_thumbnail:', !!response.job?.output_thumbnail)
-    console.log('- source_media_thumbnail:', !!response.job?.source_media_thumbnail)
   } catch (error) {
     console.error('Failed to fetch job details:', error)
   }
@@ -632,13 +616,11 @@ const cancelJob = async (job) => {
     
     if (!confirmed) return
     
-    console.log(`Cancelling job ${job.id}...`)
     
-    const response = await useApiFetch(`jobs/${job.id}/cancel`, {
+    await useApiFetch(`jobs/${job.id}/cancel`, {
       method: 'POST'
     })
     
-    console.log('Job cancelled successfully:', response)
     
     // Refresh the jobs list after cancellation
     await jobsStore.refreshJobs()
@@ -679,13 +661,10 @@ const retryJob = async (job) => {
     
     if (!confirmed) return
     
-    console.log(`Retrying job ${job.id}...`)
     
     const response = await useApiFetch(`jobs/${job.id}/retry`, {
       method: 'POST'
     })
-    
-    console.log('Job retried successfully:', response)
     
     // Show success toast with new job ID
     const toast = useToast()
@@ -735,13 +714,9 @@ const deleteJob = async (job) => {
     
     if (!confirmed) return
     
-    console.log(`Deleting job ${job.id}...`)
-    
-    const response = await useApiFetch(`jobs/${job.id}/delete`, {
+    await useApiFetch(`jobs/${job.id}/delete`, {
       method: 'DELETE'
     })
-    
-    console.log('Job deleted successfully:', response)
     
     // Show success toast
     const toast = useToast()
@@ -787,7 +762,6 @@ const handleVisibilityChange = () => {
 
 // Watcher to update displayed jobs immediately
 watch([currentFilter, () => jobsStore.jobs], () => {
-  console.log('🔄 Watcher triggered - updating displayed jobs')
   if (!currentFilter.value) {
     displayedJobs.value = [...jobsStore.jobs]
   } else if (currentFilter.value.startsWith('subject:')) {
@@ -798,7 +772,6 @@ watch([currentFilter, () => jobsStore.jobs], () => {
     // Status filtering
     displayedJobs.value = jobsStore.jobs.filter(job => job.status === currentFilter.value)
   }
-  console.log(`📊 Displayed jobs updated: ${displayedJobs.value.length} jobs`)
 }, { immediate: true })
 
 // Reset video state when modal is closed

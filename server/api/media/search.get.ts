@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
     if (query.filename_pattern) searchParams.append('filename_pattern', query.filename_pattern as string)
     if (query.subject_uuid) searchParams.append('subject_uuid', query.subject_uuid as string)
     if (query.job_id) searchParams.append('job_id', query.job_id as string)
+    if (query.dest_media_uuid_ref) searchParams.append('dest_media_uuid_ref', query.dest_media_uuid_ref as string)
     if (query.has_subject !== undefined) searchParams.append('has_subject', query.has_subject as string)
     
     // File size filters

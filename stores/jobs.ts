@@ -75,7 +75,6 @@ export const useJobsStore = defineStore('jobs', () => {
     }
 
     try {
-      console.log('🔄 Fetching all jobs...')
       const searchParams = new URLSearchParams()
       searchParams.append('limit', '100') // Get all jobs, no server-side filtering
 
@@ -85,16 +84,12 @@ export const useJobsStore = defineStore('jobs', () => {
       let newJobs: Job[] = []
       if (response.results) {
         newJobs = response.results as Job[]
-        console.log(`✅ Fetched ${response.results.length} jobs`)
       } else if (response.jobs) {
         newJobs = response.jobs as Job[]
-        console.log(`✅ Fetched ${response.jobs.length} jobs`)
       } else if (Array.isArray(response)) {
         newJobs = response as Job[]
-        console.log(`✅ Fetched ${response.length} jobs`)
       } else {
         newJobs = []
-        console.log('✅ No jobs found')
       }
 
       // Only replace jobs after successful fetch
@@ -130,24 +125,16 @@ export const useJobsStore = defineStore('jobs', () => {
     await fetchJobs(showLoading)
   }
 
-  const applyFilters = () => {
-    // No need to fetch - filtering is done client-side via computed property
-    console.log('🔍 Applying client-side filters:', filters.value)
-  }
-
   const clearFilters = () => {
     filters.value = {
       jobId: '',
       status: '',
       jobType: ''
     }
-    console.log('🧹 Cleared all filters')
   }
 
   const setFilter = (key: keyof JobFilters, value: string) => {
-    console.log(`🎯 Setting filter ${key} = '${value}'`)
     filters.value[key] = value
-    console.log('📋 Current filters:', filters.value)
   }
 
   // Auto-refresh methods
@@ -156,22 +143,15 @@ export const useJobsStore = defineStore('jobs', () => {
     
     if (autoRefreshInterval.value) {
       clearInterval(autoRefreshInterval.value)
-      console.log('🧹 Cleared existing interval')
     }
     
     if (autoRefreshEnabled.value) {
       autoRefreshInterval.value = setInterval(() => {
-        console.log('⏰ Auto-refresh timer triggered', { isLoading: isLoading.value, hidden: document.hidden })
         // Only refresh if not currently loading and page is visible
         if (!isLoading.value && !document.hidden) {
           fetchJobs()
-        } else {
-          console.log('⏸️ Skipping auto-refresh (loading or hidden)')
         }
       }, REFRESH_INTERVAL)
-      console.log('✅ Auto-refresh interval started')
-    } else {
-      console.log('❌ Auto-refresh disabled')
     }
   }
 
@@ -207,7 +187,6 @@ export const useJobsStore = defineStore('jobs', () => {
     // Actions
     fetchInitialData,
     refreshJobs,
-    applyFilters,
     clearFilters,
     setFilter,
     startAutoRefresh,

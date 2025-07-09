@@ -206,16 +206,18 @@ const jobDetailsItems = computed(() => {
 })
 
 // Methods
-const loadImagesForJob = async (jobId) => {
-  if (!jobId) return
+const loadImagesForJob = async (job) => {
+  if (!job || !job.dest_media_uuid) return
   
   isLoadingImages.value = true
   try {
-    // Search for images that match this job_id
+    // Search for output images based on the destination video
     const response = await useApiFetch('media/search', {
       query: {
         media_type: 'image',
-        job_id: jobId,
+        purpose: 'output',
+        dest_media_uuid_ref: job.dest_media_uuid,
+        job_id: job.id,
         limit: 100,
         include_thumbnails: true
       }
@@ -324,14 +326,14 @@ const formatFileSize = (bytes) => {
 watch(() => props.job, (newJob) => {
   if (newJob && props.modelValue) {
     currentImageIndex.value = 0
-    loadImagesForJob(newJob.id)
+    loadImagesForJob(newJob)
   }
 }, { immediate: true })
 
 // Watch for modal opening to load images
 watch(() => props.modelValue, (isOpen) => {
   if (isOpen && props.job) {
-    loadImagesForJob(props.job.id)
+    loadImagesForJob(props.job)
   }
 })
 </script>
