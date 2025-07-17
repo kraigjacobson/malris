@@ -283,7 +283,7 @@
                     <img
                       :src="`data:image/jpeg;base64,${selectedJob.subject_thumbnail}`"
                       alt="Subject thumbnail"
-                      class="w-full h-full object-cover"
+                      class="w-full h-full object-cover object-top"
                     />
                   </div>
                 </div>
@@ -297,7 +297,7 @@
                     <img
                       :src="`data:image/jpeg;base64,${selectedJob.dest_media_thumbnail}`"
                       alt="Destination media thumbnail"
-                      class="w-full h-full object-cover"
+                      class="w-full h-full object-cover object-top"
                     />
                   </div>
                 </div>
@@ -313,7 +313,7 @@
                       v-if="selectedJob.output_thumbnail && (!selectedJob.output_uuid || selectedJob.status !== 'completed' || !outputVideoReady)"
                       :src="`data:image/jpeg;base64,${selectedJob.output_thumbnail}`"
                       alt="Output thumbnail"
-                      class="w-full h-full object-cover"
+                      class="w-full h-full object-cover object-top"
                     />
                     <!-- Video player for completed jobs -->
                     <video

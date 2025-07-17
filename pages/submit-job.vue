@@ -58,7 +58,7 @@
                   v-if="selectedVideo.thumbnail"
                   :src="selectedVideo.thumbnail"
                   :alt="selectedVideo.filename"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover object-top"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
                   <UIcon name="i-heroicons-film-20-solid" class="w-4 h-4 text-gray-400" />
@@ -107,19 +107,20 @@
         </div>
 
         <!-- Additional Parameters -->
-        <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Additional Parameters (JSON)
-          </label>
-          <UTextarea
-            v-model="form.parameters_json"
-            placeholder='{"skip_seconds": 0, "quality": "high"}'
-            :disabled="isSubmitting"
-            class="w-full"
-            rows="3"
-          />
-          <p class="text-xs text-gray-500">Optional JSON parameters for the job</p>
-        </div>
+        <UAccordion :items="additionalParametersItems">
+          <template #additional-parameters>
+            <div class="space-y-2">
+              <UTextarea
+                v-model="form.parameters_json"
+                placeholder='{"skip_seconds": 0, "quality": "high"}'
+                :disabled="isSubmitting"
+                class="w-full"
+                rows="3"
+              />
+              <p class="text-xs text-gray-500">Optional JSON parameters for the job</p>
+            </div>
+          </template>
+        </UAccordion>
 
         <!-- Submit Buttons -->
         <div class="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -248,6 +249,14 @@ const isFormValid = computed(() => {
   
   return false
 })
+
+const additionalParametersItems = computed(() => [
+  {
+    label: 'Additional Parameters (JSON)',
+    slot: 'additional-parameters',
+    defaultOpen: false
+  }
+])
 
 // Video selection handlers
 const handleVideoSelection = (video) => {

@@ -1,58 +1,152 @@
 <template>
   <UModal v-model:open="isOpen" :ui="{ width: 'max-w-6xl' }">
+    <template #header>
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+          Select Video
+        </h3>
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-heroicons-x-mark-20-solid"
+          class="-my-1"
+          @click="isOpen = false"
+        />
+      </div>
+    </template>
+
     <template #body>
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-              Select Video
-            </h3>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-heroicons-x-mark-20-solid"
-              class="-my-1"
-              @click="isOpen = false"
-            />
-          </div>
-        </template>
-
-        <!-- Search Bar -->
-        <div class="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
-          <UInput
-            v-model="searchQuery"
-            placeholder="Search videos by tags..."
-            icon="i-heroicons-tag-20-solid"
+      <!-- Search Bar -->
+      <div class="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Search by Tags
+          </label>
+          <UInputTags
+            v-model="selectedTags"
+            placeholder="Add tags (e.g., 1girl, long_hair, anime)"
             class="w-full"
-            @input="debouncedSearch"
+            @update:model-value="debouncedSearch"
           />
         </div>
-
-        <!-- Video Grid -->
-        <div class="p-3 sm:p-4 max-h-[60vh] overflow-y-auto">
-          <div v-if="error" class="text-center py-12">
-            <UAlert
-              color="error"
-              title="Error"
-              :description="error"
-              variant="subtle"
+        
+        <!-- Tag Search Options -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Search Mode
+          </label>
+          <USelectMenu
+            v-model="tagSearchMode"
+            :items="tagSearchModeOptions"
+            class="w-full"
+            size="sm"
+            @update:model-value="debouncedSearch"
+          />
+        </div>
+        
+        <!-- Completion Filters -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Min Completions
+            </label>
+            <UInput
+              v-model.number="completionFilters.min_completions"
+              type="number"
+              placeholder="0"
+              min="0"
+              class="w-full"
+              size="sm"
+              @update:model-value="debouncedSearch"
             />
           </div>
-
-          <MediaGrid
-            v-else
-            ref="mediaGrid"
-            :media-results="videos"
-            :loading="loading"
-            :loading-more="loadingMore"
-            :has-searched="hasSearched"
-            :has-more="hasMore"
-            :selection-mode="true"
-            @media-click="selectVideo"
-            @load-more="loadMore"
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Max Completions
+            </label>
+            <UInput
+              v-model.number="completionFilters.max_completions"
+              type="number"
+              placeholder="0"
+              min="0"
+              class="w-full"
+              size="sm"
+              @update:model-value="debouncedSearch"
+            />
+          </div>
+        </div>
+        
+        <!-- Duration Filters -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Min Duration (seconds)
+            </label>
+            <UInput
+              v-model.number="durationFilters.min_duration"
+              type="number"
+              placeholder="0"
+              min="0"
+              class="w-full"
+              size="sm"
+              @update:model-value="debouncedSearch"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Max Duration (seconds)
+            </label>
+            <UInput
+              v-model.number="durationFilters.max_duration"
+              type="number"
+              placeholder="0"
+              min="0"
+              class="w-full"
+              size="sm"
+              @update:model-value="debouncedSearch"
+            />
+          </div>
+        </div>
+        
+        <!-- Sort Options -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Sort By
+          </label>
+          <USelectMenu
+            v-model="sortOptions"
+            :items="sortOptionsItems"
+            class="w-full"
+            size="sm"
+            @update:model-value="debouncedSearch"
           />
         </div>
-      </UCard>
+      </div>
+
+      <!-- Video Grid -->
+      <div class="p-3 sm:p-4 max-h-[60vh] overflow-y-auto">
+        <div v-if="error" class="text-center py-12">
+          <UAlert
+            color="error"
+            title="Error"
+            :description="error"
+            variant="subtle"
+          />
+        </div>
+
+        <MediaGrid
+          v-else
+          ref="mediaGrid"
+          :media-results="videos"
+          :loading="loading"
+          :loading-more="loadingMore"
+          :has-searched="hasSearched"
+          :has-more="hasMore"
+          :selection-mode="true"
+          @media-click="selectVideo"
+          @load-more="loadMore"
+        />
+      </div>
     </template>
   </UModal>
 </template>
@@ -74,7 +168,17 @@ const isOpen = computed({
 })
 
 // Search and pagination state
-const searchQuery = ref('')
+const selectedTags = ref([])
+const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
+const completionFilters = ref({
+  min_completions: 0,
+  max_completions: 0
+})
+const durationFilters = ref({
+  min_duration: 0,
+  max_duration: 30
+})
+const sortOptions = ref({ label: 'Created Date (Newest)', value: 'created_at_desc' })
 const videos = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -83,6 +187,22 @@ const hasMore = ref(true)
 const currentPage = ref(1)
 const hasSearched = ref(false)
 const limit = 24
+
+// Tag search mode options
+const tagSearchModeOptions = [
+  { label: 'Partial Match', value: 'partial' },
+  { label: 'Exact Match', value: 'exact' }
+]
+
+// Sort options
+const sortOptionsItems = [
+  { label: 'Created Date (Newest)', value: 'created_at_desc' },
+  { label: 'Created Date (Oldest)', value: 'created_at_asc' },
+  { label: 'Duration (Shortest)', value: 'duration_asc' },
+  { label: 'Duration (Longest)', value: 'duration_desc' },
+  { label: 'Filename (A-Z)', value: 'filename_asc' },
+  { label: 'Filename (Z-A)', value: 'filename_desc' }
+]
 
 // Reference to MediaGrid component
 const mediaGrid = ref(null)
@@ -114,22 +234,49 @@ const loadVideos = async (reset = false) => {
   hasSearched.value = true
 
   try {
-    const params = {
-      media_type: 'video',
-      purpose: 'dest',
-      limit: limit,
-      page: currentPage.value,
-      sort_by: 'created_at',
-      sort_order: 'desc'
+    const params = new URLSearchParams()
+    
+    params.append('media_type', 'video')
+    params.append('purpose', 'dest')
+    params.append('limit', limit.toString())
+    params.append('offset', ((currentPage.value - 1) * limit).toString())
+    
+    // Handle dynamic sorting
+    const sortValue = typeof sortOptions.value === 'object' ? sortOptions.value.value : sortOptions.value
+    const [sortBy, sortOrder] = sortValue.split('_')
+    params.append('sort_by', sortBy)
+    params.append('sort_order', sortOrder)
+    
+    // Exclude videos with problematic statuses
+    const excludeStatuses = ['BadSource', 'RequireCrop', 'RequireRotate', 'RequireClip', 'Obstruction', 'LowQuality', 'MultipleSubjects', 'MarkForDeletion']
+    params.append('exclude_statuses', excludeStatuses.join(','))
+
+    // Add selected tags from UInputTags component
+    if (selectedTags.value.length > 0) {
+      params.append('tags', selectedTags.value.join(','))
+      
+      // Use the selected tag match mode
+      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
+      params.append('tag_match_mode', searchMode)
     }
 
-    if (searchQuery.value.trim()) {
-      params.tags = searchQuery.value.trim()
+    // Add completion filters
+    if (completionFilters.value.min_completions != null) {
+      params.append('min_completions', completionFilters.value.min_completions.toString())
+    }
+    if (completionFilters.value.max_completions != null) {
+      params.append('max_completions', completionFilters.value.max_completions.toString())
     }
 
-    const response = await useApiFetch('media/search', {
-      query: params
-    })
+    // Add duration filters
+    if (durationFilters.value.min_duration != null && durationFilters.value.min_duration > 0) {
+      params.append('min_duration', durationFilters.value.min_duration.toString())
+    }
+    if (durationFilters.value.max_duration != null && durationFilters.value.max_duration > 0) {
+      params.append('max_duration', durationFilters.value.max_duration.toString())
+    }
+
+    const response = await useApiFetch(`media/search?${params.toString()}`)
 
     if (reset) {
       videos.value = response.results || []
@@ -173,8 +320,36 @@ watch(isOpen, (newValue) => {
   }
 })
 
-// Watch search query changes
-watch(searchQuery, () => {
+// Watch for tag changes
+watch(selectedTags, () => {
+  if (isOpen.value) {
+    debouncedSearch()
+  }
+}, { deep: true })
+
+// Watch for tag search mode changes
+watch(tagSearchMode, () => {
+  if (isOpen.value && selectedTags.value.length > 0) {
+    debouncedSearch()
+  }
+})
+
+// Watch for completion filter changes
+watch(completionFilters, () => {
+  if (isOpen.value) {
+    debouncedSearch()
+  }
+}, { deep: true })
+
+// Watch for duration filter changes
+watch(durationFilters, () => {
+  if (isOpen.value) {
+    debouncedSearch()
+  }
+}, { deep: true })
+
+// Watch for sort option changes
+watch(sortOptions, () => {
   if (isOpen.value) {
     debouncedSearch()
   }

@@ -88,6 +88,41 @@
             </div>
           </div>
         </div>
+        
+        <!-- Completion Filters (only show for videos) -->
+        <div v-if="filters.media_type?.value === 'video'" class="col-span-1 sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Completion Filters
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Min Completions
+              </label>
+              <UInput
+                v-model.number="completionFilters.min_completions"
+                type="number"
+                placeholder="0"
+                min="0"
+                class="w-full"
+                size="sm"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Max Completions
+              </label>
+              <UInput
+                v-model.number="completionFilters.max_completions"
+                type="number"
+                placeholder="No limit"
+                min="0"
+                class="w-full"
+                size="sm"
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Sort Options and Limit -->
@@ -201,7 +236,7 @@
               v-if="settingsStore.displayImages"
               :src="`/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover object-top"
               loading="lazy"
               @error="handleImageError"
             >
@@ -233,7 +268,7 @@
             <video
               :ref="`video-${media.uuid}`"
               :poster="media.thumbnail"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover object-top"
               muted
               loop
               preload="none"
@@ -292,7 +327,7 @@
                 v-if="media.type === 'image' && settingsStore.displayImages"
                 :src="`/api/media/${media.uuid}/image?size=sm`"
                 :alt="media.filename"
-                class="w-full h-full object-cover rounded"
+                class="w-full h-full object-cover object-top rounded"
                 loading="lazy"
                 @error="handleImageError"
               >
@@ -308,7 +343,7 @@
                 <video
                   :ref="`video-list-${media.uuid}`"
                   :poster="media.thumbnail"
-                  class="w-full h-full object-cover rounded"
+                  class="w-full h-full object-cover object-top rounded"
                   muted
                   loop
                   preload="none"
@@ -541,6 +576,12 @@ const filters = ref({
 const selectedTags = ref([])
 const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 
+// Completion filters with defaults for media gallery (min=0, max=null)
+const completionFilters = ref({
+  min_completions: 0,
+  max_completions: null
+})
+
 // Subject search using composable
 const {
   selectedSubject,
@@ -694,6 +735,16 @@ const searchMedia = async () => {
       params.append('tag_match_mode', searchMode)
     }
     
+    // Add completion filters (only for video searches)
+    if (mediaType === 'video') {
+      if (completionFilters.value.min_completions != null) {
+        params.append('min_completions', completionFilters.value.min_completions.toString())
+      }
+      if (completionFilters.value.max_completions != null) {
+        params.append('max_completions', completionFilters.value.max_completions.toString())
+      }
+    }
+    
     // Handle limit - extract value if it's an object
     const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
     params.append('limit', limit.toString())
@@ -831,6 +882,12 @@ const clearFilters = () => {
   // Clear tag search fields
   selectedTags.value = []
   tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
+  
+  // Reset completion filters to defaults
+  completionFilters.value = {
+    min_completions: 0,
+    max_completions: null
+  }
   
   handleComposableSubjectSelection(null)
   sortOptions.value = {

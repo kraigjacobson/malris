@@ -24,7 +24,7 @@
               v-if="settingsStore.displayImages"
               :src="`/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover object-top"
               loading="lazy"
               @error="handleImageError"
             />
@@ -34,8 +34,9 @@
           <!-- Video Preview -->
           <div
             v-else-if="media.type === 'video'"
-            class="aspect-[3/4] relative"
+            class="aspect-[3/4] relative group"
             :data-video-uuid="media.uuid"
+            :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }"
             @mouseenter="handleVideoHover(media.uuid, true)"
             @mouseleave="handleVideoHover(media.uuid, false)"
           >
@@ -43,7 +44,7 @@
             <video
               :ref="`video-${media.uuid}`"
               :poster="media.thumbnail"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover object-top"
               muted
               loop
               preload="none"
@@ -52,6 +53,28 @@
             >
               Your browser does not support the video tag.
             </video>
+            
+            <!-- Video Duration -->
+            <div
+              v-if="media.duration"
+              class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-1.5 py-0.5 rounded"
+            >
+              {{ formatDuration(media.duration) }}
+            </div>
+            
+            <!-- Status Update Button (only show in selection mode) -->
+            <div
+              v-if="selectionMode"
+              class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <UButton
+                color="white"
+                variant="solid"
+                size="xs"
+                icon="i-heroicons-cog-6-tooth"
+                @click.stop="openStatusDialog(media)"
+              />
+            </div>
           </div>
 
           <!-- Media Info (only show if not in selection mode) -->
@@ -99,12 +122,20 @@
       <UIcon name="i-heroicons-magnifying-glass" class="text-4xl text-gray-400 mb-4" />
       <p class="text-gray-500">Use the search filters above to find media</p>
     </div>
+
+    <!-- Status Update Dialog -->
+    <VideoStatusUpdateDialog
+      v-model="showStatusDialog"
+      :video="selectedVideoForStatus"
+      @status-updated="handleStatusUpdated"
+    />
   </div>
 </template>
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
 import { nextTick } from 'vue'
+import VideoStatusUpdateDialog from './VideoStatusUpdateDialog.vue'
 
 const props = defineProps({
   mediaResults: {
@@ -133,7 +164,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['media-click', 'load-more'])
+const emit = defineEmits(['media-click', 'load-more', 'video-status-updated'])
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
@@ -144,9 +175,40 @@ const hoveredVideoId = ref(null)
 // Infinite scroll trigger ref
 const infiniteScrollTrigger = ref(null)
 
+// Status dialog state
+const showStatusDialog = ref(false)
+const selectedVideoForStatus = ref(null)
+const updatedVideoStatuses = ref(new Set())
+
 // Handle media click
 const handleMediaClick = (media) => {
   emit('media-click', media)
+}
+
+// Handle status dialog
+const openStatusDialog = (video) => {
+  selectedVideoForStatus.value = video
+  showStatusDialog.value = true
+}
+
+const handleStatusUpdated = (data) => {
+  // Add video UUID to updated statuses set to grey it out
+  updatedVideoStatuses.value.add(data.video.uuid)
+  
+  // Emit event to parent component if needed
+  emit('video-status-updated', data)
+}
+
+// Format duration function
+const formatDuration = (seconds) => {
+  if (!seconds) return ''
+  
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`
+  } else {
+    const minutes = Math.round(seconds / 60)
+    return `${minutes}m`
+  }
 }
 
 // Intersection Observer for infinite scroll

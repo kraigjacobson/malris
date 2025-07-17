@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
     if (query.media_type) searchParams.append('media_type', query.media_type as string)
     if (query.purpose) searchParams.append('purpose', query.purpose as string)
     if (query.status) searchParams.append('status', query.status as string)
+    if (query.exclude_statuses) searchParams.append('exclude_statuses', query.exclude_statuses as string)
     if (query.tags) searchParams.append('tags', query.tags as string)
     if (query.tag_match_mode) searchParams.append('tag_match_mode', query.tag_match_mode as string)
     if (query.filename_pattern) searchParams.append('filename_pattern', query.filename_pattern as string)
@@ -42,6 +43,10 @@ export default defineEventHandler(async (event) => {
     // Access count filters
     if (query.min_access_count) searchParams.append('min_access_count', query.min_access_count as string)
     if (query.max_access_count) searchParams.append('max_access_count', query.max_access_count as string)
+    
+    // Completion filters
+    if (query.min_completions !== undefined) searchParams.append('min_completions', query.min_completions as string)
+    if (query.max_completions !== undefined) searchParams.append('max_completions', query.max_completions as string)
     
     if (query.limit) searchParams.append('limit', query.limit as string)
     
