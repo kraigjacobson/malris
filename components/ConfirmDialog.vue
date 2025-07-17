@@ -1,6 +1,6 @@
 <template>
   <UModal v-model:open="isOpen" @close="handleCancel" :ui="{ overlay: 'z-[60]', content: 'z-[60]' }">
-    <template #content>
+    <template #body>
       <div class="p-6">
         <h3 class="text-lg font-semibold leading-6 mb-2">
           {{ title }}

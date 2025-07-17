@@ -265,11 +265,11 @@
             <p class="text-xs text-gray-500 mt-1 hidden sm:block">
               {{ media.type }} • {{ media.purpose }}
             </p>
-            <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
+            <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
               <span
-                v-for="tag in media.tags.slice(0, 2)"
+                v-for="tag in media.tags.tags.slice(0, 2)"
                 :key="tag"
-                class="px-1 sm:px-2 py-1 text-xs rounded"
+                class="px-1 sm:px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-xs rounded border border-pink-200 dark:border-pink-800"
               >
                 {{ tag }}
               </span>
@@ -331,11 +331,11 @@
               <p class="text-xs sm:text-sm text-gray-500">
                 {{ media.type }} • {{ media.purpose }}<span class="hidden sm:inline"> • {{ formatDate(media.created_at) }}</span>
               </p>
-              <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
+              <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
                 <span
-                  v-for="tag in media.tags.slice(0, 3)"
+                  v-for="tag in media.tags.tags.slice(0, 3)"
                   :key="tag"
-                  class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
+                  class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-xs rounded border border-pink-200 dark:border-pink-800"
                 >
                   {{ tag }}
                 </span>
@@ -386,7 +386,7 @@
 
     <!-- Media Detail Modal -->
     <UModal v-model:open="isModalOpen">
-      <template #content>
+      <template #body>
         <div v-if="selectedMedia" class="p-3 sm:p-6">
           <!-- Header -->
           <div class="flex justify-between items-center mb-3 sm:mb-6">
@@ -462,45 +462,54 @@
               </video>
             </div>
 
-            <!-- Media Details -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
-              <div>
-                <span class="font-medium">Type:</span>
-                <span class="ml-2">{{ selectedMedia.type }}</span>
-              </div>
-              <div>
-                <span class="font-medium">Purpose:</span>
-                <span class="ml-2">{{ selectedMedia.purpose }}</span>
-              </div>
-              <div>
-                <span class="font-medium">Status:</span>
-                <span class="ml-2">{{ selectedMedia.status }}</span>
-              </div>
-              <div>
-                <span class="font-medium">Created:</span>
-                <span class="ml-2">{{ formatDate(selectedMedia.created_at) }}</span>
-              </div>
-            </div>
+            <!-- Media Details Accordion -->
+            <UAccordion :items="mediaDetailsItems">
+              <template #details>
+                <div class="space-y-3 text-left">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedMedia.type }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedMedia.purpose }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedMedia.status }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedMedia.created_at) }}</span>
+                    </div>
+                  </div>
 
-            <!-- Tags -->
-            <div v-if="selectedMedia.tags && selectedMedia.tags.length > 0">
-              <span class="font-medium text-sm">Tags:</span>
-              <div class="flex flex-wrap gap-2 mt-2">
-                <span
-                  v-for="tag in selectedMedia.tags"
-                  :key="tag"
-                  class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-sm rounded"
-                >
-                  {{ tag }}
-                </span>
-              </div>
-            </div>
+                  <!-- Tags -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
+                    <div v-if="selectedMedia.tags?.tags && selectedMedia.tags.tags.length > 0" class="flex flex-wrap gap-2">
+                      <span
+                        v-for="tag in selectedMedia.tags.tags"
+                        :key="tag"
+                        class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-sm rounded border border-pink-200 dark:border-pink-800"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                    <div v-else class="text-sm text-gray-500 italic">
+                      No tags available
+                    </div>
+                  </div>
 
-            <!-- UUID -->
-            <div class="text-xs text-gray-500">
-              <span class="font-medium">UUID:</span>
-              <span class="ml-2 font-mono">{{ selectedMedia.uuid }}</span>
-            </div>
+                  <!-- UUID -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
+                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedMedia.uuid }}</span>
+                  </div>
+                </div>
+              </template>
+            </UAccordion>
           </div>
         </div>
       </template>
@@ -595,6 +604,15 @@ const currentImageIndex = computed(() => {
 const currentMediaIndex = computed(() => {
   if (!selectedMedia.value) return -1
   return allMediaResults.value.findIndex(media => media.uuid === selectedMedia.value.uuid)
+})
+
+const mediaDetailsItems = computed(() => {
+  if (!selectedMedia.value) return []
+  
+  return [{
+    label: 'Media Details',
+    slot: 'details'
+  }]
 })
 
 // Filter options

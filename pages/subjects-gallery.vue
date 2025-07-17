@@ -255,7 +255,7 @@
 
     <!-- Subject Detail Modal -->
     <UModal v-model:open="isModalOpen">
-      <template #content>
+      <template #body>
         <div v-if="selectedSubject" class="p-3 sm:p-6">
           <!-- Header -->
           <div class="flex justify-between items-center mb-3 sm:mb-6">

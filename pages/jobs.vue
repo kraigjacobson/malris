@@ -256,7 +256,7 @@
 
     <!-- Job Details Modal -->
     <UModal v-model:open="showJobModal">
-      <template #content>
+      <template #body>
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">

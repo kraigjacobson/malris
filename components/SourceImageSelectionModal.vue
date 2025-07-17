@@ -1,6 +1,6 @@
 <template>
   <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
-    <template #content>
+    <template #body>
       <UCard>
         <!-- Close button in top right -->
         <div class="absolute top-4 right-4 z-10">

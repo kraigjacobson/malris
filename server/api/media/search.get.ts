@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
     if (query.purpose) searchParams.append('purpose', query.purpose as string)
     if (query.status) searchParams.append('status', query.status as string)
     if (query.tags) searchParams.append('tags', query.tags as string)
+    if (query.tag_match_mode) searchParams.append('tag_match_mode', query.tag_match_mode as string)
     if (query.filename_pattern) searchParams.append('filename_pattern', query.filename_pattern as string)
     if (query.subject_uuid) searchParams.append('subject_uuid', query.subject_uuid as string)
     if (query.job_id) searchParams.append('job_id', query.job_id as string)
