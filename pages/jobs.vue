@@ -29,7 +29,7 @@
               type="button"
               size="xs"
               variant="outline"
-              @click.prevent="() => jobsStore.refreshJobs(true)"
+              @click.prevent="() => refreshJobsWithCurrentState()"
             >
               <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" :class="{ 'animate-spin': jobsStore.isLoading }" />
               <span class="hidden sm:inline">Refresh</span>
@@ -121,11 +121,6 @@
 
     <!-- Subject Filter -->
     <UCard class="mb-3 sm:mb-6">
-      <template #header>
-        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-          Filter by Subject
-        </h3>
-      </template>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         <div>
@@ -143,7 +138,6 @@
             searchable
             @update:model-value="handleSubjectFilterSelection"
           />
-          <p class="text-xs text-gray-500 mt-1 hidden sm:block">Filter jobs by the subject they were created for</p>
         </div>
         
         <div class="flex items-end">
@@ -163,11 +157,6 @@
 
     <!-- Jobs List -->
     <UCard>
-      <template #header>
-        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-          Jobs ({{ displayedJobs.length }})
-        </h3>
-      </template>
 
       <div v-if="jobsStore.jobs.length === 0 && !jobsStore.isLoading" class="text-center py-8 text-gray-500 dark:text-gray-400">
         No jobs found
@@ -179,7 +168,7 @@
 
       <div v-else class="h-80 sm:h-96 overflow-y-auto space-y-1 sm:space-y-2 pr-1 sm:pr-2">
         <div
-          v-for="job in displayedJobs"
+          v-for="job in jobsStore.jobs"
           :key="job.id"
           class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
           @click="viewJobDetails(job.id)"
@@ -194,7 +183,7 @@
               >
                 {{ job.status }}
               </UBadge>
-              <span class="text-xs text-gray-600 dark:text-gray-400 truncate hidden sm:inline">
+              <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
                 {{ job.subject?.name || 'Unknown Subject' }}
               </span>
               <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
@@ -258,8 +247,8 @@
       <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
         <UPagination
           v-model="currentPage"
-          :page-count="itemsPerPage"
-          :total="jobsStore.jobs.length"
+          :page-count="totalPages"
+          :total="jobsStore.totalJobs"
           :max="5"
         />
       </div>
@@ -284,7 +273,7 @@
             <!-- Thumbnails Section -->
             <div class="space-y-3">
               <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
-              <div class="flex flex-wrap gap-2 sm:gap-4 justify-center sm:justify-start">
+              <div class="flex flex-wrap gap-2 sm:gap-4 justify-center">
                 <!-- Subject Thumbnail -->
                 <div v-if="selectedJob.subject_thumbnail" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
                   <div class="mb-1 sm:mb-2 text-center">
@@ -352,47 +341,56 @@
               <UAccordion :items="jobDetailsAccordionItems">
                 <template #job-details>
                   <div class="space-y-3 text-left">
+                    <!-- Basic Info Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                        <UBadge :color="getStatusColor(selectedJob.status)" size="sm">
+                          {{ selectedJob.status }}
+                        </UBadge>
+                      </div>
+                      <div class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.job_type }}</span>
+                      </div>
+                      <div class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.progress || 0 }}%</span>
+                      </div>
+                      <div class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.created_at) }}</span>
+                      </div>
+                      <div v-if="selectedJob.updated_at" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Updated</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.updated_at) }}</span>
+                      </div>
+                      <div v-if="selectedJob.completed_at" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.completed_at) }}</span>
+                      </div>
+                    </div>
+                    
+                    <!-- ID -->
                     <div class="flex flex-col space-y-1">
                       <span class="text-sm font-medium text-gray-700 dark:text-gray-300">ID</span>
-                      <span class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ selectedJob.id }}</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.id }}</span>
                     </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                      <UBadge :color="getStatusColor(selectedJob.status)" size="sm">
-                        {{ selectedJob.status }}
-                      </UBadge>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.job_type }}</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.progress || 0 }}%</span>
-                    </div>
-                    <div v-if="selectedJob.source_media_uuid" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Source UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.source_media_uuid }}</span>
-                    </div>
-                    <div v-if="selectedJob.dest_media_uuid" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.dest_media_uuid }}</span>
-                    </div>
-                    <div v-if="selectedJob.subject_uuid" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.subject_uuid }}</span>
-                    </div>
-                    <div v-if="selectedJob.output_uuid" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.output_uuid }}</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.created_at) }}</span>
-                    </div>
-                    <div v-if="selectedJob.completed_at" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.completed_at) }}</span>
+                    
+                    <!-- UUIDs Grid -->
+                    <div v-if="selectedJob.source_media_uuid || selectedJob.dest_media_uuid || selectedJob.subject_uuid || selectedJob.output_uuid" class="space-y-2">
+                      <div v-if="selectedJob.subject_uuid" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
+                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.subject_uuid }}</span>
+                      </div>
+                      <div v-if="selectedJob.dest_media_uuid" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
+                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.dest_media_uuid }}</span>
+                      </div>
+                      <div v-if="selectedJob.output_uuid" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
+                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.output_uuid }}</span>
+                      </div>
                     </div>
                   </div>
                 </template>
@@ -412,10 +410,44 @@
           </div>
 
           <template #footer>
-            <div class="flex justify-end">
-              <UButton variant="outline" @click="showJobModal = false">
-                Close
-              </UButton>
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:justify-between">
+              <!-- Action buttons - left side on desktop, full width on mobile -->
+              <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 order-2 sm:order-1">
+                <UButton
+                  v-if="['canceled', 'failed', 'completed'].includes(selectedJob.status)"
+                  color="primary"
+                  variant="outline"
+                  icon="i-heroicons-arrow-path"
+                  size="sm"
+                  @click="retryJobFromModal"
+                  class="w-full sm:w-auto"
+                >
+                  <span class="hidden sm:inline">Retry Job</span>
+                  <span class="sm:hidden">Retry</span>
+                </UButton>
+                <UButton
+                  color="red"
+                  variant="outline"
+                  icon="i-heroicons-trash"
+                  size="sm"
+                  @click="deleteJobFromModal"
+                  class="w-full sm:w-auto"
+                >
+                  <span class="hidden sm:inline">Delete Job</span>
+                  <span class="sm:hidden">Delete</span>
+                </UButton>
+              </div>
+              
+              <!-- Close button - right side on desktop, full width on mobile -->
+              <div class="order-1 sm:order-2">
+                <UButton
+                  variant="outline"
+                  @click="showJobModal = false"
+                  class="w-full sm:w-auto"
+                >
+                  Close
+                </UButton>
+              </div>
             </div>
           </template>
         </UCard>
@@ -463,7 +495,6 @@ const itemsPerPage = 20
 
 // Local reactive filter state
 const currentFilter = ref('')
-const displayedJobs = ref([])
 
 // Subject filtering using composable
 const {
@@ -476,31 +507,34 @@ const {
 } = useSubjects()
 
 // Subject filter handlers
-const handleSubjectFilterSelection = (selected) => {
+const handleSubjectFilterSelection = async (selected) => {
   handleSubjectSelection(selected)
   if (selected && selected.value) {
     // Filter jobs by subject UUID
     currentFilter.value = `subject:${selected.value}`
     currentPage.value = 1
+    const statusFilter = jobsStore.filters.status || ''
+    await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, selected.value)
   } else {
-    clearSubjectFilter()
+    await clearSubjectFilter()
   }
 }
 
-const clearSubjectFilter = () => {
+const clearSubjectFilter = async () => {
   clearSubject()
   currentFilter.value = ''
   currentPage.value = 1
+  const statusFilter = jobsStore.filters.status || ''
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, '')
 }
 
 // Computed properties
-const totalPages = computed(() => Math.ceil(jobsStore.jobs.length / itemsPerPage))
+const totalPages = computed(() => Math.ceil(jobsStore.totalJobs / itemsPerPage))
 
 
 
 // Methods
 const filterByStatus = async (status) => {
-  
   // Update local filter immediately
   currentFilter.value = status
   currentPage.value = 1
@@ -510,8 +544,15 @@ const filterByStatus = async (status) => {
   jobsStore.filters.jobId = ''
   jobsStore.filters.jobType = ''
   
-  // Force Vue to update immediately
-  await nextTick()
+  // Fetch jobs with new filter
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, status, subjectUuid)
+}
+
+const refreshJobsWithCurrentState = async () => {
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid)
 }
 
 
@@ -598,7 +639,7 @@ const openImageSelection = (job) => {
 }
 
 const handleImageSelected = async () => {
-  await jobsStore.refreshJobs()
+  await refreshJobsWithCurrentState()
 }
 
 // Job cancellation method
@@ -623,7 +664,7 @@ const cancelJob = async (job) => {
     
     
     // Refresh the jobs list after cancellation
-    await jobsStore.refreshJobs()
+    await refreshJobsWithCurrentState()
   } catch (error) {
     console.error('Failed to cancel job:', error)
     
@@ -676,7 +717,7 @@ const retryJob = async (job) => {
     })
     
     // Refresh the jobs list after retry
-    await jobsStore.refreshJobs()
+    await refreshJobsWithCurrentState()
   } catch (error) {
     console.error('Failed to retry job:', error)
     
@@ -701,9 +742,11 @@ const retryJob = async (job) => {
 
 // Job deletion method
 const deleteJob = async (job) => {
+  console.log('🗑️ deleteJob called with job:', job.id)
   try {
     const { confirm } = useConfirmDialog()
     
+    console.log('🤔 Showing confirmation dialog...')
     const confirmed = await confirm({
       title: 'Delete Job',
       message: `Are you sure you want to delete job ${job.id}? This action cannot be undone and will remove the job and any associated output media.`,
@@ -712,11 +755,20 @@ const deleteJob = async (job) => {
       variant: 'error'
     })
     
-    if (!confirmed) return
+    console.log('✅ Confirmation result:', confirmed)
+    if (!confirmed) {
+      console.log('❌ User cancelled deletion')
+      return
+    }
     
-    await useApiFetch(`jobs/${job.id}/delete`, {
+    console.log('🚀 Making delete API call...')
+    const config = useRuntimeConfig()
+    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
+    console.log('🔗 Delete URL:', `${mediaServerUrl}/jobs/${job.id}`)
+    const result = await $fetch(`${mediaServerUrl}/jobs/${job.id}`, {
       method: 'DELETE'
     })
+    console.log('✅ Delete API call completed, result:', result)
     
     // Show success toast
     const toast = useToast()
@@ -727,8 +779,10 @@ const deleteJob = async (job) => {
       duration: 1000
     })
     
-    // Refresh the jobs list after deletion
-    await jobsStore.refreshJobs()
+    // Refresh the jobs list after deletion with cache busting
+    await refreshJobsWithCurrentState()
+    // Also refresh queue status to update counts
+    await jobsStore.fetchQueueStatus()
   } catch (error) {
     console.error('Failed to delete job:', error)
     
@@ -751,6 +805,26 @@ const deleteJob = async (job) => {
   }
 }
 
+// Modal-specific retry and delete handlers
+const retryJobFromModal = async () => {
+  console.log('🔄 retryJobFromModal called')
+  if (selectedJob.value) {
+    showJobModal.value = false
+    await retryJob(selectedJob.value)
+  }
+}
+
+const deleteJobFromModal = async () => {
+  console.log('🗑️ deleteJobFromModal called')
+  if (selectedJob.value) {
+    console.log('🗑️ selectedJob exists, closing modal and calling deleteJob')
+    showJobModal.value = false
+    await deleteJob(selectedJob.value)
+  } else {
+    console.log('❌ No selectedJob found!')
+  }
+}
+
 // Handle page visibility changes
 const handleVisibilityChange = () => {
   if (document.hidden) {
@@ -760,19 +834,12 @@ const handleVisibilityChange = () => {
   }
 }
 
-// Watcher to update displayed jobs immediately
-watch([currentFilter, () => jobsStore.jobs], () => {
-  if (!currentFilter.value) {
-    displayedJobs.value = [...jobsStore.jobs]
-  } else if (currentFilter.value.startsWith('subject:')) {
-    // Subject filtering
-    const subjectUuid = currentFilter.value.replace('subject:', '')
-    displayedJobs.value = jobsStore.jobs.filter(job => job.subject_uuid === subjectUuid)
-  } else {
-    // Status filtering
-    displayedJobs.value = jobsStore.jobs.filter(job => job.status === currentFilter.value)
-  }
-}, { immediate: true })
+// Watcher for pagination changes
+watch(currentPage, async (newPage) => {
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid)
+})
 
 // Reset video state when modal is closed
 watch(showJobModal, (isOpen) => {

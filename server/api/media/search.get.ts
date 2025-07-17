@@ -81,8 +81,12 @@ export default defineEventHandler(async (event) => {
     console.log('🔍 Searching media with params:', Object.fromEntries(searchParams))
 
     // First check if media API is healthy
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     try {
-      await $fetch('http://localhost:8000/health', {
+      await $fetch(`${apiUrl}/health`, {
         method: 'GET',
         timeout: 5000
       })
@@ -95,7 +99,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Make request to media API - now always returns JSON with embedded base64 thumbnails
-    const response = await fetch(`http://localhost:8000/media/search?${searchParams.toString()}`, {
+    const response = await fetch(`${apiUrl}/media/search?${searchParams.toString()}`, {
       method: 'GET'
     })
 

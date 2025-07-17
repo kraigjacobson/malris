@@ -9,8 +9,12 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Call the media server API to cancel the job
-    const response = await $fetch(`http://localhost:8000/jobs/${jobId}/cancel`, {
+    const response = await $fetch(`${apiUrl}/jobs/${jobId}/cancel`, {
       method: 'POST'
     })
 

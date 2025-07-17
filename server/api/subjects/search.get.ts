@@ -53,8 +53,12 @@ export default defineEventHandler(async (event) => {
     
     console.log('🔍 Subjects search params:', Object.fromEntries(params))
     
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Make request to subjects API - now always returns JSON with embedded base64 hero images
-    const response = await fetch(`http://localhost:8000/subjects?${params.toString()}`, {
+    const response = await fetch(`${apiUrl}/subjects?${params.toString()}`, {
       method: 'GET'
     })
 

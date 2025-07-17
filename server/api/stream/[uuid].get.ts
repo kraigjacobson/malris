@@ -23,8 +23,12 @@ export default defineEventHandler(async (event) => {
       headers['Range'] = rangeHeader
     }
 
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Make request to media API streaming endpoint
-    const response = await fetch(`http://localhost:8000/stream/${uuid}`, {
+    const response = await fetch(`${apiUrl}/stream/${uuid}`, {
       method: 'GET',
       headers
     })

@@ -12,8 +12,12 @@ export default defineEventHandler(async (event) => {
 
     console.log('Deleting media for UUID:', uuid)
 
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Make request to media API to delete the media
-    const response = await $fetch(`http://localhost:8000/media/${uuid}`, {
+    const response = await $fetch(`${apiUrl}/media/${uuid}`, {
       method: 'DELETE',
       timeout: 10000
     })

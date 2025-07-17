@@ -63,15 +63,30 @@
         </div>
 
         <!-- Tags Filter -->
-        <div>
+        <div class="col-span-1 sm:col-span-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tags
+            Tags Search
           </label>
-          <UInput
-            v-model="filters.tags"
-            placeholder="e.g., portrait, landscape"
-            class="w-full"
-          />
+          <div class="space-y-2">
+            <UInputTags
+              v-model="selectedTags"
+              placeholder="Add tags (e.g., 1girl, long_hair, anime)"
+              class="w-full"
+            />
+            
+            <!-- Tag Search Options -->
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Search Mode
+              </label>
+              <USelectMenu
+                v-model="tagSearchMode"
+                :items="tagSearchModeOptions"
+                class="w-full"
+                size="sm"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -509,10 +524,13 @@ const settingsStore = useSettingsStore()
 // Reactive data
 const filters = ref({
   media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
-  purpose: '',
-  subject_uuid: '',
-  tags: ''
+  purpose: { label: 'All Purposes', value: '' }, // Default to all purposes
+  subject_uuid: ''
 })
+
+// Tag search functionality
+const selectedTags = ref([])
+const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 
 // Subject search using composable
 const {
@@ -621,6 +639,11 @@ const limitOptions = [
   { label: '48 per page', value: 48 }
 ]
 
+const tagSearchModeOptions = [
+  { label: 'Partial Match', value: 'partial' },
+  { label: 'Exact Match', value: 'exact' }
+]
+
 
 // Search cancellation
 const searchController = ref(null)
@@ -643,12 +666,20 @@ const searchMedia = async () => {
     if (mediaType) params.append('media_type', mediaType)
     if (purpose) params.append('purpose', purpose)
     if (filters.value.subject_uuid) params.append('subject_uuid', filters.value.subject_uuid)
-    if (filters.value.tags) params.append('tags', filters.value.tags)
+    
+    // Add selected tags from UInputTags component
+    if (selectedTags.value.length > 0) {
+      params.append('tags', selectedTags.value.join(','))
+      
+      // Use the selected tag match mode
+      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
+      params.append('tag_match_mode', searchMode)
+    }
     
     // Handle limit - extract value if it's an object
     const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
     params.append('limit', limit.toString())
-    params.append('page', currentPage.value.toString())
+    params.append('offset', ((currentPage.value - 1) * limit).toString())
     
     // Add sort parameters
     const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
@@ -656,10 +687,13 @@ const searchMedia = async () => {
     
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
+    
+    params.append('include_thumbnails', 'true')
 
     const response = await useApiFetch(`media/search?${params.toString()}`, {
       signal: searchController.value.signal
     })
+    
     const allResults = response.results || []
     
     console.log('📊 Media Gallery Search Results:')
@@ -772,10 +806,14 @@ const clearFilters = () => {
   
   filters.value = {
     media_type: currentMediaType, // Keep the currently selected media type
-    purpose: '',
-    subject_uuid: '',
-    tags: ''
+    purpose: { label: 'All Purposes', value: '' }, // Reset to all purposes
+    subject_uuid: ''
   }
+  
+  // Clear tag search fields
+  selectedTags.value = []
+  tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
+  
   handleComposableSubjectSelection(null)
   sortOptions.value = {
     sort_by: { label: 'Created Date', value: 'created_at' },

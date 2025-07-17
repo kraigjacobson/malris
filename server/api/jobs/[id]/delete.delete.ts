@@ -12,27 +12,40 @@ export default defineEventHandler(async (event) => {
 
     // Get the media server URL from runtime config
     const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.mediaServerUrl || 'http://localhost:8000'
+    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
     
-    console.log(`🗑️ Deleting job ${jobId} via media server...`)
+    console.log(`🗑️ Deleting job ${jobId} via media server at ${mediaServerUrl}...`)
+    console.log(`🔗 Full URL: ${mediaServerUrl}/jobs/${jobId}`)
     
     // Make the DELETE request to the media server
-    const response = await $fetch(`${mediaServerUrl}/jobs/${jobId}`, {
+    const response = await fetch(`${mediaServerUrl}/jobs/${jobId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json'
       }
     })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const data = await response.json()
     
-    console.log('✅ Job deleted successfully:', response)
+    console.log('✅ Job deleted successfully:', data)
     
     return {
       success: true,
       message: `Job ${jobId} deleted successfully`,
-      data: response
+      data: data
     }
   } catch (error: any) {
     console.error('❌ Failed to delete job:', error)
+    console.error('❌ Error details:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?._data
+    })
     
     // Handle different types of errors
     if (error.response?.status === 404) {

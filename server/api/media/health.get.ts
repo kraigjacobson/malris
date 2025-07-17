@@ -2,8 +2,12 @@ export default defineEventHandler(async (_event) => {
   try {
     console.log('Checking media API health...')
 
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Test connection to media API
-    const response = await $fetch('http://localhost:8000/health', {
+    const response = await $fetch(`${apiUrl}/health`, {
       method: 'GET',
       timeout: 5000
     })

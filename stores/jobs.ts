@@ -5,6 +5,7 @@ import type { Job, QueueStatus, JobFilters } from '~/types'
 export const useJobsStore = defineStore('jobs', () => {
   // State
   const jobs = ref<Job[]>([]) // Just store all jobs directly
+  const totalJobs = ref(0) // Total count for pagination
   const queueStatus = ref<QueueStatus | null>(null)
   const isLoading = ref(false)
   const filters = ref<JobFilters>({
@@ -12,6 +13,12 @@ export const useJobsStore = defineStore('jobs', () => {
     status: '',
     jobType: ''
   })
+
+  // Pagination state
+  const currentPage = ref(1)
+  const currentLimit = ref(20)
+  const currentStatusFilter = ref('')
+  const currentSubjectFilter = ref('')
 
   // Auto-refresh state
   const autoRefreshEnabled = ref(true)
@@ -69,31 +76,55 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  const fetchJobs = async (showLoading = false) => {
+  const fetchJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '') => {
     if (showLoading) {
       isLoading.value = true
     }
 
+    // Store current pagination state for auto-refresh
+    currentPage.value = page
+    currentLimit.value = limit
+    currentStatusFilter.value = statusFilter
+    currentSubjectFilter.value = subjectFilter
+
     try {
       const searchParams = new URLSearchParams()
-      searchParams.append('limit', '100') // Get all jobs, no server-side filtering
+      searchParams.append('limit', limit.toString())
+      searchParams.append('offset', ((page - 1) * limit).toString())
+      searchParams.append('order_by', 'updated_at')
+      searchParams.append('order_direction', 'desc')
+      
+      if (statusFilter) {
+        searchParams.append('status', statusFilter)
+      }
+      
+      if (subjectFilter) {
+        searchParams.append('subject_uuid', subjectFilter)
+      }
 
       const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
 
       // Handle different response formats from the API and only update after successful fetch
       let newJobs: Job[] = []
+      let total = 0
+      
       if (response.results) {
         newJobs = response.results as Job[]
+        total = response.total_jobs_count || response.total || newJobs.length
       } else if (response.jobs) {
         newJobs = response.jobs as Job[]
+        total = response.total_jobs_count || response.total || newJobs.length
       } else if (Array.isArray(response)) {
         newJobs = response as Job[]
+        total = newJobs.length
       } else {
         newJobs = []
+        total = 0
       }
 
       // Only replace jobs after successful fetch
       jobs.value = newJobs
+      totalJobs.value = total
     } catch (error) {
       console.error('❌ Failed to fetch jobs:', error)
       // Don't clear jobs on error, keep existing data
@@ -121,8 +152,8 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  const refreshJobs = async (showLoading = false) => {
-    await fetchJobs(showLoading)
+  const refreshJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '') => {
+    await fetchJobs(showLoading, page, limit, statusFilter, subjectFilter)
   }
 
   const clearFilters = () => {
@@ -149,7 +180,7 @@ export const useJobsStore = defineStore('jobs', () => {
       autoRefreshInterval.value = setInterval(() => {
         // Only refresh if not currently loading and page is visible
         if (!isLoading.value && !document.hidden) {
-          fetchJobs()
+          fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value)
         }
       }, REFRESH_INTERVAL)
     }
@@ -178,6 +209,7 @@ export const useJobsStore = defineStore('jobs', () => {
   return {
     // State
     jobs: readonly(jobs),
+    totalJobs: readonly(totalJobs),
     queueStatus: readonly(queueStatus),
     isLoading: readonly(isLoading),
     filters,
@@ -185,6 +217,8 @@ export const useJobsStore = defineStore('jobs', () => {
     autoRefreshInterval: readonly(autoRefreshInterval),
     
     // Actions
+    fetchJobs,
+    fetchQueueStatus,
     fetchInitialData,
     refreshJobs,
     clearFilters,

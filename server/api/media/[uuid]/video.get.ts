@@ -16,8 +16,12 @@ export default defineEventHandler(async (event) => {
 
     console.log('Serving video for UUID:', uuid, 'size:', size)
 
+    // Get runtime config for API URL
+    const config = useRuntimeConfig()
+    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
+    
     // Make request to media API to get the video file stream
-    const response = await fetch(`http://localhost:8000/media/${uuid}/download?size=${size}`, {
+    const response = await fetch(`${apiUrl}/media/${uuid}/download?size=${size}`, {
       method: 'GET',
       headers: {
         'Accept': 'video/*'
