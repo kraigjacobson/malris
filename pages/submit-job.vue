@@ -91,19 +91,46 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Subject <span class="text-red-500">*</span>
           </label>
-          <UInputMenu
-            v-model="selectedSubject"
-            v-model:search-term="searchQuery"
-            :items="subjectItems"
-            placeholder="Search for a subject..."
-            :disabled="isSubmitting"
-            class="w-full"
-            by="value"
-            option-attribute="label"
-            searchable
-            @update:model-value="handleSubjectSelection"
-          />
-          <p class="text-xs text-gray-500">Search and select a subject for testing</p>
+          
+          <!-- Subject Selection Button and Preview -->
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+            <UButton
+              variant="outline"
+              icon="i-heroicons-user-20-solid"
+              @click="showSubjectModal = true"
+              :disabled="isSubmitting"
+              size="sm"
+              class="shrink-0 w-full sm:w-auto"
+            >
+              <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select Subject' }}</span>
+              <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select Subject' }}</span>
+            </UButton>
+            
+            <!-- Selected Subject Preview -->
+            <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
+                <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {{ selectedSubject.label }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                  {{ selectedSubject.value }}
+                </p>
+              </div>
+              <UButton
+                variant="ghost"
+                color="error"
+                icon="i-heroicons-x-mark-20-solid"
+                size="xs"
+                @click="clearSelectedSubject"
+                :disabled="isSubmitting"
+              />
+            </div>
+          </div>
+          
+          <p class="text-xs text-gray-500">Select a subject for face swapping</p>
         </div>
 
         <!-- Additional Parameters -->
@@ -194,7 +221,16 @@
     <!-- Video Selection Modal -->
     <VideoSelectionModal
       v-model="showVideoModal"
+      :initial-tags="subjectHairTags"
       @select="handleVideoSelection"
+    />
+
+    <!-- Subject Selection Modal -->
+    <SubjectSelectionModal
+      v-model="showSubjectModal"
+      :initial-tags="videoHairTags"
+      :selected-video="selectedVideo"
+      @select="handleSubjectSelection"
     />
 
   </div>
@@ -218,17 +254,42 @@ const form = ref({
 const selectedVideo = ref(null)
 const showVideoModal = ref(false)
 
-// Subject search using composable
-const {
-  selectedSubject,
-  searchQuery,
-  subjectItems,
-  loadSubjects,
-  handleSubjectSelection: handleComposableSubjectSelection
-} = useSubjects()
+// Subject selection data
+const selectedSubject = ref(null)
+const showSubjectModal = ref(false)
 
-// Load subjects on mount
-onMounted(() => loadSubjects())
+// Cross-modal tag synchronization
+const subjectHairTags = ref([])
+const videoHairTags = ref([])
+
+// Helper function to extract hair-related tags
+const extractHairTags = (tags) => {
+  if (!tags || !Array.isArray(tags)) return []
+  return tags.filter(tag => tag.endsWith('_hair'))
+}
+
+// Helper function to get hair tags from subject
+const getSubjectHairTags = async (subjectId) => {
+  try {
+    // Fetch subject details to get tags
+    const response = await useApiFetch(`subjects/search?limit=1&name_pattern=${selectedSubject.value?.label}&include_images=true`)
+    const subject = response.subjects?.find(s => s.id === subjectId)
+    if (subject && subject.tags) {
+      return extractHairTags(subject.tags)
+    }
+  } catch (error) {
+    console.error('Error fetching subject tags:', error)
+  }
+  return []
+}
+
+// Helper function to get hair tags from video
+const getVideoHairTags = (video) => {
+  if (video && video.tags && video.tags.tags) {
+    return extractHairTags(video.tags.tags)
+  }
+  return []
+}
 
 // Job type options
 const jobTypeOptions = [
@@ -262,24 +323,34 @@ const additionalParametersItems = computed(() => [
 const handleVideoSelection = (video) => {
   selectedVideo.value = video
   form.value.dest_media_uuid = video.uuid
+  
+  // Extract hair tags from selected video for subject modal
+  videoHairTags.value = getVideoHairTags(video)
 }
 
 const clearSelectedVideo = () => {
   selectedVideo.value = null
   form.value.dest_media_uuid = ''
+  videoHairTags.value = []
 }
 
-// Subject selection handler
-const handleSubjectSelection = (selected) => {
-  // Update the composable state
-  handleComposableSubjectSelection(selected)
+// Subject selection handlers
+const handleSubjectSelection = async (selected) => {
+  selectedSubject.value = selected
+  form.value.subject_uuid = selected ? selected.value : ''
   
-  // Update the form
+  // Extract hair tags from selected subject for video modal
   if (selected && selected.value) {
-    form.value.subject_uuid = selected.value // Use the UUID
+    subjectHairTags.value = await getSubjectHairTags(selected.value)
   } else {
-    form.value.subject_uuid = ''
+    subjectHairTags.value = []
   }
+}
+
+const clearSelectedSubject = () => {
+  selectedSubject.value = null
+  form.value.subject_uuid = ''
+  subjectHairTags.value = []
 }
 
 // Methods
@@ -329,6 +400,9 @@ const submitJob = async () => {
       text: `Job submitted successfully! Job ID: ${response.job_id}. Status: ${response.status}`
     }
 
+    // Reset video selection after successful job submission
+    clearSelectedVideo()
+
     console.log('Job response:', response)
 
   } catch (error) {
@@ -350,7 +424,9 @@ const resetForm = () => {
     parameters_json: ''
   }
   selectedVideo.value = null
-  handleComposableSubjectSelection(null)
+  selectedSubject.value = null
+  subjectHairTags.value = []
+  videoHairTags.value = []
   message.value = null
 }
 
@@ -368,10 +444,12 @@ watch(() => form.value.job_type, (newJobType) => {
   const jobTypeValue = newJobType?.value || newJobType
   if (jobTypeValue !== 'vid_faceswap') {
     // Clear selections when switching away from vid_faceswap
-    handleComposableSubjectSelection(null)
+    selectedSubject.value = null
     form.value.subject_uuid = ''
     selectedVideo.value = null
     form.value.dest_media_uuid = ''
+    subjectHairTags.value = []
+    videoHairTags.value = []
   }
 })
 

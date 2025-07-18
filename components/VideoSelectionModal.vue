@@ -67,7 +67,7 @@
             <UInput
               v-model.number="completionFilters.max_completions"
               type="number"
-              placeholder="0"
+              placeholder="No limit"
               min="0"
               class="w-full"
               size="sm"
@@ -99,7 +99,7 @@
             <UInput
               v-model.number="durationFilters.max_duration"
               type="number"
-              placeholder="0"
+              placeholder="No limit"
               min="0"
               class="w-full"
               size="sm"
@@ -156,6 +156,10 @@ const props = defineProps({
   modelValue: {
     type: Boolean,
     default: false
+  },
+  initialTags: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -172,11 +176,11 @@ const selectedTags = ref([])
 const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 const completionFilters = ref({
   min_completions: 0,
-  max_completions: 0
+  max_completions: null
 })
 const durationFilters = ref({
   min_duration: 0,
-  max_duration: 30
+  max_duration: null
 })
 const sortOptions = ref({ label: 'Created Date (Newest)', value: 'created_at_desc' })
 const videos = ref([])
@@ -198,8 +202,12 @@ const tagSearchModeOptions = [
 const sortOptionsItems = [
   { label: 'Created Date (Newest)', value: 'created_at_desc' },
   { label: 'Created Date (Oldest)', value: 'created_at_asc' },
+  { label: 'Updated Date (Newest)', value: 'updated_at_desc' },
+  { label: 'Updated Date (Oldest)', value: 'updated_at_asc' },
   { label: 'Duration (Shortest)', value: 'duration_asc' },
   { label: 'Duration (Longest)', value: 'duration_desc' },
+  { label: 'File Size (Largest)', value: 'file_size_desc' },
+  { label: 'File Size (Smallest)', value: 'file_size_asc' },
   { label: 'Filename (A-Z)', value: 'filename_asc' },
   { label: 'Filename (Z-A)', value: 'filename_desc' }
 ]
@@ -243,13 +251,24 @@ const loadVideos = async (reset = false) => {
     
     // Handle dynamic sorting
     const sortValue = typeof sortOptions.value === 'object' ? sortOptions.value.value : sortOptions.value
-    const [sortBy, sortOrder] = sortValue.split('_')
+    
+    // Parse sort value properly for API format
+    let sortBy, sortOrder
+    if (sortValue.endsWith('_desc')) {
+      sortBy = sortValue.slice(0, -5) // Remove '_desc'
+      sortOrder = 'desc'
+    } else if (sortValue.endsWith('_asc')) {
+      sortBy = sortValue.slice(0, -4) // Remove '_asc'
+      sortOrder = 'asc'
+    } else {
+      // Fallback - shouldn't happen with current options
+      sortBy = 'created_at'
+      sortOrder = 'desc'
+    }
+    
     params.append('sort_by', sortBy)
     params.append('sort_order', sortOrder)
     
-    // Exclude videos with problematic statuses
-    const excludeStatuses = ['BadSource', 'RequireCrop', 'RequireRotate', 'RequireClip', 'Obstruction', 'LowQuality', 'MultipleSubjects', 'MarkForDeletion']
-    params.append('exclude_statuses', excludeStatuses.join(','))
 
     // Add selected tags from UInputTags component
     if (selectedTags.value.length > 0) {
@@ -260,21 +279,23 @@ const loadVideos = async (reset = false) => {
       params.append('tag_match_mode', searchMode)
     }
 
-    // Add completion filters
-    if (completionFilters.value.min_completions != null) {
+    // Add completion filters only if they have meaningful values
+    if (completionFilters.value.min_completions != null && completionFilters.value.min_completions > 0) {
       params.append('min_completions', completionFilters.value.min_completions.toString())
     }
-    if (completionFilters.value.max_completions != null) {
+    if (completionFilters.value.max_completions != null && completionFilters.value.max_completions > 0) {
       params.append('max_completions', completionFilters.value.max_completions.toString())
     }
 
-    // Add duration filters
+    // Add duration filters only if they have meaningful values
     if (durationFilters.value.min_duration != null && durationFilters.value.min_duration > 0) {
       params.append('min_duration', durationFilters.value.min_duration.toString())
     }
     if (durationFilters.value.max_duration != null && durationFilters.value.max_duration > 0) {
       params.append('max_duration', durationFilters.value.max_duration.toString())
     }
+
+    params.append('include_thumbnails', 'true')
 
     const response = await useApiFetch(`media/search?${params.toString()}`)
 
@@ -312,11 +333,18 @@ const selectVideo = (video) => {
 
 // Watch for modal opening to load initial videos
 watch(isOpen, (newValue) => {
-  if (newValue && videos.value.length === 0) {
-    loadVideos(true)
+  if (newValue) {
+    // Set initial tags when modal opens
+    selectedTags.value = [...(props.initialTags || [])]
+    
+    if (videos.value.length === 0) {
+      loadVideos(true)
+    }
   } else if (!newValue && mediaGrid.value) {
     // Clean up videos when modal closes
     mediaGrid.value.cleanupVideos()
+    // Reset tags when modal closes
+    selectedTags.value = []
   }
 })
 

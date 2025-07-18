@@ -39,13 +39,28 @@
         <!-- Tags Filter -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tags
+            Tags Search
           </label>
-          <UInput
-            v-model="filters.tags"
-            placeholder="e.g., portrait, landscape"
-            class="w-full"
-          />
+          <div class="space-y-2">
+            <UInputTags
+              v-model="selectedTags"
+              placeholder="Add tags (e.g., portrait, landscape)"
+              class="w-full"
+            />
+            
+            <!-- Tag Search Options -->
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Search Mode
+              </label>
+              <USelectMenu
+                v-model="tagSearchMode"
+                :items="tagSearchModeOptions"
+                class="w-full"
+                size="sm"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -127,50 +142,19 @@
       </div>
 
       <!-- Grid View -->
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
-        <div
-          v-for="subject in subjectResults"
-          :key="subject.id"
-          class="bg-neutral-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer"
-          @click="openModal(subject)"
-        >
-          <!-- Hero Image Preview -->
-          <div class="aspect-square bg-gray-100 dark:bg-gray-700 relative">
-            <img
-              v-if="subject.has_thumbnail && subject.thumbnail_data && settingsStore.displayImages"
-              :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
-              :alt="subject.name"
-              class="w-full h-full object-cover object-top"
-              loading="lazy"
-              @error="handleImageError"
-            />
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon name="i-heroicons-user-circle" class="text-4xl text-gray-400" />
-            </div>
-          </div>
-
-          <!-- Subject Info -->
-          <div class="p-2 sm:p-3">
-            <h3 class="font-medium text-xs sm:text-sm text-gray-900 dark:text-white truncate">
-              {{ subject.name }}
-            </h3>
-            <p class="text-xs text-gray-500 mt-1 hidden sm:block">
-              Created {{ formatDate(subject.created_at) }}
-            </p>
-            <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
-              <span
-                v-for="tag in subject.tags.slice(0, 2)"
-                :key="tag"
-                class="px-1 sm:px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
-              >
-                {{ tag }}
-              </span>
-            </div>
-            <p v-if="subject.note" class="text-xs text-gray-600 dark:text-gray-400 mt-1 sm:mt-2 line-clamp-2 hidden sm:block">
-              {{ subject.note }}
-            </p>
-          </div>
-        </div>
+      <div v-if="viewMode === 'grid'">
+        <SubjectGrid
+          :subjects="subjectResults"
+          :loading="false"
+          :loading-more="false"
+          :has-searched="hasSearched"
+          :has-more="false"
+          :error="null"
+          :selection-mode="false"
+          :display-images="settingsStore.displayImages"
+          :empty-state-message="'Use the search filters above to find subjects'"
+          @subject-click="openModal"
+        />
       </div>
 
       <!-- List View -->
@@ -335,6 +319,8 @@ const settingsStore = useSettingsStore()
 // Reactive data
 const searchTerm = ref('')
 const selectedSearchSubject = ref(null)
+const selectedTags = ref([])
+const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 const filters = ref({
   tags: ''
 })
@@ -397,6 +383,11 @@ const limitOptions = [
   { label: '48 per page', value: 48 }
 ]
 
+const tagSearchModeOptions = [
+  { label: 'Partial Match', value: 'partial' },
+  { label: 'Exact Match', value: 'exact' }
+]
+
 // Handle subject selection from dropdown
 const handleSearchSubjectSelection = (selectedSubject) => {
   console.log('🎯 Selected subject from dropdown:', selectedSubject)
@@ -419,7 +410,15 @@ const searchSubjects = async () => {
     
     console.log('🔍 Search term being used:', searchTerm.value)
     if (searchTerm.value) params.append('name_pattern', searchTerm.value)
-    if (filters.value.tags) params.append('tags', filters.value.tags)
+    
+    // Add selected tags if provided
+    if (selectedTags.value.length > 0) {
+      params.append('tags', selectedTags.value.join(','))
+      
+      // Use the selected tag match mode
+      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
+      params.append('tag_match_mode', searchMode)
+    }
     
     params.append('limit', pagination.value.limit.toString())
     params.append('page', currentPage.value.toString())
@@ -469,6 +468,8 @@ const clearFilters = () => {
   searchTerm.value = ''
   dropdownSearchTerm.value = ''
   selectedSearchSubject.value = null
+  selectedTags.value = []
+  tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
   filters.value = {
     tags: ''
   }
@@ -482,23 +483,6 @@ const clearFilters = () => {
   hasSearched.value = false
 }
 
-const handleImageError = (event) => {
-  // Hide the broken image and show placeholder instead
-  event.target.style.display = 'none'
-  
-  // Find the parent container and add a placeholder
-  const container = event.target.parentElement
-  if (container && !container.querySelector('.image-error-placeholder')) {
-    const placeholder = document.createElement('div')
-    placeholder.className = 'image-error-placeholder w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center'
-    placeholder.innerHTML = '<svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>'
-    container.appendChild(placeholder)
-  }
-}
-
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleDateString()
-}
 
 const openModal = (subject) => {
   selectedSubject.value = subject

@@ -1,0 +1,358 @@
+<template>
+  <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
+    <template #header>
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+          Select Subject
+        </h3>
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-heroicons-x-mark-20-solid"
+          class="-my-1"
+          @click="isOpen = false"
+        />
+      </div>
+    </template>
+
+    <template #body>
+      <!-- Search Bar -->
+      <div class="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Search Subjects
+          </label>
+          <UInput
+            v-model="searchQuery"
+            placeholder="Search for a subject by name..."
+            class="w-full"
+            icon="i-heroicons-magnifying-glass-20-solid"
+            @update:model-value="debouncedSearch"
+          />
+        </div>
+        
+        <!-- Tags Search -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Tags Search
+          </label>
+          <div class="space-y-2">
+            <UInputTags
+              v-model="selectedTags"
+              placeholder="Add tags (e.g., portrait, landscape)"
+              class="w-full"
+              @update:model-value="debouncedSearch"
+            />
+            
+            <!-- Tag Search Options -->
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Search Mode
+              </label>
+              <USelectMenu
+                v-model="tagSearchMode"
+                :items="tagSearchModeOptions"
+                class="w-full"
+                size="sm"
+                @update:model-value="debouncedSearch"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Video Preview (if video is selected) -->
+      <div v-if="selectedVideo" class="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div class="flex justify-center">
+          <div
+            class="relative w-80 h-60 bg-gray-200 dark:bg-gray-700 overflow-hidden group cursor-pointer"
+            :data-video-uuid="selectedVideo.uuid"
+            @mouseenter="handleVideoHover(selectedVideo.uuid, true)"
+            @mouseleave="handleVideoHover(selectedVideo.uuid, false)"
+          >
+            <!-- Video element with poster -->
+            <video
+              ref="videoElement"
+              :poster="selectedVideo.thumbnail"
+              class="w-full h-full object-cover object-top"
+              muted
+              loop
+              preload="none"
+              playsinline
+              webkit-playsinline
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subject Grid -->
+      <div class="p-3 sm:p-4 max-h-[60vh] overflow-y-auto">
+        <SubjectGrid
+          :subjects="subjects"
+          :loading="loading"
+          :loading-more="loadingMore"
+          :has-searched="hasSearched"
+          :has-more="hasMore"
+          :error="error"
+          :selection-mode="true"
+          :display-images="true"
+          @subject-click="selectSubject"
+          @load-more="loadMore"
+        />
+      </div>
+    </template>
+  </UModal>
+</template>
+
+<script setup>
+import { nextTick } from 'vue'
+
+const props = defineProps({
+  modelValue: {
+    type: Boolean,
+    default: false
+  },
+  initialTags: {
+    type: Array,
+    default: () => []
+  },
+  selectedVideo: {
+    type: Object,
+    default: null
+  }
+})
+
+const emit = defineEmits(['update:modelValue', 'select'])
+
+// Modal state
+const isOpen = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value)
+})
+
+// Search and pagination state
+const searchQuery = ref('')
+const selectedTags = ref([])
+const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
+const subjects = ref([])
+const loading = ref(false)
+const loadingMore = ref(false)
+const error = ref(null)
+const hasMore = ref(true)
+const currentPage = ref(1)
+const hasSearched = ref(false)
+const limit = 24
+
+// Video hover functionality (similar to MediaGrid)
+const hoveredVideoId = ref(null)
+const videoElement = ref(null)
+
+// Video functionality - autoplay and loop
+const startVideoAutoplay = async () => {
+  await nextTick()
+  if (props.selectedVideo && videoElement.value) {
+    try {
+      // Clear any existing play promise to avoid conflicts
+      if (videoElement.value._playPromise) {
+        await videoElement.value._playPromise.catch(() => {})
+      }
+      
+      // Set the video source dynamically using Nuxt streaming endpoint
+      const videoSrc = `/api/stream/${props.selectedVideo.uuid}`
+
+      // Ensure video is properly configured for autoplay and loop
+      videoElement.value.muted = true
+      videoElement.value.playsInline = true
+      videoElement.value.autoplay = true
+      videoElement.value.loop = true
+      
+      // Set the source
+      videoElement.value.src = videoSrc
+      
+      // Load the video first
+      videoElement.value.load()
+      
+      // Wait for the video to be ready and then play
+      const playVideo = async () => {
+        try {
+          videoElement.value._playPromise = videoElement.value.play()
+          await videoElement.value._playPromise
+        } catch (error) {
+          console.error('Video autoplay failed:', error)
+        }
+      }
+      
+      // Try to play when video can start playing
+      videoElement.value.addEventListener('canplay', playVideo, { once: true })
+      
+      // Also try to play immediately in case video loads quickly
+      if (videoElement.value.readyState >= 3) { // HAVE_FUTURE_DATA
+        playVideo()
+      }
+      
+    } catch (error) {
+      console.error('Video setup failed:', error)
+    }
+  }
+}
+
+// Simplified hover handler (no longer needed but keeping for template compatibility)
+const handleVideoHover = () => {
+  // Video is always playing now
+}
+
+// Tag search mode options
+const tagSearchModeOptions = [
+  { label: 'Partial Match', value: 'partial' },
+  { label: 'Exact Match', value: 'exact' }
+]
+
+// Debounced search
+let searchTimeout = null
+const debouncedSearch = () => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  searchTimeout = setTimeout(() => {
+    currentPage.value = 1
+    hasMore.value = true
+    loadSubjects(true)
+  }, 300)
+}
+
+// Load subjects function
+const loadSubjects = async (reset = false) => {
+  if (reset) {
+    loading.value = true
+    subjects.value = []
+    currentPage.value = 1
+  } else {
+    loadingMore.value = true
+  }
+  
+  error.value = null
+  hasSearched.value = true
+
+  try {
+    const params = new URLSearchParams()
+    
+    params.append('limit', limit.toString())
+    params.append('page', currentPage.value.toString())
+    params.append('include_images', 'true')
+    params.append('image_size', 'thumb')
+    params.append('sort_by', 'name')
+    params.append('sort_order', 'asc')
+    
+    // Add search query if provided
+    if (searchQuery.value.trim()) {
+      params.append('name_pattern', searchQuery.value.trim())
+    }
+    
+    // Add selected tags if provided
+    if (selectedTags.value.length > 0) {
+      params.append('tags', selectedTags.value.join(','))
+      
+      // Use the selected tag match mode
+      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
+      params.append('tag_match_mode', searchMode)
+    }
+
+    const response = await useApiFetch(`subjects/search?${params.toString()}`)
+
+    if (reset) {
+      subjects.value = response.subjects || []
+    } else {
+      subjects.value.push(...(response.subjects || []))
+    }
+
+    // Check if there are more results based on pagination
+    hasMore.value = response.pagination?.has_more || false
+
+  } catch (err) {
+    console.error('Error loading subjects:', err)
+    error.value = err.message || 'Failed to load subjects'
+  } finally {
+    loading.value = false
+    loadingMore.value = false
+  }
+}
+
+// Load more subjects
+const loadMore = () => {
+  if (hasMore.value && !loadingMore.value) {
+    currentPage.value++
+    loadSubjects(false)
+  }
+}
+
+// Select subject
+const selectSubject = (subject) => {
+  emit('select', {
+    value: subject.id,
+    label: subject.name
+  })
+  isOpen.value = false
+}
+
+// Cleanup function to stop videos
+const cleanupVideos = () => {
+  hoveredVideoId.value = null
+  if (videoElement.value && videoElement.value.src) {
+    videoElement.value.pause()
+    videoElement.value.currentTime = 0
+    videoElement.value.removeAttribute('src')
+    videoElement.value.load()
+    videoElement.value._playPromise = null
+  }
+}
+
+// Watch for modal opening to load initial subjects
+watch(isOpen, (newValue) => {
+  if (newValue) {
+    // Reset state when opening
+    searchQuery.value = ''
+    selectedTags.value = [...(props.initialTags || [])]
+    tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
+    subjects.value = []
+    hasSearched.value = false
+    currentPage.value = 1
+    hasMore.value = true
+    error.value = null
+    
+    // Load initial subjects
+    loadSubjects(true)
+    
+    // Start video autoplay if video is selected
+    if (props.selectedVideo) {
+      startVideoAutoplay()
+    }
+  } else {
+    // Reset tags when modal closes and cleanup videos
+    selectedTags.value = []
+    cleanupVideos()
+  }
+})
+
+// Watch for selectedVideo changes to start autoplay
+watch(() => props.selectedVideo, (newVideo) => {
+  if (newVideo && isOpen.value) {
+    startVideoAutoplay()
+  }
+}, { immediate: true })
+
+// Watch for search query changes
+watch(searchQuery, (newValue) => {
+  if (isOpen.value) {
+    if (newValue.trim()) {
+      debouncedSearch()
+    } else {
+      // If search is cleared, load all subjects
+      currentPage.value = 1
+      hasMore.value = true
+      loadSubjects(true)
+    }
+  }
+})
+</script>
