@@ -26,6 +26,7 @@
             v-model="selectedTags"
             placeholder="Add tags (e.g., 1girl, long_hair, anime)"
             class="w-full"
+            enterkeyhint="enter"
             @update:model-value="debouncedSearch"
           />
         </div>

@@ -41,6 +41,7 @@
               v-model="selectedTags"
               placeholder="Add tags (e.g., portrait, landscape)"
               class="w-full"
+              enterkeyhint="enter"
               @update:model-value="debouncedSearch"
             />
             
