@@ -17,17 +17,15 @@
 
     <template #body>
       <!-- Search Bar -->
-      <div class="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
+      <div class="p-3 sm:p-4 space-y-3" :class="{ 'border-b border-gray-200 dark:border-gray-700': hasSearched || loading || error }">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Search Subjects
           </label>
-          <UInput
-            v-model="searchQuery"
+          <SubjectSearch
+            v-model="selectedSubjectFromDropdown"
             placeholder="Search for a subject by name..."
-            class="w-full"
-            icon="i-heroicons-magnifying-glass-20-solid"
-            @update:model-value="debouncedSearch"
+            @select="handleSubjectSelectionFromDropdown"
           />
         </div>
         
@@ -42,23 +40,31 @@
               placeholder="Add tags (e.g., portrait, landscape)"
               class="w-full"
               enterkeyhint="enter"
-              @update:model-value="debouncedSearch"
             />
             
-            <!-- Tag Search Options -->
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Search Mode
-              </label>
-              <USelectMenu
-                v-model="tagSearchMode"
-                :items="tagSearchModeOptions"
-                class="w-full"
-                size="sm"
-                @update:model-value="debouncedSearch"
-              />
-            </div>
           </div>
+        </div>
+        
+        <!-- Search and Clear Buttons -->
+        <div class="flex justify-center gap-3 mt-3">
+          <UButton
+            color="primary"
+            size="sm"
+            icon="i-heroicons-magnifying-glass"
+            @click="performSearch"
+          >
+            Search Subjects
+          </UButton>
+          <UButton
+            v-if="hasSearched || searchQuery || selectedTags.length > 0"
+            color="gray"
+            variant="outline"
+            size="sm"
+            icon="i-heroicons-x-mark"
+            @click="clearAll"
+          >
+            Clear
+          </UButton>
         </div>
       </div>
 
@@ -133,10 +139,9 @@ const isOpen = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-// Search and pagination state
+// Search and pagination state for grid
 const searchQuery = ref('')
 const selectedTags = ref([])
-const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 const subjects = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -144,7 +149,11 @@ const error = ref(null)
 const hasMore = ref(true)
 const currentPage = ref(1)
 const hasSearched = ref(false)
+const isClearing = ref(false)
 const limit = 24
+
+// Subject selection state
+const selectedSubjectFromDropdown = ref(null)
 
 // Video hover functionality (similar to MediaGrid)
 const hoveredVideoId = ref(null)
@@ -204,23 +213,29 @@ const handleVideoHover = () => {
   // Video is always playing now
 }
 
-// Tag search mode options
-const tagSearchModeOptions = [
-  { label: 'Partial Match', value: 'partial' },
-  { label: 'Exact Match', value: 'exact' }
-]
 
-// Debounced search
-let searchTimeout = null
-const debouncedSearch = () => {
-  if (searchTimeout) {
-    clearTimeout(searchTimeout)
+
+// Handle subject selection from dropdown
+const handleSubjectSelectionFromDropdown = (selected) => {
+  selectedSubjectFromDropdown.value = selected
+  
+  if (selected && selected.value) {
+    // Emit the selection immediately when a subject is chosen from dropdown
+    emit('select', {
+      value: selected.value,
+      label: selected.label
+    })
+    
+    // Close mobile keyboard
+    nextTick(() => {
+      const searchInput = document.querySelector('input[placeholder*="Search for a subject"]')
+      if (searchInput) {
+        searchInput.blur()
+      }
+    })
+    
+    isOpen.value = false
   }
-  searchTimeout = setTimeout(() => {
-    currentPage.value = 1
-    hasMore.value = true
-    loadSubjects(true)
-  }, 300)
 }
 
 // Load subjects function
@@ -254,10 +269,8 @@ const loadSubjects = async (reset = false) => {
     // Add selected tags if provided
     if (selectedTags.value.length > 0) {
       params.append('tags', selectedTags.value.join(','))
-      
-      // Use the selected tag match mode
-      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
-      params.append('tag_match_mode', searchMode)
+      // Always use partial match mode
+      params.append('tag_match_mode', 'partial')
     }
 
     const response = await useApiFetch(`subjects/search?${params.toString()}`)
@@ -294,7 +307,61 @@ const selectSubject = (subject) => {
     value: subject.id,
     label: subject.name
   })
+  
+  // Close mobile keyboard
+  nextTick(() => {
+    const searchInput = document.querySelector('input[placeholder*="Search for a subject"]')
+    if (searchInput) {
+      searchInput.blur()
+    }
+  })
+  
   isOpen.value = false
+}
+
+
+// Perform manual search
+const performSearch = () => {
+  currentPage.value = 1
+  hasMore.value = true
+  loadSubjects(true)
+  
+  // Close mobile keyboard
+  nextTick(() => {
+    const searchInput = document.querySelector('input[placeholder*="Search for a subject"]')
+    if (searchInput) {
+      searchInput.blur()
+    }
+  })
+}
+
+// Clear all search criteria and results
+const clearAll = () => {
+  // Set clearing flag to prevent watcher from triggering
+  isClearing.value = true
+  
+  // Clear all fields and reset state
+  searchQuery.value = ''
+  selectedTags.value = []
+  subjects.value = []
+  hasSearched.value = false
+  currentPage.value = 1
+  hasMore.value = true
+  error.value = null
+  
+  // Clear dropdown selection
+  handleComposableSubjectSelection(null)
+  
+  // Reset clearing flag after a short delay
+  nextTick(() => {
+    isClearing.value = false
+    
+    // Close mobile keyboard
+    const searchInput = document.querySelector('input[placeholder*="Search for a subject"]')
+    if (searchInput) {
+      searchInput.blur()
+    }
+  })
 }
 
 // Cleanup function to stop videos
@@ -309,21 +376,20 @@ const cleanupVideos = () => {
   }
 }
 
-// Watch for modal opening to load initial subjects
+// Watch for modal opening to reset state only
 watch(isOpen, (newValue) => {
   if (newValue) {
     // Reset state when opening
     searchQuery.value = ''
     selectedTags.value = [...(props.initialTags || [])]
-    tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
     subjects.value = []
     hasSearched.value = false
     currentPage.value = 1
     hasMore.value = true
     error.value = null
     
-    // Load initial subjects
-    loadSubjects(true)
+    // Reset dropdown selection
+    selectedSubjectFromDropdown.value = null
     
     // Start video autoplay if video is selected
     if (props.selectedVideo) {
@@ -332,6 +398,7 @@ watch(isOpen, (newValue) => {
   } else {
     // Reset tags when modal closes and cleanup videos
     selectedTags.value = []
+    selectedSubjectFromDropdown.value = null
     cleanupVideos()
   }
 })
@@ -343,17 +410,13 @@ watch(() => props.selectedVideo, (newVideo) => {
   }
 }, { immediate: true })
 
-// Watch for search query changes
+// Watch for search query changes - only reload all subjects when cleared (but not during manual clear)
 watch(searchQuery, (newValue) => {
-  if (isOpen.value) {
-    if (newValue.trim()) {
-      debouncedSearch()
-    } else {
-      // If search is cleared, load all subjects
-      currentPage.value = 1
-      hasMore.value = true
-      loadSubjects(true)
-    }
+  if (isOpen.value && !newValue.trim() && !isClearing.value) {
+    // If search is cleared naturally (not via clear button), load all subjects
+    currentPage.value = 1
+    hasMore.value = true
+    loadSubjects(true)
   }
 })
 </script>

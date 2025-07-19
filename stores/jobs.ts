@@ -54,6 +54,24 @@ export const useJobsStore = defineStore('jobs', () => {
     await saveAutoRefreshSetting(newValue)
   })
 
+  // Helper function to sort jobs with active jobs prioritized
+  const sortJobsWithActivePriority = (jobsList: Job[]) => {
+    return jobsList.sort((a, b) => {
+      // First, prioritize active jobs
+      if (a.status === 'active' && b.status !== 'active') {
+        return -1 // a comes first
+      }
+      if (b.status === 'active' && a.status !== 'active') {
+        return 1 // b comes first
+      }
+      
+      // If both are active or both are not active, sort by updated_at (most recent first)
+      const aUpdated = new Date(a.updated_at || a.created_at).getTime()
+      const bUpdated = new Date(b.updated_at || b.created_at).getTime()
+      return bUpdated - aUpdated
+    })
+  }
+
   // Actions
   const fetchQueueStatus = async () => {
     try {
@@ -91,8 +109,8 @@ export const useJobsStore = defineStore('jobs', () => {
       const searchParams = new URLSearchParams()
       searchParams.append('limit', limit.toString())
       searchParams.append('offset', ((page - 1) * limit).toString())
-      searchParams.append('order_by', 'updated_at')
-      searchParams.append('order_direction', 'desc')
+      searchParams.append('sort_by', 'updated_at')
+      searchParams.append('sort_order', 'desc')
       
       if (statusFilter) {
         searchParams.append('status', statusFilter)
@@ -122,8 +140,11 @@ export const useJobsStore = defineStore('jobs', () => {
         total = 0
       }
 
+      // Sort jobs to prioritize active jobs while maintaining updated_at order
+      const sortedJobs = sortJobsWithActivePriority(newJobs)
+      
       // Only replace jobs after successful fetch
-      jobs.value = newJobs
+      jobs.value = sortedJobs
       totalJobs.value = total
     } catch (error) {
       console.error('❌ Failed to fetch jobs:', error)

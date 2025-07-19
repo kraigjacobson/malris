@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
     if (query.filename_pattern) searchParams.append('filename_pattern', query.filename_pattern as string)
     if (query.subject_uuid) searchParams.append('subject_uuid', query.subject_uuid as string)
     if (query.job_id) searchParams.append('job_id', query.job_id as string)
+    if (query.exclude_videos_with_jobs !== undefined) searchParams.append('exclude_videos_with_jobs', query.exclude_videos_with_jobs as string)
     if (query.dest_media_uuid_ref) searchParams.append('dest_media_uuid_ref', query.dest_media_uuid_ref as string)
     if (query.has_subject !== undefined) searchParams.append('has_subject', query.has_subject as string)
     
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
     if (query.max_completions !== undefined) searchParams.append('max_completions', query.max_completions as string)
     
     if (query.limit) searchParams.append('limit', query.limit as string)
+    if (query.pick_random !== undefined) searchParams.append('pick_random', query.pick_random as string)
     
     // Handle pagination - convert page to offset
     if (query.page) {

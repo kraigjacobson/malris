@@ -77,6 +77,16 @@
           </div>
         </div>
         
+        <!-- Job Assignment Filter -->
+        <div>
+          <UCheckbox
+            v-model="excludeAssignedVideos"
+            label="Hide Done"
+            class="text-sm"
+            @update:model-value="debouncedSearch"
+          />
+        </div>
+        
         <!-- Duration Filters -->
         <div class="grid grid-cols-2 gap-2">
           <div>
@@ -175,6 +185,7 @@ const isOpen = computed({
 // Search and pagination state
 const selectedTags = ref([])
 const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
+const excludeAssignedVideos = ref(true) // Default to checked
 const completionFilters = ref({
   min_completions: 0,
   max_completions: null
@@ -296,6 +307,11 @@ const loadVideos = async (reset = false) => {
       params.append('max_duration', durationFilters.value.max_duration.toString())
     }
 
+    // Filter out videos assigned to jobs if checkbox is checked
+    if (excludeAssignedVideos.value) {
+      params.append('exclude_videos_with_jobs', 'true')
+    }
+
     params.append('include_thumbnails', 'true')
 
     const response = await useApiFetch(`media/search?${params.toString()}`)
@@ -376,6 +392,13 @@ watch(durationFilters, () => {
     debouncedSearch()
   }
 }, { deep: true })
+
+// Watch for job assignment filter changes
+watch(excludeAssignedVideos, () => {
+  if (isOpen.value) {
+    debouncedSearch()
+  }
+})
 
 // Watch for sort option changes
 watch(sortOptions, () => {

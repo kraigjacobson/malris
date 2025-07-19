@@ -3,6 +3,19 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: false },
   ssr: false,
+  
+  // Dev server configuration for security
+  devServer: {
+    host: '0.0.0.0',
+    port: 3000
+  },
+  
+  // Nitro configuration for production
+  nitro: {
+    experimental: {
+      wasm: true
+    }
+  },
   modules: [
     '@nuxt/icon',
     '@nuxt/eslint',

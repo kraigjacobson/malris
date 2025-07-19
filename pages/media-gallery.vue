@@ -12,12 +12,34 @@
     <!-- Search Filters -->
     <UCard class="mb-3 sm:mb-6">
       <template #header>
-        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-          Search Filters
-        </h2>
+        <div class="flex justify-between items-center">
+          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+            Search Filters
+          </h2>
+          <div class="flex gap-2 items-center">
+            <!-- Slideshow Button -->
+            <UButton
+              color="primary"
+              variant="outline"
+              size="xs"
+              @click="startSlideshow"
+            >
+              <UIcon name="i-heroicons-play" class="mr-1" />
+              <span class="hidden sm:inline">Slideshow</span>
+            </UButton>
+            <!-- Collapse Button -->
+            <UButton
+              variant="ghost"
+              size="xs"
+              @click="filtersCollapsed = !filtersCollapsed"
+            >
+              <UIcon :name="filtersCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'" />
+            </UButton>
+          </div>
+        </div>
       </template>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div v-show="!filtersCollapsed" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <!-- Media Type Filter -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -49,16 +71,10 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Subject
           </label>
-          <UInputMenu
+          <SubjectSearch
             v-model="selectedSubject"
-            v-model:search-term="subjectSearchQuery"
-            :items="subjectItems"
             placeholder="Search for a subject..."
-            class="w-full"
-            by="value"
-            option-attribute="label"
-            searchable
-            @update:model-value="handleSubjectSelection"
+            @select="handleSubjectSelection"
           />
         </div>
 
@@ -74,18 +90,6 @@
               class="w-full"
             />
             
-            <!-- Tag Search Options -->
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Search Mode
-              </label>
-              <USelectMenu
-                v-model="tagSearchMode"
-                :items="tagSearchModeOptions"
-                class="w-full"
-                size="sm"
-              />
-            </div>
           </div>
         </div>
         
@@ -126,7 +130,7 @@
       </div>
 
       <!-- Sort Options and Limit -->
-      <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
+      <div v-show="!filtersCollapsed" class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Sort By
@@ -162,7 +166,7 @@
         </div>
       </div>
 
-      <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+      <div v-show="!filtersCollapsed" class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
         <UButton
           v-if="!isLoading"
           color="primary"
@@ -550,6 +554,72 @@
       </template>
     </UModal>
 
+    <!-- Slideshow Overlay -->
+    <div v-if="isSlideshow" class="fixed top-0 left-0 w-full h-full z-[99999] bg-black">
+      <!-- Video Container -->
+      <div id="slideshow-video-container" class="absolute top-0 left-0 w-full h-full">
+        <!-- Simple Loading indicator -->
+        <div v-if="!slideshowVideo || !debugInfo.videoCanPlay" class="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
+          <div class="text-center">
+            <UIcon name="i-heroicons-arrow-path" class="animate-spin text-6xl mb-4" />
+            <p class="text-xl">Loading next video...</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Navigation Controls -->
+      <div class="absolute top-4 right-4 z-50 flex gap-2">
+        <UButton
+          variant="solid"
+          color="white"
+          :icon="slideshowPaused ? 'i-heroicons-play' : 'i-heroicons-pause'"
+          size="sm"
+          @click="toggleSlideshowPause"
+          @touchstart="toggleSlideshowPause"
+          @touchend.prevent
+        >
+          {{ slideshowPaused ? 'Resume' : 'Pause' }}
+        </UButton>
+        <UButton
+          variant="solid"
+          color="white"
+          icon="i-heroicons-x-mark"
+          size="sm"
+          @click="stopSlideshow"
+          @touchstart="stopSlideshow"
+          @touchend.prevent
+        >
+          Exit
+        </UButton>
+      </div>
+      
+      <!-- Navigation Arrows -->
+      <div class="absolute top-0 left-0 w-full h-full flex items-center justify-between px-4 z-40">
+        <UButton
+          v-if="slideshowCurrentIndex > 0"
+          variant="solid"
+          color="white"
+          icon="i-heroicons-chevron-left"
+          size="lg"
+          @click="slideshowPrevious"
+          @touchstart="slideshowPrevious"
+          @touchend.prevent
+        />
+        <div v-else class="w-12"></div>
+        
+        <UButton
+          variant="solid"
+          color="white"
+          icon="i-heroicons-chevron-right"
+          size="lg"
+          @click="slideshowNext"
+          @touchstart="slideshowNext"
+          @touchend.prevent
+        />
+      </div>
+      
+    </div>
+
   </div>
 </template>
 
@@ -568,13 +638,12 @@ const settingsStore = useSettingsStore()
 // Reactive data
 const filters = ref({
   media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
-  purpose: { label: 'All Purposes', value: '' }, // Default to all purposes
+  purpose: { label: 'Output', value: 'output' }, // Default to output purpose
   subject_uuid: ''
 })
 
 // Tag search functionality
 const selectedTags = ref([])
-const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
 
 // Completion filters with defaults for media gallery (min=0, max=null)
 const completionFilters = ref({
@@ -582,28 +651,8 @@ const completionFilters = ref({
   max_completions: null
 })
 
-// Subject search using composable
-const {
-  selectedSubject,
-  searchQuery: subjectSearchQuery,
-  subjectItems: baseSubjectItems,
-  loadSubjects: loadBaseSubjects,
-  handleSubjectSelection: handleComposableSubjectSelection
-} = useSubjects()
-
-// Add "All Subjects" option to the composable items
-const subjectItems = computed(() => [
-  { value: '', label: 'All Subjects' },
-  ...baseSubjectItems.value
-])
-
-const loadSubjects = async () => {
-  await loadBaseSubjects()
-}
-
-// Load subjects on mount and when search changes
-onMounted(() => loadSubjects())
-watch(subjectSearchQuery, () => loadSubjects())
+// Subject selection state
+const selectedSubject = ref(null)
 
 const sortOptions = ref({
   sort_by: 'created_at',
@@ -628,6 +677,31 @@ const pagination = ref({
 // Video hover state
 const hoveredVideoId = ref(null)
 
+// Slideshow state
+const isSlideshow = ref(false)
+const slideshowVideo = ref(null)
+const slideshowInterval = ref(null)
+const slideshowHistory = ref([]) // Keep track of played videos
+const slideshowCurrentIndex = ref(-1)
+const slideshowPaused = ref(false)
+
+// Search filters collapse state
+const filtersCollapsed = ref(false)
+
+// Debug state for mobile debugging
+const debugInfo = ref({
+  step: 'idle',
+  url: '',
+  uuid: '',
+  error: '',
+  videoCreated: false,
+  videoLoaded: false,
+  videoCanPlay: false
+})
+
+// Loading state to prevent multiple simultaneous loads
+const isLoadingVideo = ref(false)
+
 // Computed properties for navigation
 const imageResults = computed(() => {
   return mediaResults.value.filter(media => media.type === 'image')
@@ -636,6 +710,7 @@ const imageResults = computed(() => {
 const allMediaResults = computed(() => {
   return mediaResults.value
 })
+
 
 const currentImageIndex = computed(() => {
   if (!selectedMedia.value) return -1
@@ -698,10 +773,6 @@ const limitOptions = [
   { label: '48 per page', value: 48 }
 ]
 
-const tagSearchModeOptions = [
-  { label: 'Partial Match', value: 'partial' },
-  { label: 'Exact Match', value: 'exact' }
-]
 
 
 // Search cancellation
@@ -711,6 +782,9 @@ const searchController = ref(null)
 const searchMedia = async () => {
   isLoading.value = true
   hasSearched.value = true
+  
+  // Collapse filters after search is submitted
+  filtersCollapsed.value = true
 
   // Create new AbortController for this search
   searchController.value = new AbortController()
@@ -729,10 +803,8 @@ const searchMedia = async () => {
     // Add selected tags from UInputTags component
     if (selectedTags.value.length > 0) {
       params.append('tags', selectedTags.value.join(','))
-      
-      // Use the selected tag match mode
-      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
-      params.append('tag_match_mode', searchMode)
+      // Always use partial match mode
+      params.append('tag_match_mode', 'partial')
     }
     
     // Add completion filters (only for video searches)
@@ -881,7 +953,6 @@ const clearFilters = () => {
   
   // Clear tag search fields
   selectedTags.value = []
-  tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
   
   // Reset completion filters to defaults
   completionFilters.value = {
@@ -911,7 +982,16 @@ const handleSubjectSelection = (selected) => {
   } else {
     filters.value.subject_uuid = ''
   }
+  
+  // Close mobile keyboard by blurring the input
+  nextTick(() => {
+    const subjectInput = document.querySelector('input[placeholder*="Search for a subject"]')
+    if (subjectInput) {
+      subjectInput.blur()
+    }
+  })
 }
+
 
 const handleImageError = (event) => {
   console.error('❌ Image failed to load:', {
@@ -1070,10 +1150,12 @@ const handleVideoHover = async (videoId, isHovering) => {
           // Set the video source dynamically using Nuxt streaming endpoint
           const videoSrc = `/api/stream/${videoId}`
 
-          // Ensure video is properly configured for autoplay
+          // Ensure video is properly configured for mobile autoplay
           targetVideo.muted = true
           targetVideo.playsInline = true
           targetVideo.autoplay = true
+          targetVideo.setAttribute('webkit-playsinline', 'true')
+          targetVideo.setAttribute('playsinline', 'true')
           
           // Set the source
           targetVideo.src = videoSrc
@@ -1081,26 +1163,9 @@ const handleVideoHover = async (videoId, isHovering) => {
           // Load the video first
           targetVideo.load()
           
-          // Wait for the video to be ready and then play
-          const playVideo = async () => {
-            try {
-              // Check again if we're still hovering
-              if (hoveredVideoId.value !== videoId) return
-              
-              targetVideo._playPromise = targetVideo.play()
-              await targetVideo._playPromise
-            } catch (error) {
-              console.error('Video autoplay failed:', error)
-            }
-          }
-          
-          // Try to play when video can start playing
-          targetVideo.addEventListener('canplay', playVideo, { once: true })
-          
-          // Also try to play immediately in case video loads quickly
-          if (targetVideo.readyState >= 3) { // HAVE_FUTURE_DATA
-            playVideo()
-          }
+          // Let autoplay handle the video start for mobile compatibility
+          // Manual play() calls often fail on mobile browsers
+          console.log('Video hover: autoplay enabled, letting browser handle playback')
           
         } catch (error) {
           console.error('Video setup failed:', error)
@@ -1142,17 +1207,470 @@ const handleVideoHover = async (videoId, isHovering) => {
   }
 }
 
+// Slideshow methods
+const startSlideshow = async () => {
+  console.log('DEBUG: Starting slideshow')
+  debugInfo.value = {
+    step: 'Starting slideshow...',
+    url: '',
+    error: '',
+    videoCreated: false,
+    videoLoaded: false,
+    videoCanPlay: false
+  }
+  
+  isSlideshow.value = true
+  slideshowHistory.value = []
+  slideshowCurrentIndex.value = -1
+  slideshowPaused.value = false
+  
+  // Wait for the DOM to update
+  await nextTick()
+  
+  // Create and setup video element immediately
+  createSlideshowVideo()
+  
+  // Load the first video
+  loadNextSlideshowVideo()
+}
+
+const createSlideshowVideo = () => {
+  if (!slideshowVideo.value) {
+    debugInfo.value.step = 'Creating video element...'
+    console.log('DEBUG: Creating video element for mobile/desktop')
+    
+    slideshowVideo.value = document.createElement('video')
+    slideshowVideo.value.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      z-index: 10;
+      display: block;
+      background: transparent;
+    `
+    
+    // Mobile-optimized video settings
+    slideshowVideo.value.controls = false
+    slideshowVideo.value.autoplay = true  // Enable autoplay since we're muted
+    slideshowVideo.value.muted = true  // Required for mobile autoplay
+    slideshowVideo.value.playsInline = true
+    slideshowVideo.value.loop = false  // Don't loop individual videos
+    slideshowVideo.value.setAttribute('webkit-playsinline', 'true')
+    slideshowVideo.value.setAttribute('playsinline', 'true')
+    slideshowVideo.value.setAttribute('preload', 'none')  // Same as MediaGrid - don't preload
+    slideshowVideo.value.setAttribute('crossorigin', 'anonymous')
+    // Add mobile-specific attributes
+    slideshowVideo.value.setAttribute('x-webkit-airplay', 'allow')
+    slideshowVideo.value.setAttribute('disablePictureInPicture', 'true')
+    
+    debugInfo.value.videoCreated = true
+    
+    // Add debug event listeners
+    slideshowVideo.value.addEventListener('loadstart', () => {
+      console.log('🎬 DEBUG: Video loadstart event for URL:', slideshowVideo.value.src)
+      debugInfo.value.step = 'Video loading started...'
+      // UUID is logged by Nuxt server when video streams - check server console
+      debugInfo.value.uuid = 'check-server-logs'
+    })
+    
+    slideshowVideo.value.addEventListener('loadeddata', () => {
+      console.log('DEBUG: Video loadeddata event')
+      debugInfo.value.videoLoaded = true
+      debugInfo.value.step = 'Video data loaded...'
+    })
+    
+    slideshowVideo.value.addEventListener('canplay', () => {
+      console.log('DEBUG: Video canplay event')
+      debugInfo.value.videoCanPlay = true
+      debugInfo.value.step = 'Video ready to play!'
+    })
+    
+    slideshowVideo.value.addEventListener('error', (e) => {
+      console.error('🚨 DEBUG: Video error event:', e)
+      const error = e.target?.error
+      const errorDetails = {
+        message: error?.message || e.message || 'Unknown error',
+        code: error?.code || 'No code',
+        networkState: e.target?.networkState || 'Unknown',
+        readyState: e.target?.readyState || 'Unknown',
+        src: e.target?.src || 'No src',
+        uuid: debugInfo.value.uuid || 'unknown',
+        errorObject: error
+      }
+      
+      // Map error codes to human readable messages
+      const errorMessages = {
+        1: 'MEDIA_ERR_ABORTED - Video loading aborted',
+        2: 'MEDIA_ERR_NETWORK - Network error while loading video',
+        3: 'MEDIA_ERR_DECODE - Video decoding error',
+        4: 'MEDIA_ERR_SRC_NOT_SUPPORTED - Video format not supported'
+      }
+      
+      const errorMsg = errorMessages[error?.code] || `Unknown error code: ${error?.code}`
+      
+      debugInfo.value.error = `${errorMsg} (Network: ${errorDetails.networkState}, Ready: ${errorDetails.readyState})`
+      debugInfo.value.step = 'Video error - trying next video'
+      console.error('🚨 DEBUG: Video ERROR for UUID:', errorDetails.uuid)
+      console.error('🚨 DEBUG: Error details:', errorDetails)
+      console.error('🚨 DEBUG: Error message:', errorMsg)
+      
+      // Auto-advance on format errors (code 4) or decode errors (code 3) - these are incompatible videos
+      if (isSlideshow.value && !isLoadingVideo.value && (error?.code === 3 || error?.code === 4)) {
+        console.log('🚨 DEBUG: Skipping incompatible video format, trying next video:', errorMsg)
+        setTimeout(() => {
+          if (isSlideshow.value) {
+            loadNextSlideshowVideo(true)
+          }
+        }, 500) // Shorter delay for format errors
+      } else if (error?.code === 2) {
+        // Network errors - retry after longer delay
+        console.log('🚨 DEBUG: Network error, retrying after delay:', errorMsg)
+        setTimeout(() => {
+          if (isSlideshow.value) {
+            loadNextSlideshowVideo(true)
+          }
+        }, 2000)
+      } else if (error?.code === 1) {
+        // Aborted - try next immediately
+        console.log('🚨 DEBUG: Video aborted, trying next:', errorMsg)
+        setTimeout(() => {
+          if (isSlideshow.value) {
+            loadNextSlideshowVideo(true)
+          }
+        }, 100)
+      }
+    })
+    
+    // Add event listener for when video ends
+    slideshowVideo.value.addEventListener('ended', () => {
+      if (isSlideshow.value && !slideshowPaused.value) {
+        loadNextSlideshowVideo()
+      }
+    })
+    
+    // Append to the slideshow container
+    const container = document.getElementById('slideshow-video-container')
+    if (container) {
+      container.appendChild(slideshowVideo.value)
+      console.log('DEBUG: Video element created and appended to container')
+      debugInfo.value.step = 'Video element created and added to DOM'
+    } else {
+      console.error('DEBUG: Slideshow container not found')
+      debugInfo.value.error = 'Slideshow container not found'
+    }
+  }
+}
+
+const stopSlideshow = () => {
+  console.log('DEBUG: Stopping slideshow')
+  isSlideshow.value = false
+  slideshowPaused.value = false
+  
+  if (slideshowInterval.value) {
+    clearInterval(slideshowInterval.value)
+    slideshowInterval.value = null
+  }
+  if (slideshowVideo.value) {
+    slideshowVideo.value.pause()
+    slideshowVideo.value.src = ''
+    slideshowVideo.value.load()
+    slideshowVideo.value.remove()
+    slideshowVideo.value = null
+  }
+  slideshowHistory.value = []
+  slideshowCurrentIndex.value = -1
+}
+
+const toggleSlideshowPause = () => {
+  console.log('DEBUG: Toggle pause/resume slideshow', slideshowPaused.value)
+  if (!slideshowVideo.value) {
+    console.log('DEBUG: No video element found')
+    return
+  }
+  
+  if (slideshowPaused.value) {
+    // Resume: try to play but don't throw errors on mobile
+    slideshowVideo.value.play().catch(error => {
+      console.warn('Resume play failed (mobile autoplay restriction):', error)
+      // On mobile, user might need to tap the video directly
+    })
+    slideshowPaused.value = false
+    console.log('DEBUG: Resumed slideshow')
+  } else {
+    slideshowVideo.value.pause()
+    slideshowPaused.value = true
+    console.log('DEBUG: Paused slideshow')
+  }
+}
+
+const slideshowPrevious = () => {
+  console.log('DEBUG: Previous slideshow video clicked, current index:', slideshowCurrentIndex.value)
+  if (slideshowCurrentIndex.value > 0) {
+    slideshowCurrentIndex.value--
+    const previousVideo = slideshowHistory.value[slideshowCurrentIndex.value]
+    console.log('DEBUG: Playing previous video from history:', previousVideo)
+    playVideoFromHistory(previousVideo)
+  } else {
+    console.log('DEBUG: No previous video available')
+  }
+}
+
+const slideshowNext = () => {
+  console.log('DEBUG: Next slideshow video clicked')
+  loadNextSlideshowVideo()
+}
+
+const playVideoFromHistory = async (videoUrl) => {
+  if (!slideshowVideo.value) return
+  
+  console.log('Playing video from history:', videoUrl)
+  slideshowVideo.value.src = videoUrl
+  slideshowVideo.value.load()
+  if (!slideshowPaused.value) {
+    try {
+      await slideshowVideo.value.play()
+      console.log('History video playing successfully')
+    } catch (playError) {
+      console.error('History video play failed:', playError)
+    }
+  }
+}
+
+const loadNextSlideshowVideo = async (fromTimeout = false) => {
+  // Prevent multiple simultaneous loads, unless it's from a timeout
+  if (isLoadingVideo.value && !fromTimeout) {
+    console.log('DEBUG: Already loading video, skipping...')
+    return
+  }
+  
+  isLoadingVideo.value = true
+  
+  try {
+    debugInfo.value.step = 'Loading next video...'
+    debugInfo.value.error = ''
+    debugInfo.value.videoLoaded = false
+    debugInfo.value.videoCanPlay = false
+    
+    console.log('Loading next slideshow video...')
+    
+    // Ensure video element exists
+    if (!slideshowVideo.value) {
+      createSlideshowVideo()
+    }
+    
+    if (!slideshowVideo.value) {
+      console.error('Failed to create video element')
+      debugInfo.value.error = 'Failed to create video element'
+      return
+    }
+    
+    // Build query parameters based on current filters
+    const params = new URLSearchParams()
+    
+    // Extract values from objects if needed
+    const mediaType = typeof filters.value.media_type === 'object' ? filters.value.media_type.value : filters.value.media_type
+    const purpose = typeof filters.value.purpose === 'object' ? filters.value.purpose.value : filters.value.purpose
+    
+    if (mediaType) params.append('media_type', mediaType)
+    if (purpose) params.append('purpose', purpose)
+    if (filters.value.subject_uuid) params.append('subject_uuid', filters.value.subject_uuid)
+    
+    // Add selected tags
+    if (selectedTags.value.length > 0) {
+      params.append('tags', selectedTags.value.join(','))
+      // Always use partial match mode
+      params.append('tag_match_mode', 'partial')
+    }
+    
+    // Add completion filters (only for video searches)
+    if (mediaType === 'video') {
+      if (completionFilters.value.min_completions != null) {
+        params.append('min_completions', completionFilters.value.min_completions.toString())
+      }
+      if (completionFilters.value.max_completions != null) {
+        params.append('max_completions', completionFilters.value.max_completions.toString())
+      }
+    }
+    
+    // Add cache-busting parameter to ensure new random video
+    params.append('_t', Date.now().toString())
+    
+    // Get a random video UUID first, then stream it directly
+    debugInfo.value.step = 'Getting random video...'
+    
+    let streamUrl
+    try {
+      // Use pick_random parameter to get a single random video
+      params.append('pick_random', 'true')
+      // Remove limit when using pick_random (API ignores it anyway)
+      
+      const searchResponse = await useApiFetch(`media/search?${params.toString()}`)
+      
+      // Handle both response formats: pick_random returns single object, normal search returns { results: [...] }
+      let randomVideo
+      if (searchResponse.results) {
+        // Normal search response format
+        if (searchResponse.results.length === 0) {
+          throw new Error('No videos found matching criteria')
+        }
+        randomVideo = searchResponse.results[0]
+      } else if (searchResponse.uuid) {
+        // pick_random response format - single video object
+        randomVideo = searchResponse
+      } else {
+        throw new Error('No videos found matching criteria')
+      }
+      
+      debugInfo.value.uuid = randomVideo.uuid
+      console.log('🎬 Selected random video:', randomVideo.uuid, randomVideo.filename)
+      
+      // Use direct UUID stream like MediaGrid does
+      streamUrl = `/api/stream/${randomVideo.uuid}`
+      console.log('🎬 Stream URL:', streamUrl)
+      debugInfo.value.url = streamUrl
+      debugInfo.value.step = 'Setting video source...'
+      
+      // Set thumbnail as poster if available
+      if (randomVideo.thumbnail) {
+        slideshowVideo.value.poster = randomVideo.thumbnail
+      }
+      
+    } catch (error) {
+      console.error('Failed to get random video:', error)
+      debugInfo.value.error = `Failed to get random video: ${error.message}`
+      debugInfo.value.step = 'Error getting random video'
+      return
+    }
+    // Always add to history for new videos
+    slideshowHistory.value.push(streamUrl)
+    slideshowCurrentIndex.value = slideshowHistory.value.length - 1
+    
+    // Force clear video cache and reset element
+    slideshowVideo.value.pause()
+    slideshowVideo.value.removeAttribute('src')
+    slideshowVideo.value.innerHTML = ''
+    
+    // Set single source directly for better mobile compatibility
+    slideshowVideo.value.src = streamUrl
+    
+    // Force reload
+    slideshowVideo.value.load()
+    
+    console.log('Video sources set, attempting to play...')
+    debugInfo.value.step = 'Multiple video sources set, loading...'
+    
+    // Set up 3-second timeout for videos that don't start streaming
+    let timeoutId = null
+    let hasStartedPlaying = false
+    
+    const handleCanPlay = () => {
+      console.log('Video can play - but not clearing timeout yet')
+      debugInfo.value.step = 'Video can play - attempting to start...'
+      // Don't set hasStartedPlaying = true yet, wait for actual playback
+      // Don't clear timeout yet - let timeupdate or successful play() clear it
+    }
+    
+    const handleTimeUpdate = () => {
+      console.log('Video time update - clearing timeout')
+      debugInfo.value.step = 'Video playing successfully!'
+      hasStartedPlaying = true
+      isLoadingVideo.value = false
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      slideshowVideo.value.removeEventListener('timeupdate', handleTimeUpdate)
+    }
+    
+    // Add event listeners for successful streaming
+    slideshowVideo.value.addEventListener('canplay', handleCanPlay, { once: true })
+    slideshowVideo.value.addEventListener('timeupdate', handleTimeUpdate, { once: true })
+    
+    // Set 5-second timeout (increased for mobile)
+    timeoutId = setTimeout(() => {
+      if (!hasStartedPlaying && isSlideshow.value) {
+        console.log('Video timeout - loading next video')
+        debugInfo.value.step = 'Video timeout - trying next video'
+        debugInfo.value.error = 'Video failed to load within 5 seconds'
+        slideshowVideo.value.removeEventListener('canplay', handleCanPlay)
+        slideshowVideo.value.removeEventListener('timeupdate', handleTimeUpdate)
+        isLoadingVideo.value = false
+        // Force advance to next video after timeout
+        setTimeout(() => {
+          if (isSlideshow.value) {
+            loadNextSlideshowVideo(true) // Pass fromTimeout = true
+          }
+        }, 100)
+      }
+    }, 5000)
+    
+    // Let autoplay handle video start since we enabled it above
+    // Manual play() calls often fail on mobile due to user interaction requirements
+    debugInfo.value.step = 'Video loaded, waiting for autoplay...'
+    console.log('Video loaded, autoplay should start it automatically')
+    
+  } catch (error) {
+    console.error('Failed to load slideshow video:', error)
+    debugInfo.value.error = `Load error: ${error.message || 'Unknown error'}`
+    debugInfo.value.step = 'Error loading video'
+    isLoadingVideo.value = false
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Slideshow Error',
+      description: 'Failed to load random video for slideshow',
+      color: 'red',
+      timeout: 3000
+    })
+  }
+}
+
 // Keyboard shortcuts
 defineShortcuts({
   arrowleft: () => {
-    if (isModalOpen.value) navigateMedia(-1)
+    if (isSlideshow.value) {
+      slideshowPrevious()
+    } else if (isModalOpen.value) {
+      navigateMedia(-1)
+    }
   },
   arrowright: () => {
-    if (isModalOpen.value) navigateMedia(1)
+    if (isSlideshow.value) {
+      slideshowNext()
+    } else if (isModalOpen.value) {
+      navigateMedia(1)
+    }
+  },
+  space: () => {
+    if (isSlideshow.value) {
+      toggleSlideshowPause()
+    }
   },
   escape: () => {
-    if (isModalOpen.value) isModalOpen.value = false
+    if (isSlideshow.value) {
+      stopSlideshow()
+    } else if (isModalOpen.value) {
+      isModalOpen.value = false
+    }
   }
+})
+
+// Handle browser back button for slideshow
+onMounted(() => {
+  const handlePopState = () => {
+    if (isSlideshow.value) {
+      stopSlideshow()
+    }
+  }
+  
+  window.addEventListener('popstate', handlePopState)
+  
+  onUnmounted(() => {
+    window.removeEventListener('popstate', handlePopState)
+  })
 })
 
 // Watch for page changes

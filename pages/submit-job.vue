@@ -83,7 +83,6 @@
             </div>
           </div>
           
-          <p class="text-xs text-gray-500">Select the destination video for face swapping</p>
         </div>
 
         <!-- Subject Selection (for vid_faceswap) -->
@@ -92,45 +91,55 @@
             Subject <span class="text-red-500">*</span>
           </label>
           
-          <!-- Subject Selection Button and Preview -->
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-            <UButton
-              variant="outline"
-              icon="i-heroicons-user-20-solid"
-              @click="showSubjectModal = true"
+          <!-- Subject Selection Options -->
+          <div class="space-y-2">
+            <!-- Subject Name Search with Dropdown -->
+            <SubjectSearch
+              v-model="selectedSubject"
+              placeholder="Search by subject name..."
               :disabled="isSubmitting"
-              size="sm"
-              class="shrink-0 w-full sm:w-auto"
-            >
-              <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select Subject' }}</span>
-              <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select Subject' }}</span>
-            </UButton>
+              @select="handleSubjectSelection"
+            />
             
-            <!-- Selected Subject Preview -->
-            <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
-                <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {{ selectedSubject.label }}
-                </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                  {{ selectedSubject.value }}
-                </p>
-              </div>
+            <!-- Subject Selection Button -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
               <UButton
-                variant="ghost"
-                color="error"
-                icon="i-heroicons-x-mark-20-solid"
-                size="xs"
-                @click="clearSelectedSubject"
+                variant="outline"
+                icon="i-heroicons-user-20-solid"
+                @click="showSubjectModal = true"
                 :disabled="isSubmitting"
-              />
+                size="sm"
+                class="shrink-0 w-full sm:w-auto"
+              >
+                <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select from List' }}</span>
+                <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select from List' }}</span>
+              </UButton>
+            
+              <!-- Selected Subject Preview -->
+              <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
+                  <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {{ selectedSubject.label }}
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                    {{ selectedSubject.value }}
+                  </p>
+                </div>
+                <UButton
+                  variant="ghost"
+                  color="error"
+                  icon="i-heroicons-x-mark-20-solid"
+                  size="xs"
+                  @click="clearSelectedSubject"
+                  :disabled="isSubmitting"
+                />
+              </div>
             </div>
           </div>
           
-          <p class="text-xs text-gray-500">Select a subject for face swapping</p>
         </div>
 
         <!-- Additional Parameters -->
@@ -150,13 +159,12 @@
         </UAccordion>
 
         <!-- Submit Buttons -->
-        <div class="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <div class="flex gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
           <UButton
             type="submit"
             :loading="isSubmitting"
             :disabled="!isFormValid"
-            size="lg"
-            class="flex-1"
+            size="sm"
             color="primary"
           >
             {{ isSubmitting ? 'Submitting...' : 'Submit Job' }}
@@ -166,8 +174,8 @@
             variant="outline"
             @click="resetForm"
             :disabled="isSubmitting"
-            size="lg"
-            class="flex-1 sm:flex-none"
+            size="sm"
+            color="primary"
           >
             Reset
           </UButton>
@@ -257,6 +265,8 @@ const showVideoModal = ref(false)
 // Subject selection data
 const selectedSubject = ref(null)
 const showSubjectModal = ref(false)
+
+// Subject selection is now handled by SubjectSearch component
 
 // Cross-modal tag synchronization
 const subjectHairTags = ref([])
@@ -353,6 +363,7 @@ const clearSelectedSubject = () => {
   subjectHairTags.value = []
 }
 
+
 // Methods
 const submitJob = async () => {
   if (!isFormValid.value) return
@@ -425,6 +436,7 @@ const resetForm = () => {
   }
   selectedVideo.value = null
   selectedSubject.value = null
+  handleComposableSubjectSelection(null)
   subjectHairTags.value = []
   videoHairTags.value = []
   message.value = null

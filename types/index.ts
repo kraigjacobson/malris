@@ -4,6 +4,7 @@ export interface Job {
   job_type: string
   progress?: number
   created_at: string
+  updated_at?: string
   completed_at?: string
   source_media_uuid: string
   dest_media_uuid?: string

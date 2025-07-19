@@ -6,14 +6,8 @@
       <p class="text-gray-500 dark:text-gray-400">Loading subjects...</p>
     </div>
 
-    <!-- Empty State -->
-    <div v-else-if="!hasSearched" class="text-center py-12">
-      <UIcon name="i-heroicons-user-group-20-solid" class="w-12 h-12 text-gray-300 mx-auto mb-4" />
-      <p class="text-gray-500 dark:text-gray-400">{{ emptyStateMessage || 'Start typing to search for subjects' }}</p>
-    </div>
-
     <!-- No Results -->
-    <div v-else-if="subjects.length === 0" class="text-center py-12">
+    <div v-else-if="hasSearched && subjects.length === 0" class="text-center py-12">
       <UIcon name="i-heroicons-face-frown-20-solid" class="w-12 h-12 text-gray-300 mx-auto mb-4" />
       <p class="text-gray-500 dark:text-gray-400">No subjects found</p>
       <p class="text-sm text-gray-400 mt-2">Try adjusting your search terms</p>
@@ -69,7 +63,7 @@
 </template>
 
 <script setup>
-const props = defineProps({
+defineProps({
   subjects: {
     type: Array,
     default: () => []
@@ -124,9 +118,6 @@ const handleImageError = (event) => {
   }
 }
 
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleDateString()
-}
 </script>
 
 <style scoped>

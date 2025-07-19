@@ -3,6 +3,6 @@
 </template>
 
 <script setup>
-// Automatically redirect to job queue
-await navigateTo('/jobs')
+// Automatically redirect to media gallery
+await navigateTo('/media-gallery')
 </script>

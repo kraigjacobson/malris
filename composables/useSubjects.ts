@@ -1,6 +1,12 @@
+import { ref, watch } from 'vue'
+
 interface Subject {
   uuid: string
+  id: string
   name: string
+  has_thumbnail?: boolean
+  thumbnail_data?: string
+  tags?: string[]
 }
 
 interface SubjectItem {
@@ -8,7 +14,7 @@ interface SubjectItem {
   label: string
 }
 
-interface SubjectsResponse {
+interface ApiSubjectsResponse {
   subjects: Subject[]
 }
 
@@ -21,21 +27,34 @@ export const useSubjects = () => {
   const loadSubjects = async () => {
     isLoading.value = true
     try {
-      const data = await useApiFetch('subjects', {
-        query: {
-          search: searchQuery.value,
-          limit: 100
-        }
-      }) as SubjectsResponse
+      const params = new URLSearchParams()
+      params.append('name_only', 'true')
+      params.append('limit', '100')
       
-      if (data.subjects && Array.isArray(data.subjects)) {
-        subjectItems.value = data.subjects.map((subject: Subject) => ({
-          value: subject.uuid,
+      // Add search query if provided
+      if (searchQuery.value.trim()) {
+        params.append('name_pattern', searchQuery.value.trim())
+      }
+
+      console.log('🔍 Loading subjects with params:', Object.fromEntries(params))
+      
+      // Use direct API call to media server for faster response
+      const response = await $fetch<ApiSubjectsResponse>(`http://localhost:8000/subjects?${params.toString()}`)
+      
+      console.log('📊 Subjects response:', response)
+      
+      if (response.subjects && Array.isArray(response.subjects)) {
+        subjectItems.value = response.subjects.map((subject: Subject) => ({
+          value: subject.id, // Use id instead of uuid for consistency
           label: subject.name
         }))
+        console.log('✅ Mapped subject items:', subjectItems.value)
+      } else {
+        console.warn('⚠️ No subjects found in response:', response)
+        subjectItems.value = []
       }
     } catch (error) {
-      console.error('Failed to load subjects:', error)
+      console.error('❌ Failed to load subjects:', error)
       subjectItems.value = []
     } finally {
       isLoading.value = false
@@ -57,11 +76,24 @@ export const useSubjects = () => {
     subjectItems.value = []
   }
 
-  // Auto-load subjects when search query changes
+  // Debounced search - wait 300ms after user stops typing
+  let debounceTimeout: NodeJS.Timeout | null = null
+  const debouncedSearch = () => {
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout)
+    }
+    debounceTimeout = setTimeout(() => {
+      loadSubjects()
+    }, 300)
+  }
+
+  // Auto-load subjects when search query changes with debounce
   watch(searchQuery, () => {
-    loadSubjects()
+    debouncedSearch()
   })
 
+  // Load initial subjects when composable is created
+  loadSubjects()
   return {
     selectedSubject,
     searchQuery,
