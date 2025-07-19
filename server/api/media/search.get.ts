@@ -1,159 +1,448 @@
+import { getDb } from '~/server/utils/database'
+import { mediaRecords } from '~/server/utils/schema'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray } from 'drizzle-orm'
+
 export default defineEventHandler(async (event) => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    
-    // Build query string for the media API
-    const searchParams = new URLSearchParams()
-    
-    if (query.media_type) searchParams.append('media_type', query.media_type as string)
-    if (query.purpose) searchParams.append('purpose', query.purpose as string)
-    if (query.status) searchParams.append('status', query.status as string)
-    if (query.exclude_statuses) searchParams.append('exclude_statuses', query.exclude_statuses as string)
-    if (query.tags) searchParams.append('tags', query.tags as string)
-    if (query.tag_match_mode) searchParams.append('tag_match_mode', query.tag_match_mode as string)
-    if (query.filename_pattern) searchParams.append('filename_pattern', query.filename_pattern as string)
-    if (query.subject_uuid) searchParams.append('subject_uuid', query.subject_uuid as string)
-    if (query.job_id) searchParams.append('job_id', query.job_id as string)
-    if (query.exclude_videos_with_jobs !== undefined) searchParams.append('exclude_videos_with_jobs', query.exclude_videos_with_jobs as string)
-    if (query.dest_media_uuid_ref) searchParams.append('dest_media_uuid_ref', query.dest_media_uuid_ref as string)
-    if (query.has_subject !== undefined) searchParams.append('has_subject', query.has_subject as string)
-    
-    // File size filters
-    if (query.min_file_size) searchParams.append('min_file_size', query.min_file_size as string)
-    if (query.max_file_size) searchParams.append('max_file_size', query.max_file_size as string)
-    
-    // Dimension filters
-    if (query.min_width) searchParams.append('min_width', query.min_width as string)
-    if (query.max_width) searchParams.append('max_width', query.max_width as string)
-    if (query.min_height) searchParams.append('min_height', query.min_height as string)
-    if (query.max_height) searchParams.append('max_height', query.max_height as string)
-    
-    // Duration filters (for videos)
-    if (query.min_duration) searchParams.append('min_duration', query.min_duration as string)
-    if (query.max_duration) searchParams.append('max_duration', query.max_duration as string)
-    
-    // Date filters
-    if (query.created_after) searchParams.append('created_after', query.created_after as string)
-    if (query.created_before) searchParams.append('created_before', query.created_before as string)
-    if (query.updated_after) searchParams.append('updated_after', query.updated_after as string)
-    if (query.updated_before) searchParams.append('updated_before', query.updated_before as string)
-    if (query.accessed_after) searchParams.append('accessed_after', query.accessed_after as string)
-    if (query.accessed_before) searchParams.append('accessed_before', query.accessed_before as string)
-    
-    // Access count filters
-    if (query.min_access_count) searchParams.append('min_access_count', query.min_access_count as string)
-    if (query.max_access_count) searchParams.append('max_access_count', query.max_access_count as string)
-    
-    // Completion filters
-    if (query.min_completions !== undefined) searchParams.append('min_completions', query.min_completions as string)
-    if (query.max_completions !== undefined) searchParams.append('max_completions', query.max_completions as string)
-    
-    if (query.limit) searchParams.append('limit', query.limit as string)
-    if (query.pick_random !== undefined) searchParams.append('pick_random', query.pick_random as string)
-    
-    // Handle pagination - convert page to offset
-    if (query.page) {
-      const page = parseInt(query.page as string) || 1
-      const limit = parseInt(query.limit as string) || 16
-      const offset = (page - 1) * limit
-      searchParams.append('offset', offset.toString())
-    } else if (query.offset) {
-      searchParams.append('offset', query.offset as string)
-    }
-    
-    // Add sorting parameters with validation
+    const {
+      media_type,
+      purpose,
+      status,
+      exclude_statuses,
+      tags,
+      tag_match_mode = 'exact',
+      filename_pattern,
+      subject_uuid,
+      job_id,
+      exclude_videos_with_jobs,
+      dest_media_uuid_ref,
+      has_subject,
+      min_file_size,
+      max_file_size,
+      min_width,
+      max_width,
+      min_height,
+      max_height,
+      min_duration,
+      max_duration,
+      created_after,
+      created_before,
+      updated_after,
+      updated_before,
+      accessed_after,
+      accessed_before,
+      min_access_count,
+      max_access_count,
+      min_completions,
+      max_completions,
+      sort_by = 'created_at',
+      sort_order = 'desc',
+      limit = 100,
+      offset = 0,
+      page,
+      pick_random = false,
+      include_thumbnails = true
+    } = query
+
+    const db = getDb()
+
+    // Validate sort parameters
     const validMediaSortFields = [
       'filename', 'type', 'purpose', 'status', 'file_size', 'original_size',
       'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count'
     ]
-    const sortBy = (query.sort_by as string) || 'created_at'
-    const sortOrder = (query.sort_order as string) || 'desc'
     
-    // Validate and add sort parameters
-    if (validMediaSortFields.includes(sortBy)) {
-      searchParams.append('sort_by', sortBy)
-    } else {
-      searchParams.append('sort_by', 'created_at')
-    }
-    
-    if (['asc', 'desc'].includes(sortOrder.toLowerCase())) {
-      searchParams.append('sort_order', sortOrder.toLowerCase())
-    } else {
-      searchParams.append('sort_order', 'desc')
-    }
-
-    // Always include thumbnails to get base64 thumbnail data for videos
-    searchParams.set('include_thumbnails', 'true')
-
-    console.log('🔍 Searching media with params:', Object.fromEntries(searchParams))
-
-    // First check if media API is healthy
-    // Get runtime config for API URL
-    const config = useRuntimeConfig()
-    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
-    
-    try {
-      await $fetch(`${apiUrl}/health`, {
-        method: 'GET',
-        timeout: 5000
-      })
-    } catch (healthError: any) {
-      console.error('Media API health check failed:', healthError)
+    if (!validMediaSortFields.includes(sort_by as string)) {
       throw createError({
-        statusCode: 503,
-        statusMessage: 'Media API is not available. Please ensure the service is running on localhost:8000'
+        statusCode: 400,
+        statusMessage: `sort_by must be one of: ${validMediaSortFields.join(', ')}`
       })
     }
 
-    // Make request to media API - now always returns JSON with embedded base64 thumbnails
-    const response = await fetch(`${apiUrl}/media/search?${searchParams.toString()}`, {
-      method: 'GET'
+    if (!['asc', 'desc'].includes((sort_order as string).toLowerCase())) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "sort_order must be 'asc' or 'desc'"
+      })
+    }
+
+    // Validate tag_match_mode
+    if (!['exact', 'partial'].includes(tag_match_mode as string)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "tag_match_mode must be 'exact' or 'partial'"
+      })
+    }
+
+    // Build where conditions
+    const conditions = []
+
+    if (media_type) {
+      conditions.push(eq(mediaRecords.type, media_type as string))
+    }
+
+    if (purpose) {
+      conditions.push(eq(mediaRecords.purpose, purpose as string))
+    }
+
+    if (status) {
+      conditions.push(eq(mediaRecords.status, status as string))
+    }
+
+    // Handle exclude_statuses
+    if (exclude_statuses) {
+      const excludeList = (exclude_statuses as string).split(',').map(s => s.trim())
+      if (excludeList.includes('null')) {
+        // Exclude null values and other specified statuses
+        const nonNullExcludes = excludeList.filter(s => s !== 'null')
+        if (nonNullExcludes.length > 0) {
+          conditions.push(and(
+            isNotNull(mediaRecords.status),
+            notInArray(mediaRecords.status, nonNullExcludes)
+          ))
+        } else {
+          conditions.push(isNotNull(mediaRecords.status))
+        }
+      } else {
+        conditions.push(notInArray(mediaRecords.status, excludeList))
+      }
+    }
+
+    if (subject_uuid) {
+      conditions.push(eq(mediaRecords.subjectUuid, subject_uuid as string))
+    }
+
+    if (has_subject !== undefined) {
+      if (has_subject === 'true' || has_subject === true) {
+        conditions.push(isNotNull(mediaRecords.subjectUuid))
+      } else {
+        conditions.push(isNull(mediaRecords.subjectUuid))
+      }
+    }
+
+    if (job_id) {
+      conditions.push(eq(mediaRecords.jobId, job_id as string))
+    }
+
+    if (dest_media_uuid_ref) {
+      conditions.push(eq(mediaRecords.destMediaUuidRef, dest_media_uuid_ref as string))
+    }
+
+    if (filename_pattern) {
+      conditions.push(like(mediaRecords.filename, `%${filename_pattern}%`))
+    }
+
+    // File size filters
+    if (min_file_size !== undefined) {
+      conditions.push(gte(mediaRecords.fileSize, parseInt(min_file_size as string)))
+    }
+    if (max_file_size !== undefined) {
+      conditions.push(lte(mediaRecords.fileSize, parseInt(max_file_size as string)))
+    }
+
+    // Dimension filters
+    if (min_width !== undefined) {
+      conditions.push(gte(mediaRecords.width, parseInt(min_width as string)))
+    }
+    if (max_width !== undefined) {
+      conditions.push(lte(mediaRecords.width, parseInt(max_width as string)))
+    }
+    if (min_height !== undefined) {
+      conditions.push(gte(mediaRecords.height, parseInt(min_height as string)))
+    }
+    if (max_height !== undefined) {
+      conditions.push(lte(mediaRecords.height, parseInt(max_height as string)))
+    }
+
+    // Duration filters
+    if (min_duration !== undefined) {
+      conditions.push(gte(mediaRecords.duration, parseFloat(min_duration as string)))
+    }
+    if (max_duration !== undefined) {
+      conditions.push(lte(mediaRecords.duration, parseFloat(max_duration as string)))
+    }
+
+    // Date filters
+    if (created_after) {
+      conditions.push(gte(mediaRecords.createdAt, new Date(created_after as string)))
+    }
+    if (created_before) {
+      conditions.push(lte(mediaRecords.createdAt, new Date(created_before as string)))
+    }
+    if (updated_after) {
+      conditions.push(gte(mediaRecords.updatedAt, new Date(updated_after as string)))
+    }
+    if (updated_before) {
+      conditions.push(lte(mediaRecords.updatedAt, new Date(updated_before as string)))
+    }
+    if (accessed_after) {
+      conditions.push(gte(mediaRecords.lastAccessed, new Date(accessed_after as string)))
+    }
+    if (accessed_before) {
+      conditions.push(lte(mediaRecords.lastAccessed, new Date(accessed_before as string)))
+    }
+
+    // Access count filters
+    if (min_access_count !== undefined) {
+      conditions.push(gte(mediaRecords.accessCount, parseInt(min_access_count as string)))
+    }
+    if (max_access_count !== undefined) {
+      conditions.push(lte(mediaRecords.accessCount, parseInt(max_access_count as string)))
+    }
+
+    // Completions filters
+    if (min_completions !== undefined) {
+      conditions.push(gte(mediaRecords.completions, parseInt(min_completions as string)))
+    }
+    if (max_completions !== undefined) {
+      conditions.push(lte(mediaRecords.completions, parseInt(max_completions as string)))
+    }
+
+    // TODO: Implement tag filtering with JSONB operations
+    // This would require more complex SQL for exact/partial tag matching
+    if (tags) {
+      // For now, we'll add a placeholder condition
+      // In a full implementation, this would use JSONB operators
+      console.warn('Tag filtering not yet implemented in direct database query')
+    }
+
+    // TODO: Implement exclude_videos_with_jobs filter
+    // This would require subqueries to check job associations
+    if (exclude_videos_with_jobs !== undefined) {
+      console.warn('exclude_videos_with_jobs filtering not yet implemented in direct database query')
+    }
+
+    // Handle pagination
+    const limitNum = Math.min(parseInt(limit as string) || 100, 1000)
+    let offsetNum = parseInt(offset as string) || 0
+
+    if (page) {
+      const pageNum = parseInt(page as string) || 1
+      offsetNum = (pageNum - 1) * limitNum
+    }
+
+    // Handle random selection
+    if (pick_random === 'true' || pick_random === true) {
+      // For random selection, we'll get the count first, then use a random offset
+      const countResult = await db
+        .select({ count: count() })
+        .from(mediaRecords)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+      
+      const totalCount = countResult[0].count
+      if (totalCount === 0) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'No media found matching the specified criteria'
+        })
+      }
+
+      // Use random offset
+      const randomOffset = Math.floor(Math.random() * totalCount)
+      
+      const randomResult = await db
+        .select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename,
+          type: mediaRecords.type,
+          purpose: mediaRecords.purpose,
+          status: mediaRecords.status,
+          file_size: mediaRecords.fileSize,
+          original_size: mediaRecords.originalSize,
+          width: mediaRecords.width,
+          height: mediaRecords.height,
+          duration: mediaRecords.duration,
+          tags: mediaRecords.tags,
+          subject_uuid: mediaRecords.subjectUuid,
+          source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
+          dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
+          job_id: mediaRecords.jobId,
+          thumbnail_uuid: mediaRecords.thumbnailUuid,
+          created_at: mediaRecords.createdAt,
+          updated_at: mediaRecords.updatedAt,
+          last_accessed: mediaRecords.lastAccessed,
+          access_count: mediaRecords.accessCount,
+          completions: mediaRecords.completions
+        })
+        .from(mediaRecords)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .limit(1)
+        .offset(randomOffset)
+
+      if (randomResult.length === 0) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'No media found matching the specified criteria'
+        })
+      }
+
+      return {
+        uuid: randomResult[0].uuid,
+        media_type: randomResult[0].type,
+        filename: randomResult[0].filename,
+        purpose: randomResult[0].purpose,
+        total_matching: totalCount,
+        random_selection: true,
+        record: randomResult[0]
+      }
+    }
+
+    // Create the order by clause
+    let orderByClause
+    const sortDirection = (sort_order as string).toLowerCase() === 'desc' ? desc : asc
+    
+    switch (sort_by) {
+      case 'filename':
+        orderByClause = sortDirection(mediaRecords.filename)
+        break
+      case 'type':
+        orderByClause = sortDirection(mediaRecords.type)
+        break
+      case 'purpose':
+        orderByClause = sortDirection(mediaRecords.purpose)
+        break
+      case 'status':
+        orderByClause = sortDirection(mediaRecords.status)
+        break
+      case 'file_size':
+        orderByClause = sortDirection(mediaRecords.fileSize)
+        break
+      case 'original_size':
+        orderByClause = sortDirection(mediaRecords.originalSize)
+        break
+      case 'width':
+        orderByClause = sortDirection(mediaRecords.width)
+        break
+      case 'height':
+        orderByClause = sortDirection(mediaRecords.height)
+        break
+      case 'duration':
+        orderByClause = sortDirection(mediaRecords.duration)
+        break
+      case 'updated_at':
+        orderByClause = sortDirection(mediaRecords.updatedAt)
+        break
+      case 'last_accessed':
+        orderByClause = sortDirection(mediaRecords.lastAccessed)
+        break
+      case 'access_count':
+        orderByClause = sortDirection(mediaRecords.accessCount)
+        break
+      default: // created_at
+        orderByClause = sortDirection(mediaRecords.createdAt)
+        break
+    }
+
+    // Execute the main query
+    const results = await db
+      .select({
+        uuid: mediaRecords.uuid,
+        filename: mediaRecords.filename,
+        type: mediaRecords.type,
+        purpose: mediaRecords.purpose,
+        status: mediaRecords.status,
+        file_size: mediaRecords.fileSize,
+        original_size: mediaRecords.originalSize,
+        width: mediaRecords.width,
+        height: mediaRecords.height,
+        duration: mediaRecords.duration,
+        tags: mediaRecords.tags,
+        subject_uuid: mediaRecords.subjectUuid,
+        source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
+        dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
+        job_id: mediaRecords.jobId,
+        thumbnail_uuid: mediaRecords.thumbnailUuid,
+        created_at: mediaRecords.createdAt,
+        updated_at: mediaRecords.updatedAt,
+        last_accessed: mediaRecords.lastAccessed,
+        access_count: mediaRecords.accessCount,
+        completions: mediaRecords.completions
+      })
+      .from(mediaRecords)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(orderByClause)
+      .limit(limitNum)
+      .offset(offsetNum)
+
+    // Get total count for pagination info
+    const totalCountResult = await db
+      .select({ count: count() })
+      .from(mediaRecords)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+    
+    const totalCount = totalCountResult[0].count
+
+    // Transform results to match expected format
+    const transformedResults = results.map(result => ({
+      uuid: result.uuid,
+      filename: result.filename,
+      type: result.type,
+      purpose: result.purpose,
+      status: result.status,
+      file_size: result.file_size,
+      original_size: result.original_size,
+      width: result.width,
+      height: result.height,
+      duration: result.duration,
+      tags: result.tags,
+      subject_uuid: result.subject_uuid,
+      source_media_uuid_ref: result.source_media_uuid_ref,
+      dest_media_uuid_ref: result.dest_media_uuid_ref,
+      job_id: result.job_id,
+      thumbnail_uuid: result.thumbnail_uuid,
+      created_at: result.created_at,
+      updated_at: result.updated_at,
+      last_accessed: result.last_accessed,
+      access_count: result.access_count,
+      completions: result.completions,
+      // Add thumbnail processing flags
+      has_thumbnail: !!result.thumbnail_uuid,
+      thumbnail: null as string | null
+    }))
+
+    // Process thumbnails if include_thumbnails is true
+    if (include_thumbnails === 'true' || include_thumbnails === true) {
+      console.log('Processing thumbnails for media results...')
+      
+      for (const result of transformedResults) {
+        if (result.thumbnail_uuid && result.type === 'video') {
+          try {
+            // Use the media download API to get thumbnail data
+            const thumbnailUrl = `/api/media/${result.thumbnail_uuid}/download?size=sm`
+            
+            // For now, just set the thumbnail URL directly since we can't easily
+            // fetch and convert to base64 in the server-side context
+            result.thumbnail = thumbnailUrl
+            console.log(`✅ Added thumbnail URL for video ${result.uuid}`)
+          } catch (error: any) {
+            console.warn(`⚠️ Failed to get thumbnail for video ${result.uuid}:`, error?.message || 'Unknown error')
+            result.thumbnail = null
+          }
+        }
+      }
+    }
+
+    const response = {
+      results: transformedResults,
+      count: transformedResults.length,
+      limit: limitNum,
+      offset: offsetNum,
+      total_count: totalCount
+    }
+
+    console.log('🔍 Media search completed:', {
+      total_results: transformedResults.length,
+      total_count: totalCount,
+      videos_with_thumbnails: transformedResults.filter(r => r.type === 'video' && r.has_thumbnail).length
     })
 
-    if (!response.ok) {
-      throw createError({
-        statusCode: response.status,
-        statusMessage: `Media API error: ${response.statusText}`
-      })
-    }
-
-    const jsonResponse = await response.json()
-    
-    // Process results to convert base64 thumbnail data to data URLs for video elements
-    if (jsonResponse.results) {
-      jsonResponse.results = jsonResponse.results.map((result: any) => {
-        if (result.type === 'video' && result.has_thumbnail && result.thumbnail) {
-          // The thumbnail field already contains base64 data, convert to data URL for video poster
-          result.thumbnail = `data:image/jpeg;base64,${result.thumbnail}`
-        }
-        return result
-      })
-    }
-    
-    console.log('🎬 Video results with thumbnails:',
-      jsonResponse.results?.filter((r: any) => r.type === 'video' && r.thumbnail).length || 0)
-
-    return jsonResponse
+    return response
 
   } catch (error: any) {
-    console.error('Error searching media:', error)
+    console.error('Error searching media from database:', error)
     
-    // Handle different types of errors
-    if (error.cause?.code === 'ECONNREFUSED') {
-      throw createError({
-        statusCode: 503,
-        statusMessage: 'Media API is not available. Please ensure the service is running on localhost:8000'
-      })
-    }
-    
-    if (error.cause?.code === 'ETIMEDOUT') {
-      throw createError({
-        statusCode: 504,
-        statusMessage: 'Request to Media API timed out.'
-      })
-    }
-
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {
       throw error

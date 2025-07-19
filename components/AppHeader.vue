@@ -5,7 +5,7 @@
       <div class="flex justify-between items-center mb-2 sm:mb-4">
         <div>
           <NuxtLink to="/" class="text-lg sm:text-2xl font-bold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors">
-            <span class="hidden sm:inline">AI Job Tracking System</span>
+            <span class="hidden sm:inline">Malris</span>
             <span class="sm:hidden">AI Jobs</span>
           </NuxtLink>
         </div>

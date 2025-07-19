@@ -1,39 +1,6 @@
-// Media server response types
-interface MediaObject {
-  uuid: string
-  thumbnail_data?: string
-  [key: string]: any
-}
-
-interface MediaServerJob {
-  id: string
-  status: string
-  job_type: string
-  progress?: number
-  created_at: string
-  completed_at?: string
-  source_media_uuid: string
-  dest_media_uuid?: string
-  subject_uuid?: string
-  output_uuid?: string
-  parameters?: any
-  error_message?: string
-  // Nested media objects with thumbnail data
-  subject?: MediaObject
-  dest_media?: MediaObject
-  source_media?: MediaObject
-  output_media?: MediaObject
-  // Flat thumbnail fields (what frontend expects)
-  subject_thumbnail?: string
-  dest_media_thumbnail?: string
-  source_media_thumbnail?: string
-  output_thumbnail?: string
-}
-
-interface MediaServerResponse {
-  success: boolean
-  job: MediaServerJob
-}
+import { getDb } from '~/server/utils/database'
+import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
+import { eq } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -50,57 +17,132 @@ export default defineEventHandler(async (event) => {
     // Get query parameters for thumbnails
     const query = getQuery(event)
     const includeThumbnails = query.include_thumbnails || 'false'
-    const thumbnailSize = query.thumbnail_size || 'md'
+    const _thumbnailSize = query.thumbnail_size || 'md'
 
-    // Get media server URL from runtime config
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
+    const db = getDb()
 
-    // Build query string for media server
-    const queryParams = new URLSearchParams()
+    // Get the job with subject information
+    const jobResult = await db
+      .select({
+        id: jobs.id,
+        job_type: jobs.jobType,
+        status: jobs.status,
+        subject_uuid: jobs.subjectUuid,
+        source_media_uuid: jobs.sourceMediaUuid,
+        dest_media_uuid: jobs.destMediaUuid,
+        output_uuid: jobs.outputUuid,
+        parameters: jobs.parameters,
+        progress: jobs.progress,
+        error_message: jobs.errorMessage,
+        created_at: jobs.createdAt,
+        started_at: jobs.startedAt,
+        completed_at: jobs.completedAt,
+        updated_at: jobs.updatedAt,
+        // Subject info
+        subject_name: subjects.name,
+        subject_tags: subjects.tags,
+        subject_thumbnail_uuid: subjects.thumbnail,
+      })
+      .from(jobs)
+      .leftJoin(subjects, eq(jobs.subjectUuid, subjects.id))
+      .where(eq(jobs.id, jobId))
+      .limit(1)
+
+    if (jobResult.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Job not found'
+      })
+    }
+
+    const job = jobResult[0]
+
+    // Get additional media info for source, dest, and output
+    const [sourceMedia, destMedia, outputMedia] = await Promise.all([
+      // Get source media info
+      job.source_media_uuid ? 
+        db.select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename,
+          type: mediaRecords.type,
+          thumbnail_uuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, job.source_media_uuid))
+        .limit(1) : Promise.resolve([]),
+      
+      // Get dest media info
+      job.dest_media_uuid ? 
+        db.select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename,
+          type: mediaRecords.type,
+          thumbnail_uuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, job.dest_media_uuid))
+        .limit(1) : Promise.resolve([]),
+      
+      // Get output media info
+      job.output_uuid ? 
+        db.select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename,
+          type: mediaRecords.type,
+          thumbnail_uuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, job.output_uuid))
+        .limit(1) : Promise.resolve([])
+    ])
+
+    // Build the response in the expected format
+    const jobResponse = {
+      id: job.id,
+      job_type: job.job_type,
+      status: job.status,
+      subject_uuid: job.subject_uuid,
+      source_media_uuid: job.source_media_uuid,
+      dest_media_uuid: job.dest_media_uuid,
+      output_uuid: job.output_uuid,
+      parameters: job.parameters,
+      progress: job.progress,
+      error_message: job.error_message,
+      created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
+      updated_at: job.updated_at,
+      subject: job.subject_name ? {
+        id: job.subject_uuid,
+        name: job.subject_name,
+        tags: job.subject_tags,
+        thumbnail_uuid: job.subject_thumbnail_uuid
+      } : null,
+      source_media: sourceMedia[0] || null,
+      dest_media: destMedia[0] || null,
+      output_media: outputMedia[0] || null,
+      // Flat thumbnail fields for backward compatibility
+      subject_thumbnail: null,
+      dest_media_thumbnail: null,
+      source_media_thumbnail: null,
+      output_thumbnail: null
+    }
+
+    // TODO: Add thumbnail processing if include_thumbnails is true
+    // This would require implementing the decryption logic from the Python API
     if (includeThumbnails === 'true') {
-      queryParams.append('include_thumbnails', 'true')
-      queryParams.append('thumbnail_size', thumbnailSize.toString())
+      console.warn('Thumbnail processing not yet implemented in direct database query')
+      // For now, we'll just mark that thumbnails were requested but not processed
     }
 
-    const queryString = queryParams.toString()
-    const url = queryString ? `${mediaServerUrl}/jobs/${jobId}?${queryString}` : `${mediaServerUrl}/jobs/${jobId}`
-
-    // Forward the request to the media server
-    const response = await $fetch<MediaServerResponse>(url, {
-      method: 'GET',
-      timeout: 30000
-    })
-    
-    // Map nested thumbnail data to flat structure
-    if (response.job && includeThumbnails === 'true') {
-      const job = response.job
-      job.subject_thumbnail = job.subject?.thumbnail_data
-      job.dest_media_thumbnail = job.dest_media?.thumbnail_data
-      job.source_media_thumbnail = job.source_media?.thumbnail_data
-      job.output_thumbnail = job.output_media?.thumbnail_data
+    return {
+      success: true,
+      job: jobResponse
     }
-
-    return response
 
   } catch (error: any) {
-    console.error('Error fetching job from Media Server API:', error)
+    console.error('Error fetching job from database:', error)
     
-    // Handle different types of errors
-    if (error.cause?.code === 'ECONNREFUSED') {
-      throw createError({
-        statusCode: 503,
-        statusMessage: 'Media Server API is not available. Please ensure the service is running.'
-      })
-    }
-    
-    if (error.cause?.code === 'ETIMEDOUT') {
-      throw createError({
-        statusCode: 504,
-        statusMessage: 'Request to Media Server API timed out. The service may be overloaded.'
-      })
-    }
-
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {
       throw error

@@ -61,17 +61,17 @@ const loadSubjects = async () => {
   try {
     const params = new URLSearchParams()
     params.append('name_only', 'true')
-    params.append('limit', '100')
+    params.append('per_page', '100')
     
     // Add search query if provided
-    if (searchQuery.value.trim()) {
+    if (searchQuery.value && searchQuery.value.trim()) {
       params.append('name_pattern', searchQuery.value.trim())
     }
 
     console.log('🔍 Loading subjects with params:', Object.fromEntries(params))
     
-    // Use direct API call to media server for faster response
-    const data = await $fetch(`http://localhost:8000/subjects?${params.toString()}`)
+    // Use Nuxt API endpoint instead of external media server
+    const data = await $fetch(`/api/subjects?${params.toString()}`)
     
     console.log('📊 Subjects response:', data)
     

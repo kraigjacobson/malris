@@ -1,6 +1,6 @@
 /**
- * Delete a media record
- * Replaces the FastAPI /media/{record_uuid} DELETE route
+ * Update media record status
+ * Replaces the FastAPI /media/{record_uuid}/status PUT route
  */
 export default defineEventHandler(async (event) => {
   try {
@@ -13,12 +13,22 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    // Delete media record from database
+    // Parse form data to get status
+    const body = await readBody(event)
+    const status = body.status
+    
+    if (!status) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "Status is required"
+      })
+    }
+    
     const { getDbClient } = await import('~/server/utils/database')
     const client = await getDbClient()
     
     try {
-      // First check if the record exists
+      // Check if record exists
       const checkQuery = 'SELECT uuid FROM media_records WHERE uuid = $1'
       const checkResult = await client.query(checkQuery, [uuid])
       
@@ -29,28 +39,31 @@ export default defineEventHandler(async (event) => {
         })
       }
       
-      // Delete the record (encrypted_data will be deleted with the record)
-      const deleteQuery = 'DELETE FROM media_records WHERE uuid = $1'
-      await client.query(deleteQuery, [uuid])
+      // Update status
+      const updateQuery = `
+        UPDATE media_records 
+        SET status = $1, updated_at = NOW() 
+        WHERE uuid = $2
+      `
+      await client.query(updateQuery, [status, uuid])
       
       return {
-        message: "Media record deleted successfully",
-        uuid
+        message: "Status updated successfully",
+        uuid,
+        status
       }
+      
     } finally {
       client.release()
     }
   } catch (error: any) {
-    if (error.statusCode === 404) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: "Media record not found"
-      })
+    if (error.statusCode) {
+      throw error
     }
     
     throw createError({
       statusCode: 500,
-      statusMessage: `Delete failed: ${error instanceof Error ? error.message : String(error)}`
+      statusMessage: `Status update failed: ${error.message || 'Unknown error'}`
     })
   }
 })

@@ -30,7 +30,8 @@ export default defineNuxtConfig({
   supabase: {
     redirect: false,
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
-    key: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY
+    key: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
+    cookiePrefix: `sb-${process.env.NUXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NUXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0] : 'malris'}-auth-token`
   },
 
   runtimeConfig: {
