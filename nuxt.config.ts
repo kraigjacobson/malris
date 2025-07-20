@@ -31,7 +31,14 @@ export default defineNuxtConfig({
     redirect: false,
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
     key: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
-    cookiePrefix: `sb-${process.env.NUXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NUXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0] : 'malris'}-auth-token`
+    useSsrCookies: true, // Enable cookies for session management
+    cookiePrefix: `sb-${process.env.NUXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NUXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0] : 'malris'}-auth-token`,
+    cookieOptions: {
+      maxAge: 60 * 15, // 15 minutes
+      sameSite: 'lax',
+      secure: false, // Set to true in production with HTTPS
+      httpOnly: false // Allow client-side access for dynamic expiration
+    }
   },
 
   runtimeConfig: {

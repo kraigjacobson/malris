@@ -1,68 +1,71 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4">
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
     <div class="w-full max-w-lg">
-      
-      <!-- Show user info if logged in -->
-      <UCard v-if="user" class="p-6">
-        <p class="text-center mb-4">{{ user.email }}</p>
-        <div class="space-y-3">
-          <UButton
-            to="/jobs"
-            block
-            size="lg"
-          >
-            Job Queue
-          </UButton>
-          <UButton
-            block
-            size="lg"
-            variant="outline"
-            @click="handleSignOut"
-          >
-            Sign Out
-          </UButton>
-        </div>
-      </UCard>
-      
-      <!-- Login form if not logged in -->
-      <UCard v-else class="p-6">
-        <form @submit.prevent="handleEmailLogin" class="space-y-4">
-          <UFormField label="Email" name="email">
-            <UInput
-              v-model="email"
-              type="email"
-              required
-              placeholder="Enter your email"
-              autocomplete="email"
-            />
-          </UFormField>
+      <UCard class="shadow-lg">
+        <div class="p-8">
+          <UForm :state="state" class="space-y-4" @submit="handleSubmit">
+            <UFormField label="Email" name="email" required>
+              <UInput
+                v-model="state.email"
+                type="email"
+                placeholder="Enter your email"
+                icon="i-heroicons-envelope"
+                :disabled="loading"
+                class="w-full"
+              />
+            </UFormField>
 
-          <UFormField label="Password" name="password">
-            <UInput
-              v-model="password"
-              type="password"
-              required
-              placeholder="Enter your password"
-              autocomplete="new-password"
-            />
-          </UFormField>
-          
+            <UFormField label="Password" name="password" required>
+              <UInput
+                v-model="state.password"
+                type="password"
+                placeholder="Enter your password"
+                icon="i-heroicons-key"
+                :disabled="loading"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UButton
+              type="submit"
+              :loading="loading"
+              :disabled="!isValid || loading"
+              block
+            >
+              {{ isSignUp ? 'Sign Up' : 'Sign In' }}
+            </UButton>
+          </UForm>
+
           <UAlert
             v-if="error"
-            color="error"
+            color="red"
             variant="soft"
-            :description="error"
+            icon="i-heroicons-exclamation-triangle"
+            :title="error"
+            class="mt-4"
           />
-          
-          <UButton
-            type="submit"
-            :loading="loading"
-            block
-            color="success"
-          >
-            {{ loading ? 'Signing In...' : 'Login' }}
-          </UButton>
-        </form>
+
+          <div v-if="signupSuccess" class="text-center mt-4">
+            <UAlert
+              color="green"
+              variant="soft"
+              icon="i-heroicons-check-circle"
+              title="Account created successfully!"
+            >
+              Please check your email to verify your account before signing in.
+            </UAlert>
+          </div>
+
+          <div class="text-center text-sm mt-4">
+            <button
+              type="button"
+              class="text-primary-600 hover:text-primary-500"
+              @click="toggleMode"
+            >
+              {{ isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up' }}
+            </button>
+          </div>
+        </div>
       </UCard>
     </div>
   </div>
@@ -72,36 +75,55 @@
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 
-// Form data
-const email = ref('')
-const password = ref('')
+// Form state
+const state = reactive({
+  email: '',
+  password: ''
+})
+
 const loading = ref(false)
 const error = ref('')
+const isSignUp = ref(false)
+const signupSuccess = ref(false)
 
-// Handle email/password login
-const handleEmailLogin = async () => {
+// Computed properties
+const isValid = computed(() => {
+  return state.email.length > 0 && state.password.length > 0
+})
+
+// Handle form submission
+const handleSubmit = async () => {
   loading.value = true
   error.value = ''
+  signupSuccess.value = false
   
   try {
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: email.value,
-      password: password.value,
-    })
-    
-    if (authError) {
-      error.value = authError.message
-    } else {
-      // Record login time for the auth middleware
-      if (import.meta.client) {
-        try {
-          const localforage = await import('localforage')
-          await localforage.default.setItem('lastLoginTime', Date.now())
-        } catch (error) {
-          console.error('Error setting login time:', error)
-        }
+    if (isSignUp.value) {
+      // Sign up
+      const { error: authError } = await supabase.auth.signUp({
+        email: state.email,
+        password: state.password,
+      })
+      
+      if (authError) {
+        error.value = authError.message
+      } else {
+        signupSuccess.value = true
+        state.email = ''
+        state.password = ''
       }
-      await navigateTo('/jobs')
+    } else {
+      // Sign in
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: state.email,
+        password: state.password,
+      })
+      
+      if (authError) {
+        error.value = authError.message
+      } else {
+        await navigateTo('/jobs')
+      }
     }
   } catch {
     error.value = 'An unexpected error occurred'
@@ -110,19 +132,11 @@ const handleEmailLogin = async () => {
   }
 }
 
-// Handle sign out
-const handleSignOut = async () => {
-  // Clear login time when signing out
-  if (import.meta.client) {
-    try {
-      const localforage = await import('localforage')
-      await localforage.default.removeItem('lastLoginTime')
-    } catch (error) {
-      console.error('Error clearing login time:', error)
-    }
-  }
-  await supabase.auth.signOut()
-  await navigateTo('/login')
+// Toggle between sign in and sign up
+const toggleMode = () => {
+  isSignUp.value = !isSignUp.value
+  error.value = ''
+  signupSuccess.value = false
 }
 
 // Redirect if already logged in
