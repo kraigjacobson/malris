@@ -42,39 +42,42 @@ export default defineEventHandler(async (event) => {
 
     console.log('Submitting job to Media Server API:', jobData)
 
-    // Get media server URL from runtime config
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
-
-    // Create FormData for the media server API
-    const formData = new FormData()
-    formData.append('job_type', jobData.job_type)
-    formData.append('subject_uuid', jobData.subject_uuid)
-    formData.append('dest_media_uuid', jobData.dest_media_uuid)
+    // Use internal job creation logic directly
+    console.log('Creating job internally...')
     
-    // Only include parameters if there are any additional parameters beyond the main fields
-    if (Object.keys(jobData.parameters).length > 0) {
-      formData.append('parameters', JSON.stringify(jobData.parameters))
+    // Import the job creation logic directly
+    const { getDb } = await import('~/server/utils/database')
+    const { jobs } = await import('~/server/utils/schema')
+    
+    const db = getDb()
+    
+    // Generate a unique job ID
+    const jobId = crypto.randomUUID()
+    
+    // Create the job record in the database
+    const newJob = {
+      id: jobId,
+      jobType: jobData.job_type,
+      subjectUuid: jobData.subject_uuid,
+      destMediaUuid: jobData.dest_media_uuid,
+      parameters: jobData.parameters,
+      status: 'queued' as const,
+      createdAt: new Date(),
+      updatedAt: new Date()
     }
+    
+    await db.insert(jobs).values(newJob)
+    
+    console.log('Job created successfully:', newJob)
 
-    // Make the request to the Media Server API
-    const mediaServerResponse = await $fetch(`${mediaServerUrl}/jobs`, {
-      method: 'POST',
-      body: formData,
-      // Add timeout to prevent hanging
-      timeout: 30000
-    })
-
-    console.log('Media Server API response:', mediaServerResponse)
-
-    // Return the response from Media Server API
-    const response = mediaServerResponse as any
     return {
       success: true,
-      data: mediaServerResponse,
-      job_id: response.job_id,
-      status: response.status,
-      message: `Job submitted successfully to media server. Type: ${jobData.job_type}`
+      job_id: jobId,
+      status: 'queued',
+      job_type: jobData.job_type,
+      workflow_type: 'standard',
+      created_at: newJob.createdAt,
+      message: `Job submitted successfully. Type: ${jobData.job_type}`
     }
 
   } catch (error: any) {

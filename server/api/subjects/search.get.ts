@@ -1,3 +1,8 @@
+import { eq, ilike, and, or, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
+import { subjects, mediaRecords } from '~/server/utils/schema'
+import { getDb } from '~/server/utils/database'
+import { decryptMediaData } from '~/server/utils/encryption'
+
 export default defineEventHandler(async (event) => {
   try {
     const query = getQuery(event)
@@ -5,103 +10,166 @@ export default defineEventHandler(async (event) => {
     // Extract query parameters
     const name_pattern = query.name_pattern as string || ''
     const tags = query.tags ? (query.tags as string).split(',').filter(Boolean) : undefined
-    const note_pattern = query.note_pattern as string || ''
+    const tag_match_mode = (query.tag_match_mode as string) || 'partial'
     const has_hero_image = query.has_hero_image !== undefined ? query.has_hero_image === 'true' : undefined
     const limit = parseInt(query.limit as string) || 20
     const offset = parseInt(query.offset as string) || 0
     const page = parseInt(query.page as string) || 1
-    const image_size = (query.image_size as string) || 'sm'
     
     // Calculate offset from page if provided
     const calculatedOffset = page > 1 ? (page - 1) * limit : offset
     
-    // Make request to media service
-    const params = new URLSearchParams()
-    if (name_pattern) params.append('name_pattern', name_pattern)
-    if (note_pattern) params.append('note_pattern', note_pattern)
-    if (tags && tags.length > 0) params.append('tags', tags.join(','))
-    if (has_hero_image !== undefined) params.append('has_hero_image', has_hero_image.toString())
-    
-    // Date filters
-    if (query.created_after) params.append('created_after', query.created_after as string)
-    if (query.created_before) params.append('created_before', query.created_before as string)
-    if (query.updated_after) params.append('updated_after', query.updated_after as string)
-    if (query.updated_before) params.append('updated_before', query.updated_before as string)
-    
-    params.append('per_page', limit.toString())
-    params.append('page', page.toString())
-    params.append('image_size', image_size)
-    params.append('include_images', 'true') // Enable hero images
-    
     // Add sorting parameters with validation
-    const validSubjectSortFields = ['name', 'created_at', 'updated_at']
     const sortBy = (query.sort_by as string) || 'name'
     const sortOrder = (query.sort_order as string) || 'asc'
     
-    // Validate and add sort parameters
-    if (validSubjectSortFields.includes(sortBy)) {
-      params.append('sort_by', sortBy)
-    } else {
-      params.append('sort_by', 'name')
-    }
+    console.log('🔍 Subjects search params:', { name_pattern, tags, tag_match_mode, has_hero_image, limit, page })
     
-    if (['asc', 'desc'].includes(sortOrder.toLowerCase())) {
-      params.append('sort_order', sortOrder.toLowerCase())
-    } else {
-      params.append('sort_order', 'asc')
-    }
-    
-    console.log('🔍 Subjects search params:', Object.fromEntries(params))
-    
-    // Get runtime config for API URL
-    const config = useRuntimeConfig()
-    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
-    
-    // Make request to subjects API - now always returns JSON with embedded base64 hero images
-    const response = await fetch(`${apiUrl}/subjects?${params.toString()}`, {
-      method: 'GET'
-    })
+    console.log('🔍 Searching subjects via ORM...')
 
-    if (!response.ok) {
+    const db = getDb()
+
+    // Build WHERE conditions
+    const whereConditions = []
+
+    if (name_pattern) {
+      whereConditions.push(ilike(subjects.name, `%${name_pattern}%`))
+    }
+
+    if (has_hero_image !== undefined) {
+      if (has_hero_image) {
+        whereConditions.push(isNotNull(subjects.thumbnail))
+      } else {
+        whereConditions.push(isNull(subjects.thumbnail))
+      }
+    }
+
+    // Add tag filtering
+    if (tags && tags.length > 0) {
+      const tagConditions = tags.map((tag) => {
+        if (tag_match_mode === 'partial') {
+          // Use JSONB array element text search for partial matching
+          return sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${subjects.tags}->'tags') AS tag_elem WHERE tag_elem ILIKE ${`%${tag}%`})`
+        } else {
+          // Exact match using JSONB contains operator
+          return sql`${subjects.tags}->'tags' ? ${tag}`
+        }
+      })
+      whereConditions.push(or(...tagConditions))
+    }
+
+    // Build the query step by step to avoid TypeScript issues
+    const baseSelect = db
+      .select({
+        id: subjects.id,
+        name: subjects.name,
+        thumbnail: subjects.thumbnail,
+        tags: subjects.tags,
+        createdAt: subjects.createdAt,
+        updatedAt: subjects.updatedAt,
+        has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
+        encryptedThumbnailData: mediaRecords.encryptedData
+      })
+      .from(subjects)
+      .leftJoin(mediaRecords, eq(subjects.thumbnail, mediaRecords.uuid))
+
+    // Apply WHERE conditions if any
+    const queryWithWhere = whereConditions.length > 0 
+      ? baseSelect.where(and(...whereConditions))
+      : baseSelect
+
+    // Apply sorting
+    let queryWithSort
+    const sortDirection = ['asc', 'desc'].includes(sortOrder.toLowerCase()) ? sortOrder.toLowerCase() : 'asc'
+    
+    if (sortBy === 'name') {
+      queryWithSort = sortDirection === 'desc' 
+        ? queryWithWhere.orderBy(desc(subjects.name))
+        : queryWithWhere.orderBy(asc(subjects.name))
+    } else if (sortBy === 'created_at') {
+      queryWithSort = sortDirection === 'desc' 
+        ? queryWithWhere.orderBy(desc(subjects.createdAt))
+        : queryWithWhere.orderBy(asc(subjects.createdAt))
+    } else if (sortBy === 'updated_at') {
+      queryWithSort = sortDirection === 'desc' 
+        ? queryWithWhere.orderBy(desc(subjects.updatedAt))
+        : queryWithWhere.orderBy(asc(subjects.updatedAt))
+    } else {
+      // Default to name sorting
+      queryWithSort = queryWithWhere.orderBy(asc(subjects.name))
+    }
+
+    // Apply pagination
+    const result = await queryWithSort.limit(limit).offset(calculatedOffset)
+
+    // Get total count for pagination
+    const countSelect = db.select({ count: sql<number>`count(*)` }).from(subjects)
+    const countQuery = whereConditions.length > 0 
+      ? countSelect.where(and(...whereConditions))
+      : countSelect
+    const countResult = await countQuery
+    const totalCount = countResult[0]?.count || 0
+
+    // Get encryption key from environment
+    const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
+    if (!encryptionKey) {
       throw createError({
-        statusCode: response.status,
-        statusMessage: `Subjects API error: ${response.statusText}`
+        statusCode: 500,
+        statusMessage: 'Media encryption key not configured',
+        data: { message: 'MEDIA_ENCRYPTION_KEY environment variable is required' }
       })
     }
 
-    const jsonResponse = await response.json()
+    // Process results to decrypt thumbnail data
+    const processedSubjects = await Promise.all(result.map(async (subject) => {
+      let thumbnail_data = null
+      
+      if (subject.encryptedThumbnailData) {
+        try {
+          const decryptedData = decryptMediaData(subject.encryptedThumbnailData, encryptionKey)
+          thumbnail_data = decryptedData.toString('base64')
+        } catch (error) {
+          console.error('Failed to decrypt thumbnail for subject:', subject.id, error)
+        }
+      }
+
+      return {
+        id: subject.id,
+        name: subject.name,
+        thumbnail: subject.thumbnail,
+        tags: subject.tags,
+        created_at: subject.createdAt,
+        updated_at: subject.updatedAt,
+        has_thumbnail: subject.has_thumbnail,
+        thumbnail_data
+      }
+    }))
     
-    console.log('📊 Subjects API Response:')
-    console.log('- Total subjects:', jsonResponse.subjects?.length || 0)
-    console.log('- Images included:', jsonResponse.images_included || false)
+    console.log(`✅ Found ${processedSubjects.length} subjects (${totalCount} total)`)
 
     return {
-      subjects: jsonResponse.subjects || [],
+      subjects: processedSubjects,
       pagination: {
         page,
         limit,
         offset: calculatedOffset,
-        total: jsonResponse.pagination?.total_count || 0,
-        has_more: jsonResponse.pagination?.has_next || false
+        total: totalCount,
+        has_more: calculatedOffset + limit < totalCount
       }
     }
     
   } catch (error: any) {
     console.error('Subjects search error:', error)
     
-    // Handle different error types
-    if (error.cause?.code === 'ECONNREFUSED') {
-      throw createError({
-        statusCode: 503,
-        statusMessage: 'Media service unavailable',
-        data: { message: 'Could not connect to media service on localhost:8000' }
-      })
+    // Handle database errors
+    if (error.statusCode) {
+      throw error
     }
     
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to search subjects',
-      data: { message: error.message || 'Unknown error occurred' }
+      data: { message: error.message || 'Database error occurred' }
     })
   }
 })

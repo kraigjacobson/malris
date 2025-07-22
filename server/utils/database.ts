@@ -3,11 +3,11 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 
 // Database connection configuration
 const dbConfig = {
-  host: 'localhost',
-  port: 5433,
-  database: 'comfy_media',
-  user: 'comfy_user',
-  password: 'comfy_secure_password_2024',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5433'),
+  database: process.env.DB_NAME || 'comfy_media',
+  user: process.env.DB_USER || 'comfy_user',
+  password: process.env.DB_PASSWORD || 'comfy_secure_password_2024',
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,

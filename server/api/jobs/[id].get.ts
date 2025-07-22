@@ -16,7 +16,6 @@ export default defineEventHandler(async (event) => {
 
     // Get query parameters for thumbnails
     const query = getQuery(event)
-    const includeThumbnails = query.include_thumbnails || 'false'
     const _thumbnailSize = query.thumbnail_size || 'md'
 
     const db = getDb()
@@ -121,18 +120,11 @@ export default defineEventHandler(async (event) => {
       source_media: sourceMedia[0] || null,
       dest_media: destMedia[0] || null,
       output_media: outputMedia[0] || null,
-      // Flat thumbnail fields for backward compatibility
-      subject_thumbnail: null,
-      dest_media_thumbnail: null,
-      source_media_thumbnail: null,
-      output_thumbnail: null
-    }
-
-    // TODO: Add thumbnail processing if include_thumbnails is true
-    // This would require implementing the decryption logic from the Python API
-    if (includeThumbnails === 'true') {
-      console.warn('Thumbnail processing not yet implemented in direct database query')
-      // For now, we'll just mark that thumbnails were requested but not processed
+      // Thumbnail UUIDs for frontend to construct image URLs
+      subject_thumbnail_uuid: job.subject_thumbnail_uuid,
+      source_media_thumbnail_uuid: sourceMedia[0]?.thumbnail_uuid || null,
+      dest_media_thumbnail_uuid: destMedia[0]?.thumbnail_uuid || null,
+      output_thumbnail_uuid: outputMedia[0]?.thumbnail_uuid || null
     }
 
     return {

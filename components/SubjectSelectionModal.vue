@@ -18,25 +18,14 @@
     <template #body>
       <!-- Search Bar -->
       <div class="p-3 sm:p-4 space-y-3" :class="{ 'border-b border-gray-200 dark:border-gray-700': hasSearched || loading || error }">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Search Subjects
-          </label>
-          <SubjectSearch
-            v-model="selectedSubjectFromDropdown"
-            placeholder="Search for a subject by name..."
-            @select="handleSubjectSelectionFromDropdown"
-          />
-        </div>
-        
         <!-- Tags Search -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tags Search
+            Search by Tags
           </label>
           <div class="space-y-2">
             <UInputTags
-              v-model="selectedTags"
+              v-model="searchStore.subjectSearch.selectedTags"
               placeholder="Add tags (e.g., portrait, landscape)"
               class="w-full"
               enterkeyhint="enter"
@@ -56,7 +45,7 @@
             Search Subjects
           </UButton>
           <UButton
-            v-if="hasSearched || searchQuery || selectedTags.length > 0"
+            v-if="hasSearched || searchQuery || searchStore.subjectSearch.selectedTags.length > 0"
             color="gray"
             variant="outline"
             size="sm"
@@ -80,7 +69,7 @@
             <!-- Video element with poster -->
             <video
               ref="videoElement"
-              :poster="selectedVideo.thumbnail"
+              :poster="selectedVideo.thumbnail_uuid ? `/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm` : undefined"
               class="w-full h-full object-cover object-top"
               muted
               loop
@@ -115,6 +104,7 @@
 
 <script setup>
 import { nextTick } from 'vue'
+import { useSearchStore } from '~/stores/search'
 
 const props = defineProps({
   modelValue: {
@@ -133,6 +123,20 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
+// Use the search store
+const searchStore = useSearchStore()
+
+// Initialize search store on mount
+onMounted(async () => {
+  try {
+    if (searchStore.initializeSearch) {
+      await searchStore.initializeSearch()
+    }
+  } catch (error) {
+    console.error('Failed to initialize search store on mount:', error)
+  }
+})
+
 // Modal state
 const isOpen = computed({
   get: () => props.modelValue,
@@ -141,7 +145,6 @@ const isOpen = computed({
 
 // Search and pagination state for grid
 const searchQuery = ref('')
-const selectedTags = ref([])
 const subjects = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -152,8 +155,6 @@ const hasSearched = ref(false)
 const isClearing = ref(false)
 const limit = 24
 
-// Subject selection state
-const selectedSubjectFromDropdown = ref(null)
 
 // Video hover functionality (similar to MediaGrid)
 const hoveredVideoId = ref(null)
@@ -215,28 +216,6 @@ const handleVideoHover = () => {
 
 
 
-// Handle subject selection from dropdown
-const handleSubjectSelectionFromDropdown = (selected) => {
-  selectedSubjectFromDropdown.value = selected
-  
-  if (selected && selected.value) {
-    // Emit the selection immediately when a subject is chosen from dropdown
-    emit('select', {
-      value: selected.value,
-      label: selected.label
-    })
-    
-    // Close mobile keyboard
-    nextTick(() => {
-      const searchInput = document.querySelector('input[placeholder*="Search for a subject"]')
-      if (searchInput) {
-        searchInput.blur()
-      }
-    })
-    
-    isOpen.value = false
-  }
-}
 
 // Load subjects function
 const loadSubjects = async (reset = false) => {
@@ -267,8 +246,8 @@ const loadSubjects = async (reset = false) => {
     }
     
     // Add selected tags if provided
-    if (selectedTags.value.length > 0) {
-      params.append('tags', selectedTags.value.join(','))
+    if (searchStore.subjectSearch.selectedTags.length > 0) {
+      params.append('tags', searchStore.subjectSearch.selectedTags.join(','))
       // Always use partial match mode
       params.append('tag_match_mode', 'partial')
     }
@@ -342,15 +321,13 @@ const clearAll = () => {
   
   // Clear all fields and reset state
   searchQuery.value = ''
-  selectedTags.value = []
+  searchStore.resetSubjectFilters()
   subjects.value = []
   hasSearched.value = false
   currentPage.value = 1
   hasMore.value = true
   error.value = null
   
-  // Clear dropdown selection
-  handleComposableSubjectSelection(null)
   
   // Reset clearing flag after a short delay
   nextTick(() => {
@@ -381,24 +358,24 @@ watch(isOpen, (newValue) => {
   if (newValue) {
     // Reset state when opening
     searchQuery.value = ''
-    selectedTags.value = [...(props.initialTags || [])]
+    
+    // Only set initial tags if they're provided AND the store is empty
+    if (props.initialTags && props.initialTags.length > 0 && searchStore.subjectSearch.selectedTags.length === 0) {
+      searchStore.subjectSearch.selectedTags = [...props.initialTags]
+    }
+    
     subjects.value = []
     hasSearched.value = false
     currentPage.value = 1
     hasMore.value = true
     error.value = null
     
-    // Reset dropdown selection
-    selectedSubjectFromDropdown.value = null
     
     // Start video autoplay if video is selected
     if (props.selectedVideo) {
       startVideoAutoplay()
     }
   } else {
-    // Reset tags when modal closes and cleanup videos
-    selectedTags.value = []
-    selectedSubjectFromDropdown.value = null
     cleanupVideos()
   }
 })

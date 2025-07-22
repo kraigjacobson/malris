@@ -23,67 +23,21 @@
             Search by Tags
           </label>
           <UInputTags
-            v-model="selectedTags"
+            v-model="searchStore.videoSearch.selectedTags"
             placeholder="Add tags (e.g., 1girl, long_hair, anime)"
             class="w-full"
             enterkeyhint="enter"
-            @update:model-value="debouncedSearch"
+            inputmode="text"
           />
         </div>
         
-        <!-- Tag Search Options -->
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Search Mode
-          </label>
-          <USelectMenu
-            v-model="tagSearchMode"
-            :items="tagSearchModeOptions"
-            class="w-full"
-            size="sm"
-            @update:model-value="debouncedSearch"
-          />
-        </div>
-        
-        <!-- Completion Filters -->
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Min Completions
-            </label>
-            <UInput
-              v-model.number="completionFilters.min_completions"
-              type="number"
-              placeholder="0"
-              min="0"
-              class="w-full"
-              size="sm"
-              @update:model-value="debouncedSearch"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Max Completions
-            </label>
-            <UInput
-              v-model.number="completionFilters.max_completions"
-              type="number"
-              placeholder="No limit"
-              min="0"
-              class="w-full"
-              size="sm"
-              @update:model-value="debouncedSearch"
-            />
-          </div>
-        </div>
         
         <!-- Job Assignment Filter -->
         <div>
           <UCheckbox
-            v-model="excludeAssignedVideos"
-            label="Hide Done"
+            v-model="searchStore.videoSearch.excludeAssignedVideos"
+            label="Hide Used"
             class="text-sm"
-            @update:model-value="debouncedSearch"
           />
         </div>
         
@@ -94,13 +48,12 @@
               Min Duration (seconds)
             </label>
             <UInput
-              v-model.number="durationFilters.min_duration"
+              v-model.number="searchStore.videoSearch.durationFilters.min_duration"
               type="number"
               placeholder="0"
               min="0"
               class="w-full"
               size="sm"
-              @update:model-value="debouncedSearch"
             />
           </div>
           <div>
@@ -108,13 +61,12 @@
               Max Duration (seconds)
             </label>
             <UInput
-              v-model.number="durationFilters.max_duration"
+              v-model.number="searchStore.videoSearch.durationFilters.max_duration"
               type="number"
               placeholder="No limit"
               min="0"
               class="w-full"
               size="sm"
-              @update:model-value="debouncedSearch"
             />
           </div>
         </div>
@@ -125,12 +77,30 @@
             Sort By
           </label>
           <USelectMenu
-            v-model="sortOptions"
+            v-model="searchStore.videoSearch.sortOptions"
             :items="sortOptionsItems"
             class="w-full"
             size="sm"
-            @update:model-value="debouncedSearch"
           />
+        </div>
+        
+        <!-- Search and Clear Buttons -->
+        <div class="mt-3 flex gap-2">
+          <UButton
+            color="primary"
+            size="sm"
+            @click="searchVideos"
+            :loading="loading"
+          >
+            Search Videos
+          </UButton>
+          <UButton
+            variant="outline"
+            size="sm"
+            @click="clearFilters"
+          >
+            Clear Filters
+          </UButton>
         </div>
       </div>
 
@@ -163,6 +133,8 @@
 </template>
 
 <script setup>
+import { useSearchStore } from '~/stores/search'
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -176,6 +148,21 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
+// Use the search store
+const searchStore = useSearchStore()
+
+// Initialize search store on mount
+onMounted(async () => {
+  try {
+    if (searchStore.initializeSearch) {
+      await searchStore.initializeSearch()
+    }
+  } catch (error) {
+    console.error('Failed to initialize search store on mount:', error)
+  }
+})
+
+
 // Modal state
 const isOpen = computed({
   get: () => props.modelValue,
@@ -183,18 +170,6 @@ const isOpen = computed({
 })
 
 // Search and pagination state
-const selectedTags = ref([])
-const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
-const excludeAssignedVideos = ref(true) // Default to checked
-const completionFilters = ref({
-  min_completions: 0,
-  max_completions: null
-})
-const durationFilters = ref({
-  min_duration: 0,
-  max_duration: null
-})
-const sortOptions = ref({ label: 'Created Date (Newest)', value: 'created_at_desc' })
 const videos = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -204,11 +179,6 @@ const currentPage = ref(1)
 const hasSearched = ref(false)
 const limit = 24
 
-// Tag search mode options
-const tagSearchModeOptions = [
-  { label: 'Partial Match', value: 'partial' },
-  { label: 'Exact Match', value: 'exact' }
-]
 
 // Sort options
 const sortOptionsItems = [
@@ -227,17 +197,19 @@ const sortOptionsItems = [
 // Reference to MediaGrid component
 const mediaGrid = ref(null)
 
-// Debounced search
-let searchTimeout = null
-const debouncedSearch = () => {
-  if (searchTimeout) {
-    clearTimeout(searchTimeout)
-  }
-  searchTimeout = setTimeout(() => {
-    currentPage.value = 1
-    hasMore.value = true
-    loadVideos(true)
-  }, 300)
+// Search method for the search button
+const searchVideos = () => {
+  currentPage.value = 1
+  hasMore.value = true
+  loadVideos(true)
+}
+
+// Clear filters method
+const clearFilters = () => {
+  searchStore.resetVideoFilters()
+  // Also clear the current search results
+  videos.value = []
+  hasSearched.value = false
 }
 
 // Load videos function
@@ -262,7 +234,7 @@ const loadVideos = async (reset = false) => {
     params.append('offset', ((currentPage.value - 1) * limit).toString())
     
     // Handle dynamic sorting
-    const sortValue = typeof sortOptions.value === 'object' ? sortOptions.value.value : sortOptions.value
+    const sortValue = typeof searchStore.videoSearch.sortOptions === 'object' ? searchStore.videoSearch.sortOptions.value : searchStore.videoSearch.sortOptions
     
     // Parse sort value properly for API format
     let sortBy, sortOrder
@@ -283,32 +255,24 @@ const loadVideos = async (reset = false) => {
     
 
     // Add selected tags from UInputTags component
-    if (selectedTags.value.length > 0) {
-      params.append('tags', selectedTags.value.join(','))
+    if (searchStore.videoSearch.selectedTags.length > 0) {
+      params.append('tags', searchStore.videoSearch.selectedTags.join(','))
       
-      // Use the selected tag match mode
-      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
-      params.append('tag_match_mode', searchMode)
+      // Always use partial match mode
+      params.append('tag_match_mode', 'partial')
     }
 
-    // Add completion filters only if they have meaningful values
-    if (completionFilters.value.min_completions != null && completionFilters.value.min_completions > 0) {
-      params.append('min_completions', completionFilters.value.min_completions.toString())
-    }
-    if (completionFilters.value.max_completions != null && completionFilters.value.max_completions > 0) {
-      params.append('max_completions', completionFilters.value.max_completions.toString())
-    }
 
     // Add duration filters only if they have meaningful values
-    if (durationFilters.value.min_duration != null && durationFilters.value.min_duration > 0) {
-      params.append('min_duration', durationFilters.value.min_duration.toString())
+    if (searchStore.videoSearch.durationFilters.min_duration != null && searchStore.videoSearch.durationFilters.min_duration > 0) {
+      params.append('min_duration', searchStore.videoSearch.durationFilters.min_duration.toString())
     }
-    if (durationFilters.value.max_duration != null && durationFilters.value.max_duration > 0) {
-      params.append('max_duration', durationFilters.value.max_duration.toString())
+    if (searchStore.videoSearch.durationFilters.max_duration != null && searchStore.videoSearch.durationFilters.max_duration > 0) {
+      params.append('max_duration', searchStore.videoSearch.durationFilters.max_duration.toString())
     }
 
     // Filter out videos assigned to jobs if checkbox is checked
-    if (excludeAssignedVideos.value) {
+    if (searchStore.videoSearch.excludeAssignedVideos) {
       params.append('exclude_videos_with_jobs', 'true')
     }
 
@@ -351,59 +315,18 @@ const selectVideo = (video) => {
 // Watch for modal opening to load initial videos
 watch(isOpen, (newValue) => {
   if (newValue) {
-    // Set initial tags when modal opens
-    selectedTags.value = [...(props.initialTags || [])]
-    
-    if (videos.value.length === 0) {
-      loadVideos(true)
+    // Only set initial tags if they're provided AND the store is empty
+    if (props.initialTags && props.initialTags.length > 0 && searchStore.videoSearch.selectedTags.length === 0) {
+      searchStore.videoSearch.selectedTags = [...props.initialTags]
     }
+    
+    // Don't auto-search when modal opens - user needs to manually search
   } else if (!newValue && mediaGrid.value) {
     // Clean up videos when modal closes
     mediaGrid.value.cleanupVideos()
-    // Reset tags when modal closes
-    selectedTags.value = []
-  }
-})
-
-// Watch for tag changes
-watch(selectedTags, () => {
-  if (isOpen.value) {
-    debouncedSearch()
-  }
-}, { deep: true })
-
-// Watch for tag search mode changes
-watch(tagSearchMode, () => {
-  if (isOpen.value && selectedTags.value.length > 0) {
-    debouncedSearch()
-  }
-})
-
-// Watch for completion filter changes
-watch(completionFilters, () => {
-  if (isOpen.value) {
-    debouncedSearch()
-  }
-}, { deep: true })
-
-// Watch for duration filter changes
-watch(durationFilters, () => {
-  if (isOpen.value) {
-    debouncedSearch()
-  }
-}, { deep: true })
-
-// Watch for job assignment filter changes
-watch(excludeAssignedVideos, () => {
-  if (isOpen.value) {
-    debouncedSearch()
-  }
-})
-
-// Watch for sort option changes
-watch(sortOptions, () => {
-  if (isOpen.value) {
-    debouncedSearch()
+    // Reset videos when modal closes
+    videos.value = []
+    hasSearched.value = false
   }
 })
 </script>

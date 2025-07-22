@@ -55,8 +55,8 @@
             <div v-if="selectedVideo" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
               <div class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
                 <img
-                  v-if="selectedVideo.thumbnail"
-                  :src="selectedVideo.thumbnail"
+                  v-if="selectedVideo.thumbnail_uuid"
+                  :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm`"
                   :alt="selectedVideo.filename"
                   class="w-full h-full object-cover object-top"
                 />
@@ -183,16 +183,6 @@
       </form>
     </UCard>
 
-    <!-- Success/Error Messages -->
-    <div v-if="message" class="mt-6">
-      <UAlert
-        :color="message.type === 'success' ? 'success' : 'error'"
-        :title="message.type === 'success' ? 'Success' : 'Error'"
-        :description="message.text"
-        :close-button="{ icon: 'i-heroicons-x-mark-20-solid', color: 'gray', variant: 'link', padded: false }"
-        @close="message = null"
-      />
-    </div>
 
     <!-- Job Details Preview -->
     <UCard v-if="isFormValid" class="mt-6">
@@ -308,7 +298,6 @@ const jobTypeOptions = [
 
 // UI state
 const isSubmitting = ref(false)
-const message = ref(null)
 
 // Computed properties
 const isFormValid = computed(() => {
@@ -369,7 +358,6 @@ const submitJob = async () => {
   if (!isFormValid.value) return
 
   isSubmitting.value = true
-  message.value = null
 
   try {
     // Parse parameters JSON if provided
@@ -406,10 +394,13 @@ const submitJob = async () => {
       body: payload
     })
 
-    message.value = {
-      type: 'success',
-      text: `Job submitted successfully! Job ID: ${response.job_id}. Status: ${response.status}`
-    }
+    // Show success toast
+    const toast = useToast()
+    toast.add({
+      title: 'Success',
+      description: `Job submitted successfully! Job ID: ${response.job_id}. Status: ${response.status}`,
+      color: 'green'
+    })
 
     // Reset video selection after successful job submission
     clearSelectedVideo()
@@ -418,10 +409,13 @@ const submitJob = async () => {
 
   } catch (error) {
     console.error('Job submission error:', error)
-    message.value = {
-      type: 'error',
-      text: `Failed to submit job: ${error.message || 'Unknown error occurred'}`
-    }
+    // Show error toast
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: `Failed to submit job: ${error.message || 'Unknown error occurred'}`,
+      color: 'red'
+    })
   } finally {
     isSubmitting.value = false
   }
@@ -439,17 +433,8 @@ const resetForm = () => {
   handleComposableSubjectSelection(null)
   subjectHairTags.value = []
   videoHairTags.value = []
-  message.value = null
 }
 
-// Auto-clear messages after 5 seconds
-watch(message, (newMessage) => {
-  if (newMessage) {
-    setTimeout(() => {
-      message.value = null
-    }, 5000)
-  }
-})
 
 // Watch for job type changes to clear selections when switching job types
 watch(() => form.value.job_type, (newJobType) => {

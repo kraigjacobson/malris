@@ -1,64 +1,22 @@
-import { ref, watch } from 'vue'
-
-interface Subject {
-  uuid: string
-  id: string
-  name: string
-  has_thumbnail?: boolean
-  thumbnail_data?: string
-  tags?: string[]
-}
+import { ref, watch, computed } from 'vue'
+import { useSubjectsStore } from '~/stores/subjects'
 
 interface SubjectItem {
   value: string
   label: string
 }
 
-interface ApiSubjectsResponse {
-  subjects: Subject[]
-}
-
 export const useSubjects = () => {
+  const subjectsStore = useSubjectsStore()
   const selectedSubject = ref<SubjectItem | null>(null)
   const searchQuery = ref('')
-  const subjectItems = ref<SubjectItem[]>([])
-  const isLoading = ref(false)
+
+  // Use computed properties to get reactive data from the store
+  const subjectItems = computed(() => subjectsStore.subjectItems)
+  const isLoading = computed(() => subjectsStore.isLoading)
 
   const loadSubjects = async () => {
-    isLoading.value = true
-    try {
-      const params = new URLSearchParams()
-      params.append('name_only', 'true')
-      params.append('limit', '100')
-      
-      // Add search query if provided
-      if (searchQuery.value && searchQuery.value.trim()) {
-        params.append('name_pattern', searchQuery.value.trim())
-      }
-
-      console.log('🔍 Loading subjects with params:', Object.fromEntries(params))
-      
-      // Use Nuxt API route instead of direct media server call
-      const response = await $fetch<ApiSubjectsResponse>(`/api/subjects?${params.toString()}`)
-      
-      console.log('📊 Subjects response:', response)
-      
-      if (response.subjects && Array.isArray(response.subjects)) {
-        subjectItems.value = response.subjects.map((subject: Subject) => ({
-          value: subject.id, // Use id instead of uuid for consistency
-          label: subject.name
-        }))
-        console.log('✅ Mapped subject items:', subjectItems.value)
-      } else {
-        console.warn('⚠️ No subjects found in response:', response)
-        subjectItems.value = []
-      }
-    } catch (error) {
-      console.error('❌ Failed to load subjects:', error)
-      subjectItems.value = []
-    } finally {
-      isLoading.value = false
-    }
+    await subjectsStore.searchSubjects(searchQuery.value)
   }
 
   const handleSubjectSelection = (selected: SubjectItem | null) => {
@@ -73,7 +31,7 @@ export const useSubjects = () => {
   const resetSubjects = () => {
     selectedSubject.value = null
     searchQuery.value = ''
-    subjectItems.value = []
+    // Don't clear the store data, just reset local state
   }
 
   // Debounced search - wait 300ms after user stops typing
@@ -92,8 +50,8 @@ export const useSubjects = () => {
     debouncedSearch()
   })
 
-  // Load initial subjects when composable is created
-  loadSubjects()
+  // Initialize subjects store on first use
+  subjectsStore.initializeSubjects()
   return {
     selectedSubject,
     searchQuery,

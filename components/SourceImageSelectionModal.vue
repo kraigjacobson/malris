@@ -1,188 +1,181 @@
 <template>
   <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
+    <template #header>
+      <h3 class="text-lg font-semibold">Select Source Image</h3>
+    </template>
+    
     <template #body>
-      <UCard>
-        <!-- Close button in top right -->
-        <div class="absolute top-4 right-4 z-10">
-          <UButton
-            variant="ghost"
-            icon="i-heroicons-x-mark"
-            @click="closeModal"
-          />
+      <div v-if="isLoadingImages" class="flex justify-center py-8">
+        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" />
+      </div>
+
+      <div v-else-if="availableImages.length === 0" class="text-center py-8">
+        <UIcon name="i-heroicons-photo" class="w-12 h-12 text-gray-400 mx-auto mb-4" />
+        <p class="text-gray-600 dark:text-gray-400">
+          No images found for this job.
+        </p>
+      </div>
+
+      <div v-else class="space-y-4">
+        <!-- Job Details Accordion -->
+        <div class="mb-4">
+          <UAccordion :items="jobDetailsItems">
+            <template #job-info>
+              <div class="space-y-3 text-left">
+                <div class="flex flex-col space-y-1">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Job ID</span>
+                  <span class="text-sm text-gray-600 dark:text-gray-400">{{ job?.id }}</span>
+                </div>
+                <div class="flex flex-col space-y-1">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Image Count</span>
+                  <span class="text-sm text-gray-600 dark:text-gray-400">{{ availableImages.length }} images available</span>
+                </div>
+                <div class="flex flex-col space-y-1">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Current Selection</span>
+                  <span class="text-sm text-gray-600 dark:text-gray-400">Image {{ currentImageIndex + 1 }} of {{ availableImages.length }}</span>
+                </div>
+              </div>
+            </template>
+          </UAccordion>
         </div>
 
-        <div v-if="isLoadingImages" class="flex justify-center py-8">
-          <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin" />
-        </div>
-
-        <div v-else-if="availableImages.length === 0" class="text-center py-8">
-          <UIcon name="i-heroicons-photo" class="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p class="text-gray-600 dark:text-gray-400">
-            No images found for this job.
-          </p>
-        </div>
-
-        <div v-else class="space-y-4">
-          <!-- Job Details Accordion -->
-          <div class="mb-4">
-            <UAccordion :items="jobDetailsItems">
-              <template #job-info>
+        <!-- Current Image Display with Arrow Overlays -->
+        <div v-if="currentImage" class="text-center">
+          <div class="relative inline-block max-w-full group">
+            <!-- Zoomable Image Container -->
+            <div
+              ref="imageContainer"
+              class="relative overflow-hidden rounded-lg shadow-lg max-w-full max-h-96 mx-auto bg-gray-100 dark:bg-gray-800"
+              style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
+              @wheel.prevent="handleWheel"
+              @mousedown.prevent="handleMouseDown"
+              @touchstart.prevent="handleTouchStart"
+              @touchmove.prevent="handleTouchMove"
+              @touchend.prevent="handleTouchEnd"
+              @gesturestart.prevent
+              @gesturechange.prevent
+              @gestureend.prevent
+            >
+              <img
+                ref="zoomableImage"
+                :src="currentImage.thumbnail_uuid ? `/api/media/${currentImage.thumbnail_uuid}/image?size=sm` : `/api/media/${currentImage.uuid}/image?size=sm`"
+                :alt="currentImage.filename"
+                class="block transition-transform duration-200 ease-out select-none"
+                :style="imageTransformStyle"
+                @dragstart.prevent
+              />
+            </div>
+            
+            <!-- Left Arrow Overlay -->
+            <div
+              v-if="availableImages.length > 1"
+              class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              @click="previousImage"
+            >
+              <UIcon name="i-heroicons-chevron-left" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
+            </div>
+            
+            <!-- Right Arrow Overlay -->
+            <div
+              v-if="availableImages.length > 1"
+              class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              @click="nextImage"
+            >
+              <UIcon name="i-heroicons-chevron-right" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
+            </div>
+            
+            <!-- Delete Button -->
+            <div class="absolute top-2 right-2">
+              <UButton
+                color="red"
+                variant="solid"
+                size="sm"
+                icon="i-heroicons-trash"
+                :loading="isDeletingImage"
+                @click="deleteCurrentImage"
+                class="opacity-80 hover:opacity-100 transition-opacity"
+              />
+            </div>
+          </div>
+          
+          <!-- Image Details Accordion -->
+          <div class="mt-4">
+            <UAccordion :items="imageDetailsItems">
+              <template #details>
                 <div class="space-y-3 text-left">
                   <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Job ID</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ job?.id }}</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Filename</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-400 break-all">{{ currentImage.filename }}</span>
                   </div>
                   <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Image Count</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ availableImages.length }} images available</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
+                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ currentImage.uuid }}</span>
                   </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Current Selection</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">Image {{ currentImageIndex + 1 }} of {{ availableImages.length }}</span>
+                  <div v-if="currentImage.width && currentImage.height" class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ currentImage.width }} × {{ currentImage.height }}</span>
                   </div>
+                  <div v-if="currentImage.file_size" class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Size</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(currentImage.file_size) }}</span>
+                  </div>
+                  
                 </div>
               </template>
             </UAccordion>
           </div>
-
-          <!-- Current Image Display with Arrow Overlays -->
-          <div v-if="currentImage" class="text-center">
-            <div class="relative inline-block max-w-full group">
-              <!-- Zoomable Image Container -->
-              <div
-                ref="imageContainer"
-                class="relative overflow-hidden rounded-lg shadow-lg max-w-full max-h-96 mx-auto bg-gray-100 dark:bg-gray-800"
-                style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
-                @wheel.prevent="handleWheel"
-                @mousedown.prevent="handleMouseDown"
-                @touchstart.prevent="handleTouchStart"
-                @touchmove.prevent="handleTouchMove"
-                @touchend.prevent="handleTouchEnd"
-                @gesturestart.prevent
-                @gesturechange.prevent
-                @gestureend.prevent
-              >
-                <img
-                  ref="zoomableImage"
-                  :src="currentImage.thumbnail || `/api/media/${currentImage.uuid}/image?size=sm`"
-                  :alt="currentImage.filename"
-                  class="block transition-transform duration-200 ease-out select-none"
-                  :style="imageTransformStyle"
-                  @dragstart.prevent
-                />
-              </div>
-              
-              <!-- Left Arrow Overlay -->
-              <div
-                v-if="availableImages.length > 1"
-                class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                @click="previousImage"
-              >
-                <UIcon name="i-heroicons-chevron-left" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
-              </div>
-              
-              <!-- Right Arrow Overlay -->
-              <div
-                v-if="availableImages.length > 1"
-                class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                @click="nextImage"
-              >
-                <UIcon name="i-heroicons-chevron-right" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
-              </div>
-              
-              <!-- Delete Button -->
-              <div class="absolute top-2 right-2">
-                <UButton
-                  color="red"
-                  variant="solid"
-                  size="sm"
-                  icon="i-heroicons-trash"
-                  :loading="isDeletingImage"
-                  @click="deleteCurrentImage"
-                  class="opacity-80 hover:opacity-100 transition-opacity"
-                />
-              </div>
-            </div>
-            
-            <!-- Image Details Accordion -->
-            <div class="mt-4">
-              <UAccordion :items="imageDetailsItems">
-                <template #details>
-                  <div class="space-y-3 text-left">
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Filename</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400 break-all">{{ currentImage.filename }}</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ currentImage.uuid }}</span>
-                    </div>
-                    <div v-if="currentImage.width && currentImage.height" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ currentImage.width }} × {{ currentImage.height }}</span>
-                    </div>
-                    <div v-if="currentImage.file_size" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Size</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(currentImage.file_size) }}</span>
-                    </div>
-                    
-                  </div>
-                </template>
-              </UAccordion>
-            </div>
-          </div>
-
-          <!-- Thumbnail Strip -->
-          <div v-if="availableImages.length > 1" ref="thumbnailStrip" class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
-            <div
-              v-for="(image, index) in availableImages"
-              :key="image.uuid"
-              :ref="el => { if (el) thumbnailRefs[index] = el }"
-              class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
-              :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
-              @click="currentImageIndex = index"
-            >
-              <img
-                :src="image.thumbnail || `/api/media/${image.uuid}/image?size=sm`"
-                :alt="image.filename"
-                class="w-full h-full object-cover rounded"
-              />
-            </div>
-          </div>
         </div>
 
-      <template #footer>
-        <div class="flex justify-between">
-          <UButton
-            variant="outline"
-            @click="closeModal"
-            :disabled="isSubmittingSource || isDeletingJob"
+        <!-- Thumbnail Strip -->
+        <div v-if="availableImages.length > 1" ref="thumbnailStrip" class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
+          <div
+            v-for="(image, index) in availableImages"
+            :key="image.uuid"
+            :ref="el => { if (el) thumbnailRefs[index] = el }"
+            class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
+            :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
+            @click="currentImageIndex = index"
           >
-            Cancel
-          </UButton>
-          <div v-if="currentImage" class="flex gap-2">
-            <UButton
-              color="red"
-              variant="outline"
-              icon="i-heroicons-trash"
-              :loading="isDeletingJob"
-              @click="handleDeleteJob"
-              :disabled="isSubmittingSource"
-            >
-              Delete Job
-            </UButton>
-            <UButton
-              color="primary"
-              :loading="isSubmittingSource"
-              @click="selectCurrentImage"
-              :disabled="isDeletingJob"
-            >
-              Select This Image
-            </UButton>
+            <img
+              :src="image.thumbnail_uuid ? `/api/media/${image.thumbnail_uuid}/image?size=sm` : `/api/media/${image.uuid}/image?size=sm`"
+              :alt="image.filename"
+              class="w-full h-full object-cover rounded"
+            />
           </div>
         </div>
-      </template>
-      </UCard>
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="flex justify-between">
+        <UButton
+          variant="outline"
+          @click="closeModal"
+          :disabled="isSubmittingSource || isDeletingJob"
+        >
+          Cancel
+        </UButton>
+        <div v-if="currentImage" class="flex gap-2">
+          <UButton
+            color="red"
+            variant="outline"
+            icon="i-heroicons-trash"
+            :loading="isDeletingJob"
+            @click="handleDeleteJob"
+            :disabled="isSubmittingSource"
+          >
+            Delete Job
+          </UButton>
+          <UButton
+            color="primary"
+            :loading="isSubmittingSource"
+            @click="selectCurrentImage"
+            :disabled="isDeletingJob"
+          >
+            Select This Image
+          </UButton>
+        </div>
+      </div>
     </template>
   </UModal>
 </template>

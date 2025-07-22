@@ -25,6 +25,8 @@
 </template>
 
 <script setup>
+import { useSubjectsStore } from '~/stores/subjects'
+
 const props = defineProps({
   modelValue: {
     type: Object,
@@ -46,52 +48,41 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
+// Use the subjects store
+const subjectsStore = useSubjectsStore()
+
 // Internal state
 const selectedSubject = ref(props.modelValue)
 const searchQuery = ref('')
-const subjectItems = ref([])
-const isLoading = ref(false)
 
-// Debounce timer
-let debounceTimer = null
-
-// Load subjects function
-const loadSubjects = async () => {
-  isLoading.value = true
-  try {
-    const params = new URLSearchParams()
-    params.append('name_only', 'true')
-    params.append('per_page', '100')
-    
-    // Add search query if provided
-    if (searchQuery.value && searchQuery.value.trim()) {
-      params.append('name_pattern', searchQuery.value.trim())
-    }
-
-    console.log('🔍 Loading subjects with params:', Object.fromEntries(params))
-    
-    // Use Nuxt API endpoint instead of external media server
-    const data = await $fetch(`/api/subjects?${params.toString()}`)
-    
-    console.log('📊 Subjects response:', data)
-    
-    if (data.subjects && Array.isArray(data.subjects)) {
-      subjectItems.value = data.subjects.map((subject) => ({
-        value: subject.id,
-        label: subject.name
-      }))
-      console.log('✅ Mapped subject items:', subjectItems.value)
-    } else {
-      console.warn('⚠️ No subjects found in response:', data)
-      subjectItems.value = []
-    }
-  } catch (error) {
-    console.error('❌ Failed to load subjects:', error)
-    subjectItems.value = []
-  } finally {
-    isLoading.value = false
+// Filter subjects locally based on search query
+const subjectItems = computed(() => {
+  const allSubjects = subjectsStore.subjectItems
+  
+  if (!searchQuery.value || !searchQuery.value.trim()) {
+    return allSubjects
   }
-}
+  
+  const query = searchQuery.value.toLowerCase().trim()
+  const filtered = allSubjects.filter(subject =>
+    subject.label.toLowerCase().includes(query)
+  )
+  
+  // Sort results: exact matches first, then partial matches
+  return filtered.sort((a, b) => {
+    const aExact = a.label.toLowerCase() === query
+    const bExact = b.label.toLowerCase() === query
+    const aStarts = a.label.toLowerCase().startsWith(query)
+    const bStarts = b.label.toLowerCase().startsWith(query)
+    
+    if (aExact && !bExact) return -1
+    if (!aExact && bExact) return 1
+    if (aStarts && !bStarts) return -1
+    if (!aStarts && bStarts) return 1
+    
+    return a.label.localeCompare(b.label)
+  })
+})
 
 // Handle selection
 const handleSelection = (selected) => {
@@ -107,26 +98,13 @@ const clearSelection = () => {
   emit('select', null)
 }
 
-// Watch for search query changes with debounce
-watch(searchQuery, () => {
-  // Clear existing timer
-  if (debounceTimer) {
-    clearTimeout(debounceTimer)
-  }
-  
-  // Set new timer - wait 300ms after user stops typing
-  debounceTimer = setTimeout(() => {
-    loadSubjects()
-  }, 300)
-})
-
 // Watch for prop changes
 watch(() => props.modelValue, (newValue) => {
   selectedSubject.value = newValue
 })
 
-// Load initial subjects
+// Initialize subjects store on mount
 onMounted(() => {
-  loadSubjects()
+  subjectsStore.initializeSubjects()
 })
 </script>

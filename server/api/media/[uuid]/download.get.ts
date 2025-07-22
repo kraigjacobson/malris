@@ -57,12 +57,14 @@ export default defineEventHandler(async (event) => {
         [uuid]
       )
       
-      // Decrypt the file data (assuming it's base64 encoded)
+      // Decrypt the file data using proper Fernet decryption
       let fileData: Buffer
       try {
-        fileData = Buffer.from(record.encrypted_data, 'base64')
+        const { decryptMediaData } = await import('~/server/utils/encryption')
+        const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY || 'default_key'
+        fileData = decryptMediaData(record.encrypted_data, encryptionKey)
       } catch (error: any) {
-        console.error("Error", error)
+        console.error("Decryption error:", error)
         throw createError({
           statusCode: 500,
           statusMessage: "Failed to decrypt media data"

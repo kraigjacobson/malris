@@ -22,7 +22,8 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxtjs/supabase',
     '@nuxt/image',
-    '@pinia/nuxt'
+    '@pinia/nuxt',
+    '@nuxtjs/device'
   ],
 
   css: ['~/assets/css/main.css'],
@@ -45,8 +46,7 @@ export default defineNuxtConfig({
     supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
     supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
     public: {
-      apiUrl: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
-      apiBasePath: process.env.NUXT_PUBLIC_API_BASE,
+      // Remove external API dependency - using Nuxt backend exclusively
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY
     }

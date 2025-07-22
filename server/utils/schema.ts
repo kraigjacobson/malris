@@ -1,4 +1,10 @@
-import { pgTable, uuid, varchar, text, integer, real, timestamp, jsonb, pgEnum } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, text, integer, real, timestamp, jsonb, pgEnum, customType } from 'drizzle-orm/pg-core'
+
+const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 // Enums
 export const jobStatusEnum = pgEnum('job_status', ['queued', 'active', 'completed', 'failed', 'need_input', 'canceled'])
@@ -50,7 +56,8 @@ export const mediaRecords = pgTable('media_records', {
   destMediaUuidRef: uuid('dest_media_uuid_ref'), // Self-reference removed for now
   jobId: uuid('job_id').references(() => jobs.id),
   thumbnailUuid: uuid('thumbnail_uuid'), // Self-reference removed for now
-  encryptedData: text('encrypted_data').notNull(), // Use text for base64 encoded data
+  encryptedData: bytea('encrypted_data').notNull(), // Binary data for encrypted content
+  checksum: varchar('checksum', { length: 64 }).notNull(), // SHA256 checksum
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   lastAccessed: timestamp('last_accessed'),

@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
-import { mediaRecords } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray } from 'drizzle-orm'
+import { mediaRecords, jobs } from '~/server/utils/schema'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -208,10 +208,14 @@ export default defineEventHandler(async (event) => {
       console.warn('Tag filtering not yet implemented in direct database query')
     }
 
-    // TODO: Implement exclude_videos_with_jobs filter
-    // This would require subqueries to check job associations
-    if (exclude_videos_with_jobs !== undefined) {
-      console.warn('exclude_videos_with_jobs filtering not yet implemented in direct database query')
+    // Exclude videos that are already assigned to jobs
+    if (exclude_videos_with_jobs === 'true' || exclude_videos_with_jobs === true) {
+      conditions.push(and(
+        isNull(mediaRecords.jobId),
+        notExists(
+          db.select().from(jobs).where(eq(jobs.destMediaUuid, mediaRecords.uuid))
+        )
+      ))
     }
 
     // Handle pagination
@@ -402,23 +406,70 @@ export default defineEventHandler(async (event) => {
       thumbnail: null as string | null
     }))
 
-    // Process thumbnails if include_thumbnails is true
+    // Process thumbnails and images if include_thumbnails is true
     if (include_thumbnails === 'true' || include_thumbnails === true) {
-      console.log('Processing thumbnails for media results...')
+      console.log('Processing thumbnails and images for media results...')
       
       for (const result of transformedResults) {
+        // Handle video thumbnails
         if (result.thumbnail_uuid && result.type === 'video') {
+          
           try {
-            // Use the media download API to get thumbnail data
-            const thumbnailUrl = `/api/media/${result.thumbnail_uuid}/download?size=sm`
+            // Get the thumbnail data and convert to base64
+            const thumbnailRecord = await db
+              .select({ encryptedData: mediaRecords.encryptedData, filename: mediaRecords.filename })
+              .from(mediaRecords)
+              .where(eq(mediaRecords.uuid, result.thumbnail_uuid))
+              .limit(1)
             
-            // For now, just set the thumbnail URL directly since we can't easily
-            // fetch and convert to base64 in the server-side context
-            result.thumbnail = thumbnailUrl
-            console.log(`✅ Added thumbnail URL for video ${result.uuid}`)
-          } catch (error: any) {
-            console.warn(`⚠️ Failed to get thumbnail for video ${result.uuid}:`, error?.message || 'Unknown error')
-            result.thumbnail = null
+            if (thumbnailRecord && thumbnailRecord.length > 0 && thumbnailRecord[0].encryptedData) {
+              const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
+              if (encryptionKey) {
+                const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
+                // Handle bytea data - convert to Buffer if needed
+                const encryptedData = thumbnailRecord[0].encryptedData
+                const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
+                const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
+                const contentType = getContentType(thumbnailRecord[0].filename, 'image/jpeg')
+                const base64Data = decryptedData.toString('base64')
+                result.thumbnail = `data:${contentType};base64,${base64Data}`
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to generate thumbnail for video ${result.uuid}:`, error)
+          }
+        } else if (result.type === 'video') {
+          console.warn(`⚠️ Video ${result.uuid} has no thumbnail_uuid`)
+        }
+        
+        // Handle image data directly
+        if (result.type === 'image') {
+          console.log(`✅ Processing image ${result.uuid}`)
+          
+          try {
+            // Get the image data from database - select encryptedData field
+            const imageRecord = await db
+              .select({ encryptedData: mediaRecords.encryptedData })
+              .from(mediaRecords)
+              .where(eq(mediaRecords.uuid, result.uuid))
+              .limit(1)
+            
+            if (imageRecord && imageRecord.length > 0 && imageRecord[0].encryptedData) {
+              const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
+              if (encryptionKey) {
+                const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
+                // Handle bytea data - convert to Buffer if needed
+                const encryptedData = imageRecord[0].encryptedData
+                const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
+                const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
+                const contentType = getContentType(result.filename, 'image/jpeg')
+                const base64Data = decryptedData.toString('base64')
+                result.thumbnail = `data:${contentType};base64,${base64Data}`
+                console.log(`✅ Generated base64 data for image ${result.uuid} - contentType: ${contentType}, base64 length: ${base64Data.length}, decrypted size: ${decryptedData.length} bytes`)
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
           }
         }
       }

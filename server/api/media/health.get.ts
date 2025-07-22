@@ -1,49 +1,36 @@
 export default defineEventHandler(async (_event) => {
   try {
-    console.log('Checking media API health...')
+    console.log('Checking Nuxt backend health...')
 
-    // Get runtime config for API URL
-    const config = useRuntimeConfig()
-    const apiUrl = config.public.apiUrl || 'http://localhost:8000'
-    
-    // Test connection to media API
-    const response = await $fetch(`${apiUrl}/health`, {
-      method: 'GET',
-      timeout: 5000
-    })
+    // Check internal Nuxt backend health instead of external media server
+    // Check database connection
+    const { getDbClient } = await import('~/server/utils/database')
+    const client = await getDbClient()
 
-    console.log('Media API health response:', response)
+    try {
+      // Simple query to test database connectivity
+      await client.query('SELECT 1')
+      client.release()
 
-    return {
-      status: 'healthy',
-      mediaApi: response,
-      message: 'Media API is accessible'
+      return {
+        status: 'healthy',
+        backend: 'operational',
+        database: 'connected',
+        message: 'Nuxt backend and database are running'
+      }
+    } catch (dbError) {
+      client.release()
+      throw dbError
     }
 
   } catch (error: any) {
-    console.error('Media API health check failed:', error)
+    console.error('Backend health check failed:', error)
     
-    // Handle different types of errors
-    if (error.cause?.code === 'ECONNREFUSED') {
-      return {
-        status: 'unhealthy',
-        error: 'Media API is not running on localhost:8000',
-        suggestion: 'Start the media API server'
-      }
-    }
-    
-    if (error.cause?.code === 'ETIMEDOUT') {
-      return {
-        status: 'unhealthy',
-        error: 'Media API connection timed out',
-        suggestion: 'Check if the media API is responding'
-      }
-    }
-
     return {
       status: 'unhealthy',
       error: error.message || 'Unknown error',
-      details: error.statusText || 'Media API returned an error'
+      details: 'Nuxt backend or database connection failed',
+      suggestion: 'Check database connection and server status'
     }
   }
 })

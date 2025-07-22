@@ -7,7 +7,7 @@ export interface SettingsState {
 
 export const useSettingsStore = defineStore('settings', {
   state: (): SettingsState => ({
-    displayImages: false // Default to off as requested
+    displayImages: true // Default to on since we're using base64 data now
   }),
 
   actions: {

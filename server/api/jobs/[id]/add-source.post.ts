@@ -3,36 +3,79 @@ export default defineEventHandler(async (event) => {
     const jobId = getRouterParam(event, 'id')
     const body = await readBody(event)
     
-    console.log(`🔄 [API] Adding source to job ${jobId}...`)
-    
-    // Get media server URL from runtime config
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
-    
-    // Prepare form data for the media server
-    const formData = new FormData()
-    formData.append('source_media_uuid', body.source_media_uuid)
-    
-    console.log(`🌐 [API] Calling: ${mediaServerUrl}/jobs/${jobId}/add-source`)
-    
-    // Call the media server API using PUT method
-    const response = await fetch(`${mediaServerUrl}/jobs/${jobId}/add-source`, {
-      method: 'PUT',
-      body: formData
-    })
-    
-    if (!response.ok) {
-      const errorText = await response.text()
+    if (!jobId) {
       throw createError({
-        statusCode: response.status,
-        statusMessage: `Media Server API error: ${response.statusText} - ${errorText}`
+        statusCode: 400,
+        statusMessage: 'Job ID is required'
       })
     }
     
-    const result = await response.json()
-    console.log(`✅ [API] Source added to job ${jobId} successfully`)
+    console.log(`🔄 [API] Adding source to job ${jobId} via Drizzle ORM...`)
     
-    return result
+    if (!body.source_media_uuid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'source_media_uuid is required'
+      })
+    }
+
+    // Use Drizzle ORM instead of raw SQL
+    const { getDb } = await import('~/server/utils/database')
+    const { jobs, mediaRecords } = await import('~/server/utils/schema')
+    const { eq } = await import('drizzle-orm')
+    
+    const db = getDb()
+
+    // First check if job exists
+    const existingJob = await db.select({
+      id: jobs.id,
+      status: jobs.status
+    }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
+    
+    if (existingJob.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Job not found'
+      })
+    }
+
+    // Verify source media exists
+    const sourceMedia = await db.select({
+      uuid: mediaRecords.uuid
+    }).from(mediaRecords).where(eq(mediaRecords.uuid, body.source_media_uuid)).limit(1)
+    
+    if (sourceMedia.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Source media not found'
+      })
+    }
+
+    // Update job with source media
+    const updatedJob = await db.update(jobs)
+      .set({
+        sourceMediaUuid: body.source_media_uuid,
+        updatedAt: new Date()
+      })
+      .where(eq(jobs.id, jobId))
+      .returning({
+        id: jobs.id,
+        sourceMediaUuid: jobs.sourceMediaUuid,
+        updatedAt: jobs.updatedAt
+      })
+    
+    const updated = updatedJob[0]
+    console.log(`✅ [API] Source added to job ${jobId} successfully:`, updated)
+
+    return {
+      success: true,
+      message: `Source added to job ${jobId} successfully`,
+      data: {
+        job_id: updated.id,
+        source_media_uuid: updated.sourceMediaUuid,
+        updated_at: updated.updatedAt
+      }
+    }
     
   } catch (error: any) {
     console.error(`❌ [API] Error adding source to job:`, error)

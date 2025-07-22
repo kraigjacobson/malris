@@ -17,6 +17,22 @@
             Queue Status
           </h2>
           <div class="flex items-center gap-1 sm:gap-2">
+            <!-- Play/Pause Toggle -->
+            <UButton
+              type="button"
+              size="xs"
+              :variant="jobsStore.isProcessing ? 'solid' : 'outline'"
+              :color="jobsStore.isProcessing ? 'red' : 'green'"
+              @click.prevent="jobsStore.toggleProcessing()"
+              :disabled="jobsStore.isLoading"
+            >
+              <UIcon
+                :name="jobsStore.isProcessing ? 'i-heroicons-pause' : 'i-heroicons-play'"
+                class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
+              />
+              <span class="hidden sm:inline">{{ jobsStore.isProcessing ? 'Pause' : 'Play' }}</span>
+            </UButton>
+            
             <USwitch
               v-model="jobsStore.autoRefreshEnabled"
               :disabled="jobsStore.isLoading"
@@ -170,11 +186,11 @@
         <div
           v-for="job in jobsStore.jobs"
           :key="job.id"
-          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
           @click="viewJobDetails(job.id)"
         >
           <!-- Main job info row -->
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between pr-16">
             <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
               <UBadge
                 :color="getStatusColor(job.status)"
@@ -202,7 +218,7 @@
             
             <div class="flex items-center space-x-1 sm:space-x-2 shrink-0">
               <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-                {{ formatDateCompact(job.created_at) }}
+                {{ formatDateCompact(job.updated_at) }}
               </span>
               <div class="flex gap-1">
                 <UButton
@@ -224,21 +240,23 @@
                 >
                   Cancel
                 </UButton>
-                <UDropdownMenu
-                  :items="getJobActions(job)"
-                  :ui="{ content: 'w-48' }"
-                >
-                  <UButton
-                    size="2xs"
-                    color="gray"
-                    variant="ghost"
-                    class="ml-2"
-                    @click.stop
-                    icon="i-heroicons-ellipsis-horizontal"
-                  />
-                </UDropdownMenu>
               </div>
             </div>
+          </div>
+          
+          <!-- Full-height dropdown button positioned absolutely -->
+          <div class="absolute top-0 right-0 h-full w-16 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center">
+            <UDropdownMenu
+              :items="getJobActions(job)"
+              :ui="{ content: 'w-48' }"
+            >
+              <div
+                class="h-full w-full flex items-center justify-center cursor-pointer"
+                @click.stop
+              >
+                <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+              </div>
+            </UDropdownMenu>
           </div>
         </div>
       </div>
@@ -246,211 +264,261 @@
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
         <UPagination
-          v-model="currentPage"
-          :page-count="totalPages"
+          v-model:page="currentPage"
           :total="jobsStore.totalJobs"
+          :items-per-page="itemsPerPage"
           :max="5"
+          @update:page="handlePageChange"
         />
       </div>
     </UCard>
 
     <!-- Job Details Modal -->
     <UModal v-model:open="showJobModal">
+      <template #header>
+        <h3 class="text-lg font-semibold">Job Details</h3>
+      </template>
+      
       <template #body>
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold">Job Details</h3>
-              <UButton
-                variant="ghost"
-                icon="i-heroicons-x-mark"
-                @click="showJobModal = false"
-              />
-            </div>
-          </template>
-
-          <div v-if="selectedJob" class="space-y-4">
-            <!-- Thumbnails Section -->
-            <div class="space-y-3">
-              <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
-              <div class="flex flex-wrap gap-2 sm:gap-4 justify-center">
-                <!-- Subject Thumbnail -->
-                <div v-if="selectedJob.subject_thumbnail" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
-                  <div class="mb-1 sm:mb-2 text-center">
-                    <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
-                  </div>
-                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
-                    <img
-                      :src="`data:image/jpeg;base64,${selectedJob.subject_thumbnail}`"
-                      alt="Subject thumbnail"
-                      class="w-full h-full object-cover object-top"
-                    />
-                  </div>
+        <div v-if="selectedJob">
+          <!-- Thumbnails Section -->
+          <div class="space-y-3">
+            <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
+            <div class="flex flex-wrap gap-2 sm:gap-4 justify-center">
+              <!-- Subject Thumbnail -->
+              <div v-if="selectedJob.subject_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
                 </div>
-                
-                <!-- Destination Media Thumbnail -->
-                <div v-if="selectedJob.dest_media_thumbnail" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
-                  <div class="mb-1 sm:mb-2 text-center">
-                    <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination</span>
-                  </div>
-                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
-                    <img
-                      :src="`data:image/jpeg;base64,${selectedJob.dest_media_thumbnail}`"
-                      alt="Destination media thumbnail"
-                      class="w-full h-full object-cover object-top"
-                    />
-                  </div>
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
+                  <img
+                    :src="`/api/media/${selectedJob.subject_thumbnail_uuid}/image`"
+                    alt="Subject thumbnail"
+                    class="w-full h-full object-cover object-top"
+                  />
                 </div>
-                
-                <!-- Output Thumbnail/Video -->
-                <div v-if="selectedJob.output_thumbnail || (selectedJob.status === 'completed' && selectedJob.output_uuid)" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
-                  <div class="mb-1 sm:mb-2 text-center">
-                    <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output</span>
-                  </div>
-                  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4] relative group">
-                    <!-- Show thumbnail first, then replace with video when ready -->
-                    <img
-                      v-if="selectedJob.output_thumbnail && (!selectedJob.output_uuid || selectedJob.status !== 'completed' || !outputVideoReady)"
-                      :src="`data:image/jpeg;base64,${selectedJob.output_thumbnail}`"
-                      alt="Output thumbnail"
-                      class="w-full h-full object-cover object-top"
-                    />
-                    <!-- Video player for completed jobs -->
-                    <video
-                      v-if="selectedJob.status === 'completed' && selectedJob.output_uuid"
-                      :src="`/api/stream/${selectedJob.output_uuid}`"
-                      autoplay
-                      loop
-                      muted
-                      class="w-full h-full object-cover group-hover:[&::-webkit-media-controls]:opacity-100 [&::-webkit-media-controls]:opacity-0 [&::-webkit-media-controls]:transition-opacity"
-                      preload="metadata"
-                      controls
-                      @loadeddata="outputVideoReady = true"
-                      @error="outputVideoReady = false"
-                    >
-                      <source :src="`/api/stream/${selectedJob.output_uuid}`" type="video/mp4">
-                      Your browser does not support the video tag.
-                    </video>
-                  </div>
+              </div>
+              
+              <!-- Source Image Thumbnail -->
+              <div v-if="selectedJob.source_media_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Source Image</span>
+                </div>
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
+                  <img
+                    :src="`/api/media/${selectedJob.source_media_thumbnail_uuid}/image`"
+                    alt="Source image thumbnail"
+                    class="w-full h-full object-cover object-top"
+                  />
+                </div>
+              </div>
+              
+              <!-- Destination Media Thumbnail -->
+              <div v-if="selectedJob.dest_media_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination Video</span>
+                </div>
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4] relative group">
+                  <!-- Show thumbnail first, then replace with video when ready -->
+                  <img
+                    v-if="selectedJob.dest_media_thumbnail_uuid && (!destVideoReady)"
+                    :src="`/api/media/${selectedJob.dest_media_thumbnail_uuid}/image`"
+                    alt="Destination media thumbnail"
+                    class="w-full h-full object-cover object-top"
+                  />
+                  <!-- Video player for destination video -->
+                  <video
+                    v-if="selectedJob.dest_media_uuid"
+                    :src="`/api/stream/${selectedJob.dest_media_uuid}`"
+                    autoplay
+                    loop
+                    muted
+                    class="w-full h-full object-cover object-top group-hover:[&::-webkit-media-controls]:opacity-100 [&::-webkit-media-controls]:opacity-0 [&::-webkit-media-controls]:transition-opacity"
+                    preload="metadata"
+                    controls
+                    @loadeddata="destVideoReady = true"
+                    @error="destVideoReady = false"
+                  >
+                    <source :src="`/api/stream/${selectedJob.dest_media_uuid}`" type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              </div>
+              
+              <!-- Output Images/Video Section -->
+              <div v-if="selectedJob.status === 'completed' && selectedJob.output_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output Video</span>
+                </div>
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4] relative group">
+                  <!-- Show thumbnail first, then replace with video when ready -->
+                  <img
+                    v-if="selectedJob.output_thumbnail_uuid && (!outputVideoReady)"
+                    :src="`/api/media/${selectedJob.output_thumbnail_uuid}/image`"
+                    alt="Output thumbnail"
+                    class="w-full h-full object-cover object-top"
+                  />
+                  <!-- Video player for completed jobs -->
+                  <video
+                    :src="`/api/stream/${selectedJob.output_uuid}`"
+                    autoplay
+                    loop
+                    muted
+                    class="w-full h-full object-cover object-top group-hover:[&::-webkit-media-controls]:opacity-100 [&::-webkit-media-controls]:opacity-0 [&::-webkit-media-controls]:transition-opacity"
+                    preload="metadata"
+                    controls
+                    @loadeddata="outputVideoReady = true"
+                    @error="outputVideoReady = false"
+                  >
+                    <source :src="`/api/stream/${selectedJob.output_uuid}`" type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
                 </div>
               </div>
             </div>
-
-            <!-- Job Details Accordion -->
-            <div class="mt-4">
-              <UAccordion :items="jobDetailsAccordionItems">
-                <template #job-details>
-                  <div class="space-y-3 text-left">
-                    <!-- Basic Info Grid -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                        <UBadge :color="getStatusColor(selectedJob.status)" size="sm">
-                          {{ selectedJob.status }}
-                        </UBadge>
-                      </div>
-                      <div class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.job_type }}</span>
-                      </div>
-                      <div class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
-                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.progress || 0 }}%</span>
-                      </div>
-                      <div class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
-                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.created_at) }}</span>
-                      </div>
-                      <div v-if="selectedJob.updated_at" class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Updated</span>
-                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.updated_at) }}</span>
-                      </div>
-                      <div v-if="selectedJob.completed_at" class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
-                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.completed_at) }}</span>
-                      </div>
-                    </div>
-                    
-                    <!-- ID -->
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">ID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.id }}</span>
-                    </div>
-                    
-                    <!-- UUIDs Grid -->
-                    <div v-if="selectedJob.source_media_uuid || selectedJob.dest_media_uuid || selectedJob.subject_uuid || selectedJob.output_uuid" class="space-y-2">
-                      <div v-if="selectedJob.subject_uuid" class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
-                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.subject_uuid }}</span>
-                      </div>
-                      <div v-if="selectedJob.dest_media_uuid" class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
-                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.dest_media_uuid }}</span>
-                      </div>
-                      <div v-if="selectedJob.output_uuid" class="flex flex-col space-y-1">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
-                        <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.output_uuid }}</span>
-                      </div>
-                    </div>
+            
+            <!-- Job Output Images Section (for need_input status) -->
+            <div v-if="selectedJob.status === 'need_input' && jobOutputImages.length > 0" class="mt-6">
+              <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white mb-3">Generated Images</h4>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
+                <div
+                  v-for="image in jobOutputImages"
+                  :key="image.uuid"
+                  class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-square relative group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                  @click="openImageFullscreen(image)"
+                >
+                  <img
+                    v-if="image.thumbnail"
+                    :src="image.thumbnail"
+                    :alt="image.filename"
+                    class="w-full h-full object-cover"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center">
+                    <UIcon name="i-heroicons-photo" class="w-8 h-8 text-gray-400" />
                   </div>
-                </template>
-              </UAccordion>
-            </div>
-
-
-            <div v-if="selectedJob.parameters" class="mt-4">
-              <span class="font-medium">Parameters:</span>
-              <pre class="mt-2 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto">{{ JSON.stringify(selectedJob.parameters, null, 2) }}</pre>
-            </div>
-
-            <div v-if="selectedJob.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-              <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
-              <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ selectedJob.error_message }}</p>
+                  <!-- Overlay with filename -->
+                  <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {{ image.filename }}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <template #footer>
-            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:justify-between">
-              <!-- Action buttons - left side on desktop, full width on mobile -->
-              <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 order-2 sm:order-1">
-                <UButton
-                  v-if="['canceled', 'failed', 'completed'].includes(selectedJob.status)"
-                  color="primary"
-                  variant="outline"
-                  icon="i-heroicons-arrow-path"
-                  size="sm"
-                  @click="retryJobFromModal"
-                  class="w-full sm:w-auto"
-                >
-                  <span class="hidden sm:inline">Retry Job</span>
-                  <span class="sm:hidden">Retry</span>
-                </UButton>
-                <UButton
-                  color="red"
-                  variant="outline"
-                  icon="i-heroicons-trash"
-                  size="sm"
-                  @click="deleteJobFromModal"
-                  class="w-full sm:w-auto"
-                >
-                  <span class="hidden sm:inline">Delete Job</span>
-                  <span class="sm:hidden">Delete</span>
-                </UButton>
-              </div>
-              
-              <!-- Close button - right side on desktop, full width on mobile -->
-              <div class="order-1 sm:order-2">
-                <UButton
-                  variant="outline"
-                  @click="showJobModal = false"
-                  class="w-full sm:w-auto"
-                >
-                  Close
-                </UButton>
-              </div>
-            </div>
-          </template>
-        </UCard>
+          <!-- Job Details Accordion -->
+          <div class="mt-4">
+            <UAccordion :items="jobDetailsAccordionItems">
+              <template #job-details>
+                <div class="space-y-3 text-left">
+                  <!-- Basic Info Grid -->
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                      <UBadge :color="getStatusColor(selectedJob.status)" size="sm">
+                        {{ selectedJob.status }}
+                      </UBadge>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.job_type }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedJob.progress || 0 }}%</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.created_at) }}</span>
+                    </div>
+                    <div v-if="selectedJob.updated_at" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Updated</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.updated_at) }}</span>
+                    </div>
+                    <div v-if="selectedJob.completed_at" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(selectedJob.completed_at) }}</span>
+                    </div>
+                  </div>
+                  
+                  <!-- ID -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">ID</span>
+                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.id }}</span>
+                  </div>
+                  
+                  <!-- UUIDs Grid -->
+                  <div v-if="selectedJob.source_media_uuid || selectedJob.dest_media_uuid || selectedJob.subject_uuid || selectedJob.output_uuid" class="space-y-2">
+                    <div v-if="selectedJob.subject_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.subject_uuid }}</span>
+                    </div>
+                    <div v-if="selectedJob.dest_media_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.dest_media_uuid }}</span>
+                    </div>
+                    <div v-if="selectedJob.output_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.output_uuid }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </UAccordion>
+          </div>
+
+          <div v-if="selectedJob.parameters" class="mt-4">
+            <span class="font-medium">Parameters:</span>
+            <pre class="mt-2 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto">{{ JSON.stringify(selectedJob.parameters, null, 2) }}</pre>
+          </div>
+
+          <div v-if="selectedJob.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+            <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
+            <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ selectedJob.error_message }}</p>
+          </div>
+        </div>
+      </template>
+      
+      <template #footer>
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:justify-between">
+          <!-- Action buttons - left side on desktop, full width on mobile -->
+          <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 order-2 sm:order-1">
+            <UButton
+              v-if="selectedJob && ['canceled', 'failed', 'completed', 'need_input'].includes(selectedJob.status)"
+              color="primary"
+              variant="outline"
+              icon="i-heroicons-arrow-path"
+              size="sm"
+              @click="retryJobFromModal"
+              class="w-full sm:w-auto"
+            >
+              <span class="hidden sm:inline">Retry Job</span>
+              <span class="sm:hidden">Retry</span>
+            </UButton>
+            <UButton
+              v-if="selectedJob"
+              color="red"
+              variant="outline"
+              icon="i-heroicons-trash"
+              size="sm"
+              @click="deleteJobFromModal"
+              class="w-full sm:w-auto"
+            >
+              <span class="hidden sm:inline">Delete Job</span>
+              <span class="sm:hidden">Delete</span>
+            </UButton>
+          </div>
+          
+          <!-- Close button - right side on desktop, full width on mobile -->
+          <div class="order-1 sm:order-2">
+            <UButton
+              variant="outline"
+              @click="showJobModal = false"
+              class="w-full sm:w-auto"
+            >
+              Close
+            </UButton>
+          </div>
+        </div>
       </template>
     </UModal>
 
@@ -476,6 +544,8 @@ const jobsStore = useJobsStore()
 const showJobModal = ref(false)
 const selectedJob = ref(null)
 const outputVideoReady = ref(false)
+const destVideoReady = ref(false)
+const jobOutputImages = ref([])
 
 // Job details accordion items
 const jobDetailsAccordionItems = computed(() => {
@@ -501,7 +571,6 @@ const {
   selectedSubject: selectedSubjectFilter,
   searchQuery: subjectSearchQuery,
   subjectItems: subjectFilterItems,
-  loadSubjects: _loadSubjects,
   handleSubjectSelection,
   clearSubject
 } = useSubjects()
@@ -552,14 +621,25 @@ const filterByStatus = async (status) => {
 const refreshJobsWithCurrentState = async () => {
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid)
+  await Promise.all([
+    jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
+// Handle pagination page changes
+const handlePageChange = async (newPage) => {
+  currentPage.value = newPage
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid)
+}
 
 const viewJobDetails = async (jobId) => {
   try {
-    // Reset video ready state when opening a new job
+    // Reset video ready states when opening a new job
     outputVideoReady.value = false
+    destVideoReady.value = false
     
     const response = await useApiFetch(`jobs/${jobId}?include_thumbnails=true&thumbnail_size=md`)
     selectedJob.value = response.job  // The media server returns {success: true, job: {...}}
@@ -609,8 +689,8 @@ const formatDateCompact = (dateString) => {
 const getJobActions = (job) => {
   const actions = []
   
-  // Add retry option for failed, canceled, or completed jobs
-  if (['canceled', 'failed', 'completed'].includes(job.status)) {
+  // Add retry option for failed, canceled, completed, or need_input jobs
+  if (['canceled', 'failed', 'completed', 'need_input'].includes(job.status)) {
     actions.push({
       label: 'Retry Job',
       icon: 'i-heroicons-arrow-path',
@@ -690,19 +770,6 @@ const cancelJob = async (job) => {
 // Job retry method
 const retryJob = async (job) => {
   try {
-    const { confirm } = useConfirmDialog()
-    
-    const confirmed = await confirm({
-      title: 'Retry Job',
-      message: `Are you sure you want to retry job ${job.id}? This will create a new job with the same parameters.`,
-      confirmLabel: 'Retry Job',
-      cancelLabel: 'Cancel',
-      variant: 'primary'
-    })
-    
-    if (!confirmed) return
-    
-    
     const response = await useApiFetch(`jobs/${job.id}/retry`, {
       method: 'POST'
     })
@@ -762,10 +829,8 @@ const deleteJob = async (job) => {
     }
     
     console.log('🚀 Making delete API call...')
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
-    console.log('🔗 Delete URL:', `${mediaServerUrl}/jobs/${job.id}`)
-    const result = await $fetch(`${mediaServerUrl}/jobs/${job.id}`, {
+    console.log('🔗 Delete URL:', `/api/jobs/${job.id}/delete`)
+    const result = await useApiFetch(`jobs/${job.id}/delete`, {
       method: 'DELETE'
     })
     console.log('✅ Delete API call completed, result:', result)
@@ -834,26 +899,18 @@ const handleVisibilityChange = () => {
   }
 }
 
-// Watcher for pagination changes
-watch(currentPage, async (newPage) => {
-  const statusFilter = jobsStore.filters.status || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid)
-})
 
-// Reset video state when modal is closed
+// Reset video states when modal is closed
 watch(showJobModal, (isOpen) => {
   if (!isOpen) {
     outputVideoReady.value = false
+    destVideoReady.value = false
   }
 })
 
 // Lifecycle
 onMounted(() => {
   jobsStore.fetchInitialData()
-  
-  // Load subjects for filtering
-  _loadSubjects()
   
   // Listen for page visibility changes
   document.addEventListener('visibilitychange', handleVisibilityChange)

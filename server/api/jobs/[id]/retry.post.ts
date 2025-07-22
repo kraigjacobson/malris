@@ -1,9 +1,10 @@
-import type { Job } from '~/types'
-
 export default defineEventHandler(async (event) => {
   try {
     // Get the job ID from the route parameters
     const jobId = getRouterParam(event, 'id')
+    
+    console.log('🔍 Debug - jobId from route:', jobId)
+    console.log('🔍 Debug - jobId type:', typeof jobId)
     
     if (!jobId) {
       throw createError({
@@ -14,96 +15,97 @@ export default defineEventHandler(async (event) => {
 
     console.log(`Retrying job ${jobId}...`)
 
-    // Get media server URL from runtime config
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
-
-    // First, get the job details to extract the original parameters
-    const jobResponse = await $fetch(`${mediaServerUrl}/jobs/${jobId}`, {
-      method: 'GET',
-      timeout: 30000
-    }) as { job: Job } | Job
-
-    const job: Job = 'job' in jobResponse ? jobResponse.job : jobResponse
+    // Use Drizzle ORM for simpler retry logic
+    const { getDb } = await import('~/server/utils/database')
+    const { jobs, mediaRecords } = await import('~/server/utils/schema')
+    const { eq } = await import('drizzle-orm')
     
-    if (!job) {
+    const db = getDb()
+
+    // First, get the job details
+    const existingJob = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+    
+    if (existingJob.length === 0) {
       throw createError({
         statusCode: 404,
         statusMessage: 'Job not found'
       })
     }
 
-    // Check if the job is in a retryable state (canceled, failed, or completed)
-    if (!['canceled', 'failed', 'completed'].includes(job.status)) {
+    const job = existingJob[0]
+
+    // Check if the job is in a retryable state (canceled, failed, completed, or need_input)
+    if (!['canceled', 'failed', 'completed', 'need_input'].includes(job.status)) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Cannot retry job with status: ${job.status}. Only canceled, failed, or completed jobs can be retried.`
+        statusMessage: `Cannot retry job with status: ${job.status}. Only canceled, failed, completed, or need_input jobs can be retried.`
       })
     }
 
-    // Validate required fields for retry
-    if (!job.job_type || !job.subject_uuid || !job.dest_media_uuid) {
+    console.log(`Resetting job ${jobId} to queued status and cleaning up output media...`)
+
+    // Reset the job status to queued FIRST, before deleting media
+    console.log('🔍 Debug - About to update job with ID:', jobId)
+    console.log('🔍 Debug - Job ID type before update:', typeof jobId)
+    
+    const updatedJob = await db.update(jobs)
+      .set({
+        status: 'queued',
+        progress: 0,
+        errorMessage: null,
+        startedAt: null,
+        completedAt: null,
+        sourceMediaUuid: null,
+        outputUuid: null,
+        updatedAt: new Date()
+      })
+      .where(eq(jobs.id, jobId))
+      .returning({
+        id: jobs.id,
+        jobType: jobs.jobType,
+        status: jobs.status,
+        updatedAt: jobs.updatedAt
+      })
+
+    console.log('🔍 Debug - updatedJob result:', updatedJob)
+    console.log('🔍 Debug - updatedJob length:', updatedJob.length)
+    
+    if (updatedJob.length === 0) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'Job is missing required fields for retry (job_type, subject_uuid, dest_media_uuid)'
+        statusCode: 500,
+        statusMessage: 'Failed to update job - no rows returned from update operation'
       })
     }
 
-    // Prepare the job data for resubmission
-    const jobData = {
-      job_type: job.job_type,
-      subject_uuid: job.subject_uuid,
-      dest_media_uuid: job.dest_media_uuid,
-      parameters: job.parameters || {}
-    }
+    // Now delete any output media associated with this job (after job update)
+    const deletedMedia = await db.delete(mediaRecords)
+      .where(eq(mediaRecords.jobId, jobId))
+      .returning({ uuid: mediaRecords.uuid })
 
-    console.log('Resubmitting job to Media Server API:', jobData)
+    console.log(`Deleted ${deletedMedia.length} output media records for job ${jobId}`)
 
-    // Create FormData for the media server API
-    const formData = new FormData()
-    formData.append('job_type', jobData.job_type)
-    formData.append('subject_uuid', jobData.subject_uuid)
-    formData.append('dest_media_uuid', jobData.dest_media_uuid)
+    console.log('🔍 Debug - updatedJob result:', updatedJob)
+    console.log('🔍 Debug - updatedJob length:', updatedJob.length)
     
-    // Include parameters if there are any
-    if (Object.keys(jobData.parameters).length > 0) {
-      formData.append('parameters', JSON.stringify(jobData.parameters))
-    }
-
-    // Make the request to the Media Server API to create a new job
-    const mediaServerResponse = await $fetch(`${mediaServerUrl}/jobs`, {
-      method: 'POST',
-      body: formData,
-      timeout: 30000
-    })
-
-    console.log('Media Server API response for retry:', mediaServerResponse)
-
-    // If the new job was created successfully, clean up the old job and its output media
-    const response = mediaServerResponse as { job_id: string; status: string }
-    
-    try {
-      // Delete the old job record (this automatically deletes any associated output image media)
-      console.log(`Deleting old job ${jobId} and its output media...`)
-      await $fetch(`${mediaServerUrl}/jobs/${jobId}`, {
-        method: 'DELETE',
-        timeout: 30000
+    if (updatedJob.length === 0) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to update job - no rows returned from update operation'
       })
-      console.log(`Successfully deleted old job ${jobId} and its output media`)
-      
-    } catch (cleanupError) {
-      console.error('Error during cleanup (new job still created):', cleanupError)
-      // Don't fail the retry if cleanup fails - the new job was created successfully
     }
+    
+    const retried = updatedJob[0]
+    console.log('🔍 Debug - retried job:', retried)
+    console.log(`Successfully reset job ${jobId} to queued status`)
 
-    // Return the response from Media Server API
     return {
       success: true,
-      data: mediaServerResponse,
-      job_id: response.job_id,
-      status: response.status,
-      original_job_id: jobId,
-      message: `Job retried successfully. New job ID: ${response.job_id}, Type: ${jobData.job_type}. Old job and output media cleaned up.`
+      job_id: retried.id,
+      job_type: retried.jobType,
+      status: retried.status,
+      updated_at: retried.updatedAt,
+      deleted_media_count: deletedMedia.length,
+      message: `Job ${jobId} has been reset to queued status. Deleted ${deletedMedia.length} output media records.`
     }
 
   } catch (error: any) {

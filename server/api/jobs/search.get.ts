@@ -6,9 +6,10 @@ export default defineEventHandler(async (event) => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { 
-      status, 
-      job_type, 
+    const {
+      status,
+      job_type,
+      subject_uuid,
       source_media_uuid,
       dest_media_uuid,
       output_uuid,
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
       has_error,
       sort_by = 'created_at',
       sort_order = 'desc',
-      limit = 100, 
+      limit = 100,
       offset = 0,
       include_thumbnails = false
     } = query
@@ -57,6 +58,10 @@ export default defineEventHandler(async (event) => {
 
     if (job_type) {
       conditions.push(eq(jobs.jobType, job_type as string))
+    }
+
+    if (subject_uuid) {
+      conditions.push(eq(jobs.subjectUuid, subject_uuid as string))
     }
 
     if (source_media_uuid) {

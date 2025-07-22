@@ -44,108 +44,93 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    const { getDbClient } = await import('~/server/utils/database')
-    const client = await getDbClient()
+    const { getDb } = await import('~/server/utils/database')
+    const { jobs, subjects, mediaRecords } = await import('~/server/utils/schema')
+    const { eq } = await import('drizzle-orm')
     
-    try {
-      // Verify subject exists
-      const subjectQuery = 'SELECT id FROM subjects WHERE id = $1'
-      const subjectResult = await client.query(subjectQuery, [subject_uuid])
+    const db = getDb()
+    
+    // Verify subject exists
+    const subject = await db.select().from(subjects).where(eq(subjects.id, subject_uuid)).limit(1)
+    
+    if (subject.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "Subject not found"
+      })
+    }
+    
+    // Verify dest media exists
+    const destMedia = await db.select().from(mediaRecords).where(eq(mediaRecords.uuid, dest_media_uuid)).limit(1)
+    
+    if (destMedia.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "Destination media not found"
+      })
+    }
+    
+    // Verify source media exists if provided
+    if (source_media_uuid) {
+      const sourceMedia = await db.select().from(mediaRecords).where(eq(mediaRecords.uuid, source_media_uuid)).limit(1)
       
-      if (subjectResult.rows.length === 0) {
+      if (sourceMedia.length === 0) {
         throw createError({
           statusCode: 404,
-          statusMessage: "Subject not found"
+          statusMessage: "Source media not found"
         })
       }
-      
-      // Verify dest media exists
-      const destMediaQuery = 'SELECT uuid FROM media_records WHERE uuid = $1'
-      const destMediaResult = await client.query(destMediaQuery, [dest_media_uuid])
-      
-      if (destMediaResult.rows.length === 0) {
-        throw createError({
-          statusCode: 404,
-          statusMessage: "Destination media not found"
-        })
-      }
-      
-      // Verify source media exists if provided
-      if (source_media_uuid) {
-        const sourceMediaQuery = 'SELECT uuid FROM media_records WHERE uuid = $1'
-        const sourceMediaResult = await client.query(sourceMediaQuery, [source_media_uuid])
-        
-        if (sourceMediaResult.rows.length === 0) {
+    }
+    
+    // Parse parameters
+    let params: any = {}
+    if (parameters) {
+      if (typeof parameters === 'string') {
+        try {
+          params = JSON.parse(parameters)
+        } catch (error: any) {
+          console.error("error", error)
           throw createError({
-            statusCode: 404,
-            statusMessage: "Source media not found"
+            statusCode: 400,
+            statusMessage: "Invalid parameters JSON"
           })
         }
+      } else {
+        params = parameters
       }
-      
-      // Parse parameters
-      let params: any = {}
-      if (parameters) {
-        if (typeof parameters === 'string') {
-          try {
-            params = JSON.parse(parameters)
-          } catch (error: any) {
-            console.error("error", error)
-            throw createError({
-              statusCode: 400,
-              statusMessage: "Invalid parameters JSON"
-            })
-          }
-        } else {
-          params = parameters
-        }
-      }
-      
-      // Add frames_per_batch to parameters if provided
-      if (frames_per_batch !== undefined) {
-        params.frames_per_batch = frames_per_batch
-      }
-      
-      // Create job
-      const insertQuery = `
-        INSERT INTO jobs (
-          job_type, 
-          subject_uuid, 
-          dest_media_uuid, 
-          source_media_uuid, 
-          parameters, 
-          status, 
-          progress,
-          created_at, 
-          updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, 'queued', 0, NOW(), NOW())
-        RETURNING id, job_type, status, created_at
-      `
-      
-      const paramsJson = Object.keys(params).length > 0 ? JSON.stringify(params) : null
-      const result = await client.query(insertQuery, [
-        job_type,
-        subject_uuid,
-        dest_media_uuid,
-        source_media_uuid || null,
-        paramsJson
-      ])
-      
-      const newJob = result.rows[0]
-      
-      return {
-        success: true,
-        job_id: newJob.id,
-        job_type: newJob.job_type,
-        status: newJob.status,
-        workflow_type: source_media_uuid ? "vid" : "test",
-        created_at: newJob.created_at,
-        message: "Job created successfully"
-      }
-      
-    } finally {
-      client.release()
+    }
+    
+    // Add frames_per_batch to parameters if provided
+    if (frames_per_batch !== undefined) {
+      params.frames_per_batch = frames_per_batch
+    }
+    
+    // Create job using Drizzle ORM
+    const newJob = await db.insert(jobs).values({
+      jobType: job_type,
+      subjectUuid: subject_uuid,
+      destMediaUuid: dest_media_uuid,
+      sourceMediaUuid: source_media_uuid || null,
+      parameters: Object.keys(params).length > 0 ? params : null,
+      status: 'queued',
+      progress: 0
+    }).returning({
+      id: jobs.id,
+      jobType: jobs.jobType,
+      status: jobs.status,
+      createdAt: jobs.createdAt
+    })
+    
+    const createdJob = newJob[0]
+    
+    return {
+      success: true,
+      job_id: createdJob.id,
+      job_type: createdJob.jobType,
+      status: createdJob.status,
+      workflow_type: source_media_uuid ? "vid" : "test",
+      created_at: createdJob.createdAt,
+      message: "Job created successfully"
     }
   } catch (error: any) {
     if (error.statusCode) {

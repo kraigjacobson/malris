@@ -330,7 +330,6 @@ const {
   selectedSubject: _selectedDropdownSubject,
   searchQuery: dropdownSearchTerm,
   subjectItems: baseSearchSubjectItems,
-  loadSubjects: loadSearchSubjects,
   handleSubjectSelection: _handleDropdownSubjectSelection
 } = useSubjects()
 
@@ -341,10 +340,6 @@ const searchSubjectItems = computed(() =>
     label: item.label
   }))
 )
-
-// Load subjects on mount and when search changes
-onMounted(() => loadSearchSubjects())
-watch(dropdownSearchTerm, () => loadSearchSubjects())
 
 const sortOptions = ref({
   sort_by: 'name',

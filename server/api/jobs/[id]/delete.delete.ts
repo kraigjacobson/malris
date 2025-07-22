@@ -10,33 +10,47 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Get the media server URL from runtime config
-    const config = useRuntimeConfig()
-    const mediaServerUrl = config.public.apiUrl || 'http://localhost:8000'
-    
-    console.log(`🗑️ Deleting job ${jobId} via media server at ${mediaServerUrl}...`)
-    console.log(`🔗 Full URL: ${mediaServerUrl}/jobs/${jobId}`)
-    
-    // Make the DELETE request to the media server
-    const response = await fetch(`${mediaServerUrl}/jobs/${jobId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
+    console.log(`🗑️ Deleting job ${jobId} via Drizzle ORM...`)
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    // Use Drizzle ORM instead of raw SQL
+    const { getDb } = await import('~/server/utils/database')
+    const { jobs } = await import('~/server/utils/schema')
+    const { eq } = await import('drizzle-orm')
+    
+    const db = getDb()
+
+    // First check if job exists
+    const existingJob = await db.select({
+      id: jobs.id,
+      jobType: jobs.jobType,
+      status: jobs.status
+    }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
+    
+    if (existingJob.length === 0) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Job not found'
+      })
     }
 
-    const data = await response.json()
+    // Delete the job from database
+    const deletedJob = await db.delete(jobs).where(eq(jobs.id, jobId)).returning({
+      id: jobs.id,
+      jobType: jobs.jobType,
+      status: jobs.status
+    })
     
-    console.log('✅ Job deleted successfully:', data)
-    
+    const deleted = deletedJob[0]
+    console.log(`✅ Successfully deleted job ${jobId} from database:`, deleted)
+
     return {
       success: true,
       message: `Job ${jobId} deleted successfully`,
-      data: data
+      data: {
+        deleted_job_id: deleted.id,
+        job_type: deleted.jobType,
+        status: deleted.status
+      }
     }
   } catch (error: any) {
     console.error('❌ Failed to delete job:', error)

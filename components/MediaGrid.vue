@@ -22,7 +22,7 @@
           >
             <img
               v-if="settingsStore.displayImages"
-              :src="`/api/media/${media.uuid}/image?size=sm`"
+              :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover object-top"
               loading="lazy"
@@ -43,16 +43,24 @@
             <!-- Video element -->
             <video
               :ref="`video-${media.uuid}`"
-              :poster="media.thumbnail"
+              :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
               class="w-full h-full object-cover object-top"
               muted
               loop
-              preload="none"
+              preload="metadata"
               playsinline
               webkit-playsinline
             >
               Your browser does not support the video tag.
             </video>
+            
+            <!-- Fallback for videos without thumbnails -->
+            <div
+              v-if="!media.thumbnail_uuid"
+              class="absolute inset-0 bg-gray-800 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
+            </div>
             
             <!-- Video Duration -->
             <div

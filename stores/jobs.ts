@@ -25,6 +25,8 @@ export const useJobsStore = defineStore('jobs', () => {
   const autoRefreshInterval = ref<NodeJS.Timeout | null>(null)
   const REFRESH_INTERVAL = 5000 // 5 seconds
   
+  const isProcessing = ref(false)
+  
   // LocalForage key for auto-refresh setting
   const AUTO_REFRESH_KEY = 'jobs-auto-refresh-enabled'
   
@@ -164,6 +166,9 @@ export const useJobsStore = defineStore('jobs', () => {
       await fetchQueueStatus()
       await fetchJobs()
       
+      // Get current processing status from server
+      await getProcessingStatus()
+      
       // Only start auto-refresh if it's enabled
       if (autoRefreshEnabled.value) {
         startAutoRefresh()
@@ -201,7 +206,10 @@ export const useJobsStore = defineStore('jobs', () => {
       autoRefreshInterval.value = setInterval(() => {
         // Only refresh if not currently loading and page is visible
         if (!isLoading.value && !document.hidden) {
-          fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value)
+          Promise.all([
+            fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value),
+            fetchQueueStatus()
+          ])
         }
       }, REFRESH_INTERVAL)
     }
@@ -217,13 +225,49 @@ export const useJobsStore = defineStore('jobs', () => {
   const toggleAutoRefresh = (enabled?: boolean) => {
     // If enabled is passed, use it; otherwise use the current value
     const shouldEnable = enabled !== undefined ? enabled : autoRefreshEnabled.value
-    console.log('🔄 Toggling auto-refresh:', { enabled: shouldEnable, current: autoRefreshEnabled.value })
     
     // Always stop first to clear any existing interval
     stopAutoRefresh()
     
     if (shouldEnable) {
       startAutoRefresh()
+    }
+  }
+
+  // Processing methods (now server-side)
+  const toggleProcessing = async () => {
+    try {
+      const response = await useApiFetch('jobs/processing/toggle', {
+        method: 'POST',
+        body: {
+          enabled: !isProcessing.value
+        }
+      }) as any
+      
+      if (response.success) {
+        isProcessing.value = response.processing_enabled
+        console.log(`${isProcessing.value ? '▶️' : '⏸️'} Job processing ${isProcessing.value ? 'started' : 'stopped'}`)
+      }
+      
+      return response
+    } catch (error) {
+      console.error('❌ Failed to toggle processing:', error)
+      throw error
+    }
+  }
+
+  const getProcessingStatus = async () => {
+    try {
+      const response = await useApiFetch('jobs/processing/status') as any
+      
+      if (response.success) {
+        isProcessing.value = response.processing_enabled
+      }
+      
+      return response
+    } catch (error) {
+      console.error('❌ Failed to get processing status:', error)
+      throw error
     }
   }
 
@@ -236,6 +280,7 @@ export const useJobsStore = defineStore('jobs', () => {
     filters,
     autoRefreshEnabled,
     autoRefreshInterval: readonly(autoRefreshInterval),
+    isProcessing: readonly(isProcessing),
     
     // Actions
     fetchJobs,
@@ -248,6 +293,8 @@ export const useJobsStore = defineStore('jobs', () => {
     stopAutoRefresh,
     toggleAutoRefresh,
     loadAutoRefreshSetting,
-    saveAutoRefreshSetting
+    saveAutoRefreshSetting,
+    toggleProcessing,
+    getProcessingStatus
   }
 })
