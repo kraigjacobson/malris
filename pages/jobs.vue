@@ -225,27 +225,27 @@
               <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
                 {{ formatDateCompact(job.updated_at) }}
               </span>
-              <div class="flex gap-1">
-                <UButton
-                  v-if="job.status === 'need_input'"
-                  size="xs"
-                  color="warning"
-                  variant="outline"
-                  @click.stop="openImageSelection(job)"
-                >
-                  <span class="hidden sm:inline">Select Source Image</span>
-                  <span class="sm:hidden">Select</span>
-                </UButton>
-                <UButton
-                  v-if="['queued', 'active'].includes(job.status)"
-                  size="xs"
-                  color="error"
-                  variant="outline"
-                  @click.stop="cancelJob(job)"
-                >
-                  Cancel
-                </UButton>
-              </div>
+              <div class="flex gap-1 ml-2">
+               <UButton
+                 v-if="job.status === 'need_input'"
+                 size="xs"
+                 color="warning"
+                 variant="outline"
+                 @click.stop="openImageSelection(job)"
+               >
+                 <span class="hidden sm:inline">Select Source Image</span>
+                 <span class="sm:hidden">Select</span>
+               </UButton>
+               <UButton
+                 v-if="['queued', 'active'].includes(job.status)"
+                 size="xs"
+                 color="error"
+                 variant="outline"
+                 @click.stop="cancelJob(job)"
+               >
+                 Cancel
+               </UButton>
+             </div>
             </div>
           </div>
           
