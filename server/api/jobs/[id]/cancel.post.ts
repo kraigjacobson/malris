@@ -41,16 +41,16 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // If job is currently active, try to interrupt ComfyUI
+    // If job is currently active, try to interrupt via rp_handler
     if (job.status === 'active') {
-      console.log(`🛑 Canceling active job ${jobId} - attempting to interrupt ComfyUI`)
+      console.log(`🛑 Canceling active job ${jobId} - attempting to interrupt via rp_handler`)
       
       try {
-        // Use ComfyUI API URL for interrupt endpoint (different port than worker API)
-        const comfyuiUrl = process.env.COMFYUI_URL || 'http://localhost:8189'
+        // Use rp_handler interrupt endpoint
+        const rpHandlerUrl = process.env.RP_HANDLER_URL || 'http://comfyui-runpod-worker:8000'
         
-        // Send interrupt signal to ComfyUI
-        const response = await fetch(`${comfyuiUrl}/interrupt`, {
+        // Send interrupt signal to rp_handler which will handle ComfyUI interrupt and stop progress monitoring
+        const response = await fetch(`${rpHandlerUrl}/interrupt/${jobId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -58,12 +58,14 @@ export default defineEventHandler(async (event) => {
         })
         
         if (response.ok) {
-          console.log(`✅ Successfully interrupted ComfyUI for job ${jobId}`)
+          const result = await response.json()
+          console.log(`✅ Successfully interrupted job ${jobId} via rp_handler:`, result)
         } else {
-          console.log(`⚠️ ComfyUI interrupt response: ${response.status} ${response.statusText}`)
+          const errorText = await response.text()
+          console.log(`⚠️ rp_handler interrupt response: ${response.status} ${response.statusText} - ${errorText}`)
         }
       } catch (error: any) {
-        console.log(`⚠️ Error interrupting ComfyUI for job ${jobId}: ${error.message}`)
+        console.log(`⚠️ Error interrupting job ${jobId} via rp_handler: ${error.message}`)
         // Continue with cancellation even if interrupt fails
       }
     }

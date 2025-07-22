@@ -205,14 +205,19 @@
               <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
                 {{ job.job_type }}
               </span>
-              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
-                <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+              <!-- Desktop: Show progress bar when available -->
+              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="hidden sm:flex items-center space-x-2">
+                <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
                   <div
                     class="bg-blue-600 h-1 rounded-full transition-all duration-300"
                     :style="{ width: `${job.progress}%` }"
                   />
                 </div>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
+              </div>
+              <!-- Mobile: Always show time since updated (never progress bar) -->
+              <div class="sm:hidden ml-auto">
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateCompact(job.updated_at) }}</span>
               </div>
             </div>
             
@@ -929,3 +934,4 @@ useHead({
   ]
 })
 </script>
+

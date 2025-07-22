@@ -13,18 +13,11 @@ export default defineNuxtConfig({
   // Nitro configuration for production
   nitro: {
     experimental: {
-      wasm: true
+      wasm: true,
+      openAPI: true
     }
   },
-  modules: [
-    '@nuxt/icon',
-    '@nuxt/eslint',
-    '@nuxt/ui',
-    '@nuxtjs/supabase',
-    '@nuxt/image',
-    '@pinia/nuxt',
-    '@nuxtjs/device'
-  ],
+  modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt'],
 
   css: ['~/assets/css/main.css'],
 

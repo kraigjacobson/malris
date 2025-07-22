@@ -162,6 +162,39 @@ export default defineEventHandler(async (event) => {
       console.log(`🔄 Job ${jobId} marked as need_input - received ${savedMedia.length} images instead of video`)
     } else {
       console.log(`✅ Job ${jobId} completed successfully with ${savedMedia.length} output files`)
+      
+      // Clean up intermediate output images when job completes with video
+      try {
+        const { and } = await import('drizzle-orm')
+        const intermediateImages = await db.select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename
+        }).from(mediaRecords).where(
+          and(
+            eq(mediaRecords.jobId, jobId),
+            eq(mediaRecords.purpose, 'output'),
+            eq(mediaRecords.type, 'image')
+          )
+        )
+        
+        if (intermediateImages.length > 0) {
+          console.log(`🧹 Cleaning up ${intermediateImages.length} intermediate output images for job ${jobId}`)
+          
+          // Delete the intermediate images from database
+          await db.delete(mediaRecords).where(
+            and(
+              eq(mediaRecords.jobId, jobId),
+              eq(mediaRecords.purpose, 'output'),
+              eq(mediaRecords.type, 'image')
+            )
+          )
+          
+          console.log(`✅ Cleaned up intermediate images: ${intermediateImages.map(img => img.filename).join(', ')}`)
+        }
+      } catch (cleanupError) {
+        console.error(`⚠️ Failed to cleanup intermediate images for job ${jobId}:`, cleanupError)
+        // Don't fail the job completion if cleanup fails
+      }
     }
     
     // Update job with output UUID (use the first/main output file)

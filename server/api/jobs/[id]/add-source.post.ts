@@ -51,16 +51,18 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Update job with source media
+    // Update job with source media and set status back to queued
     const updatedJob = await db.update(jobs)
       .set({
         sourceMediaUuid: body.source_media_uuid,
+        status: 'queued',
         updatedAt: new Date()
       })
       .where(eq(jobs.id, jobId))
       .returning({
         id: jobs.id,
         sourceMediaUuid: jobs.sourceMediaUuid,
+        status: jobs.status,
         updatedAt: jobs.updatedAt
       })
     
