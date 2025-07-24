@@ -1,7 +1,7 @@
 <template>
   <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
     <template #header>
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between w-full">
         <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
           Select Subject
         </h3>
@@ -9,7 +9,7 @@
           color="neutral"
           variant="ghost"
           icon="i-heroicons-x-mark-20-solid"
-          class="-my-1"
+          class="-my-1 ml-auto"
           @click="isOpen = false"
         />
       </div>
@@ -57,8 +57,8 @@
         </div>
       </div>
 
-      <!-- Selected Video Preview (if video is selected) -->
-      <div v-if="selectedVideo" class="p-6 border-b border-gray-200 dark:border-gray-700">
+      <!-- Selected Video Preview (if video is selected and images are enabled) -->
+      <div v-if="selectedVideo && displayImages" class="p-6 border-b border-gray-200 dark:border-gray-700">
         <div class="flex justify-center">
           <div
             class="relative w-80 h-60 bg-gray-200 dark:bg-gray-700 overflow-hidden group cursor-pointer"
@@ -93,7 +93,7 @@
           :has-more="hasMore"
           :error="error"
           :selection-mode="true"
-          :display-images="true"
+          :display-images="displayImages"
           @subject-click="selectSubject"
           @load-more="loadMore"
         />
@@ -105,6 +105,8 @@
 <script setup>
 import { nextTick } from 'vue'
 import { useSearchStore } from '~/stores/search'
+import { useTags } from '~/composables/useTags'
+import { useSettings } from '~/composables/useSettings'
 
 const props = defineProps({
   modelValue: {
@@ -123,8 +125,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
-// Use the search store
+// Use the search store, tags composable, and settings
 const searchStore = useSearchStore()
+const { filterHairTags } = useTags()
+const { displayImages } = useSettings()
 
 // Initialize search store on mount
 onMounted(async () => {
@@ -284,7 +288,8 @@ const loadMore = () => {
 const selectSubject = (subject) => {
   emit('select', {
     value: subject.id,
-    label: subject.name
+    label: subject.name,
+    tags: subject.tags // Include the full tags data
   })
   
   // Close mobile keyboard
@@ -360,8 +365,10 @@ watch(isOpen, (newValue) => {
     searchQuery.value = ''
     
     // Only set initial tags if they're provided AND the store is empty
+    // Filter to only include hair-related tags
     if (props.initialTags && props.initialTags.length > 0 && searchStore.subjectSearch.selectedTags.length === 0) {
-      searchStore.subjectSearch.selectedTags = [...props.initialTags]
+      const hairTags = filterHairTags(props.initialTags)
+      searchStore.subjectSearch.selectedTags = [...hairTags]
     }
     
     subjects.value = []

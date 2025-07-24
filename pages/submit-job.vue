@@ -1,27 +1,16 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 max-w-2xl">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Submit Job
       </h1>
-      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-        Submit a video processing job to the media server
-      </p>
     </div>
 
     <UCard class="w-full">
-      <template #header>
-        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-          Job Configuration
-        </h2>
-      </template>
 
       <form @submit.prevent="submitJob" class="space-y-4 sm:space-y-6">
         <!-- Job Type Selection -->
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Job Type <span class="text-red-500">*</span>
-          </label>
           <USelectMenu
             v-model="form.job_type"
             :items="jobTypeOptions"
@@ -31,11 +20,65 @@
           <p class="text-xs text-gray-500 hidden sm:block">Choose the type of processing job</p>
         </div>
 
+        <!-- Subject Selection (for vid_faceswap) -->
+        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
+          
+          <!-- Subject Selection Options -->
+          <div class="space-y-2">
+            <!-- Subject Search and Select Button Row -->
+            <div class="flex flex-row items-center gap-2">
+              <!-- Subject Name Search with Dropdown -->
+              <div class="flex-1 w-full">
+                <SubjectSearch
+                  v-model="selectedSubject"
+                  placeholder="Search by subject name..."
+                  :disabled="isSubmitting"
+                  @select="handleSubjectSelection"
+                />
+              </div>
+              
+              <!-- Subject Selection Button -->
+              <UButton
+                variant="outline"
+                icon="i-heroicons-user-20-solid"
+                @click="showSubjectModal = true"
+                :disabled="isSubmitting"
+                size="sm"
+                class="shrink-0"
+              >
+                <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select from List' }}</span>
+                <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select from List' }}</span>
+              </UButton>
+            </div>
+            
+            <!-- Selected Subject Preview -->
+            <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
+                <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {{ selectedSubject.label }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+                  {{ selectedSubject.value }}
+                </p>
+              </div>
+              <UButton
+                variant="ghost"
+                color="error"
+                icon="i-heroicons-x-mark-20-solid"
+                size="xs"
+                @click="clearSelectedSubject"
+                :disabled="isSubmitting"
+              />
+            </div>
+          </div>
+          
+        </div>
+
         <!-- Destination Video Selection (for vid_faceswap) -->
         <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Destination Video <span class="text-red-500">*</span>
-          </label>
           
           <!-- Video Selection Button and Preview -->
           <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
@@ -53,7 +96,7 @@
             
             <!-- Selected Video Preview -->
             <div v-if="selectedVideo" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
-              <div class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
+              <div v-if="displayImages" class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
                 <img
                   v-if="selectedVideo.thumbnail_uuid"
                   :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm`"
@@ -85,65 +128,8 @@
           
         </div>
 
-        <!-- Subject Selection (for vid_faceswap) -->
-        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Subject <span class="text-red-500">*</span>
-          </label>
-          
-          <!-- Subject Selection Options -->
-          <div class="space-y-2">
-            <!-- Subject Name Search with Dropdown -->
-            <SubjectSearch
-              v-model="selectedSubject"
-              placeholder="Search by subject name..."
-              :disabled="isSubmitting"
-              @select="handleSubjectSelection"
-            />
-            
-            <!-- Subject Selection Button -->
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-              <UButton
-                variant="outline"
-                icon="i-heroicons-user-20-solid"
-                @click="showSubjectModal = true"
-                :disabled="isSubmitting"
-                size="sm"
-                class="shrink-0 w-full sm:w-auto"
-              >
-                <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select from List' }}</span>
-                <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select from List' }}</span>
-              </UButton>
-            
-              <!-- Selected Subject Preview -->
-              <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
-                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
-                  <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {{ selectedSubject.label }}
-                  </p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                    {{ selectedSubject.value }}
-                  </p>
-                </div>
-                <UButton
-                  variant="ghost"
-                  color="error"
-                  icon="i-heroicons-x-mark-20-solid"
-                  size="xs"
-                  @click="clearSelectedSubject"
-                  :disabled="isSubmitting"
-                />
-              </div>
-            </div>
-          </div>
-          
-        </div>
-
         <!-- Additional Parameters -->
-        <UAccordion :items="additionalParametersItems">
+        <!-- <UAccordion :items="additionalParametersItems">
           <template #additional-parameters>
             <div class="space-y-2">
               <UTextarea
@@ -156,7 +142,7 @@
               <p class="text-xs text-gray-500">Optional JSON parameters for the job</p>
             </div>
           </template>
-        </UAccordion>
+        </UAccordion> -->
 
         <!-- Submit Buttons -->
         <div class="flex gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -183,39 +169,6 @@
       </form>
     </UCard>
 
-
-    <!-- Job Details Preview -->
-    <UCard v-if="isFormValid" class="mt-6">
-      <template #header>
-        <h3 class="text-lg font-semibold">Job Preview</h3>
-      </template>
-      
-      <div class="space-y-2">
-        <div class="flex justify-between">
-          <span class="font-medium">Job Type:</span>
-          <span>{{ form.job_type?.label || form.job_type }}</span>
-        </div>
-        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="flex justify-between">
-          <span class="font-medium">Destination Video:</span>
-          <span class="font-mono text-sm">{{ form.dest_media_uuid }}</span>
-        </div>
-        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="flex justify-between">
-          <span class="font-medium">Subject:</span>
-          <span class="text-sm">{{ selectedSubject?.label || 'Not selected' }}</span>
-        </div>
-        <div v-if="form.parameters_json" class="flex justify-between">
-          <span class="font-medium">Parameters:</span>
-          <span class="font-mono text-sm">{{ form.parameters_json }}</span>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="text-sm text-gray-500">
-          <strong>API Endpoint:</strong> /api/auth/submit-job → Media Server /jobs
-        </div>
-      </template>
-    </UCard>
-
     <!-- Video Selection Modal -->
     <VideoSelectionModal
       v-model="showVideoModal"
@@ -235,10 +188,19 @@
 </template>
 
 <script setup>
+import { useTags } from '~/composables/useTags'
+import { useSettings } from '~/composables/useSettings'
+
 // Page metadata
 definePageMeta({
   title: 'Submit Job'
 })
+
+// Use the tags composable
+const { setSubjectTags, setVideoTags, getSubjectHairTags, getVideoHairTags, clearTags } = useTags()
+
+// Use the settings composable
+const { displayImages } = useSettings()
 
 // Reactive form data
 const form = ref({
@@ -258,37 +220,27 @@ const showSubjectModal = ref(false)
 
 // Subject selection is now handled by SubjectSearch component
 
-// Cross-modal tag synchronization
-const subjectHairTags = ref([])
-const videoHairTags = ref([])
+// Cross-modal tag synchronization using computed properties from the composable
+const subjectHairTags = computed(() => getSubjectHairTags())
+const videoHairTags = computed(() => getVideoHairTags())
 
-// Helper function to extract hair-related tags
-const extractHairTags = (tags) => {
-  if (!tags || !Array.isArray(tags)) return []
-  return tags.filter(tag => tag.endsWith('_hair'))
-}
-
-// Helper function to get hair tags from subject
-const getSubjectHairTags = async (subjectId) => {
-  try {
-    // Fetch subject details to get tags
-    const response = await useApiFetch(`subjects/search?limit=1&name_pattern=${selectedSubject.value?.label}&include_images=true`)
-    const subject = response.subjects?.find(s => s.id === subjectId)
-    if (subject && subject.tags) {
-      return extractHairTags(subject.tags)
-    }
-  } catch (error) {
-    console.error('Error fetching subject tags:', error)
+// Helper function to store subject tags when subject is selected
+const storeSubjectTags = (subject) => {
+  
+  if (subject && subject.tags && subject.tags.tags) {
+    setSubjectTags(subject.tags.tags)
+  } else {
+    setSubjectTags([])
   }
-  return []
 }
 
-// Helper function to get hair tags from video
-const getVideoHairTags = (video) => {
+// Helper function to store video tags when video is selected
+const storeVideoTags = (video) => {
   if (video && video.tags && video.tags.tags) {
-    return extractHairTags(video.tags.tags)
+    setVideoTags(video.tags.tags)
+  } else {
+    setVideoTags([])
   }
-  return []
 }
 
 // Job type options
@@ -310,46 +262,46 @@ const isFormValid = computed(() => {
   return false
 })
 
-const additionalParametersItems = computed(() => [
-  {
-    label: 'Additional Parameters (JSON)',
-    slot: 'additional-parameters',
-    defaultOpen: false
-  }
-])
+// const additionalParametersItems = computed(() => [
+//   {
+//     label: 'Additional Parameters (JSON)',
+//     slot: 'additional-parameters',
+//     defaultOpen: false
+//   }
+// ])
 
 // Video selection handlers
 const handleVideoSelection = (video) => {
   selectedVideo.value = video
   form.value.dest_media_uuid = video.uuid
   
-  // Extract hair tags from selected video for subject modal
-  videoHairTags.value = getVideoHairTags(video)
+  // Store video tags in the composable
+  storeVideoTags(video)
 }
 
 const clearSelectedVideo = () => {
   selectedVideo.value = null
   form.value.dest_media_uuid = ''
-  videoHairTags.value = []
+  setVideoTags([])
 }
 
 // Subject selection handlers
-const handleSubjectSelection = async (selected) => {
+const handleSubjectSelection = (selected) => {
   selectedSubject.value = selected
   form.value.subject_uuid = selected ? selected.value : ''
   
-  // Extract hair tags from selected subject for video modal
-  if (selected && selected.value) {
-    subjectHairTags.value = await getSubjectHairTags(selected.value)
+  // Store subject tags in the composable
+  if (selected) {
+    storeSubjectTags(selected)
   } else {
-    subjectHairTags.value = []
+    setSubjectTags([])
   }
 }
 
 const clearSelectedSubject = () => {
   selectedSubject.value = null
   form.value.subject_uuid = ''
-  subjectHairTags.value = []
+  setSubjectTags([])
 }
 
 
@@ -430,9 +382,7 @@ const resetForm = () => {
   }
   selectedVideo.value = null
   selectedSubject.value = null
-  handleComposableSubjectSelection(null)
-  subjectHairTags.value = []
-  videoHairTags.value = []
+  clearTags()
 }
 
 
@@ -445,8 +395,7 @@ watch(() => form.value.job_type, (newJobType) => {
     form.value.subject_uuid = ''
     selectedVideo.value = null
     form.value.dest_media_uuid = ''
-    subjectHairTags.value = []
-    videoHairTags.value = []
+    clearTags()
   }
 })
 

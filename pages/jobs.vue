@@ -1,12 +1,9 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Job Queue
+      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+        Jobs
       </h1>
-      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-        Monitor and manage processing jobs
-      </p>
     </div>
 
     <!-- Queue Status Card -->
@@ -54,76 +51,151 @@
         </div>
       </template>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-4">
+      <!-- Mobile: Compact grid layout with more buttons per row -->
+      <div class="grid grid-cols-4 gap-1 sm:hidden">
         <div
-          class="text-center p-2 sm:p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          class="text-center p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-md cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           :class="{ 'border-2 border-blue-500': jobsStore.filters.status === '' }"
           @click="filterByStatus('')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div class="text-sm font-bold text-blue-600 dark:text-blue-400">
             {{ jobsStore.queueStatus?.queue?.total || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Total</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
+          class="text-center p-1.5 bg-yellow-50 dark:bg-yellow-900/20 rounded-md cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
           :class="{ 'border-2 border-yellow-500': jobsStore.filters.status === 'queued' }"
           @click="filterByStatus('queued')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+          <div class="text-sm font-bold text-yellow-600 dark:text-yellow-400">
             {{ jobsStore.queueStatus?.queue?.queued || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Queued</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Queue</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+          class="text-center p-1.5 bg-green-50 dark:bg-green-900/20 rounded-md cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
           :class="{ 'border-2 border-green-500': jobsStore.filters.status === 'active' }"
           @click="filterByStatus('active')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-green-600 dark:text-green-400">
+          <div class="text-sm font-bold text-green-600 dark:text-green-400">
             {{ jobsStore.queueStatus?.queue?.active || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Active</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Active</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+          class="text-center p-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-md cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
           :class="{ 'border-2 border-purple-500': jobsStore.filters.status === 'completed' }"
           @click="filterByStatus('completed')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
+          <div class="text-sm font-bold text-purple-600 dark:text-purple-400">
             {{ jobsStore.queueStatus?.queue?.completed || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Completed</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Done</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+          class="text-center p-1.5 bg-red-50 dark:bg-red-900/20 rounded-md cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
           :class="{ 'border-2 border-red-500': jobsStore.filters.status === 'failed' }"
           @click="filterByStatus('failed')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400">
+          <div class="text-sm font-bold text-red-600 dark:text-red-400">
             {{ jobsStore.queueStatus?.queue?.failed || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Failed</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Failed</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+          class="text-center p-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-md cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
           :class="{ 'border-2 border-orange-500': jobsStore.filters.status === 'need_input' }"
           @click="filterByStatus('need_input')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div class="text-sm font-bold text-orange-600 dark:text-orange-400">
             {{ jobsStore.queueStatus?.queue?.need_input || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">Input</div>
         </div>
         <div
-          class="text-center p-2 sm:p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          class="text-center p-1.5 bg-gray-200 dark:bg-gray-700 rounded-md cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
           :class="{ 'border-2 border-gray-500': jobsStore.filters.status === 'canceled' }"
           @click="filterByStatus('canceled')"
         >
-          <div class="text-lg sm:text-2xl font-bold text-gray-700 dark:text-gray-300">
+          <div class="text-sm font-bold text-gray-700 dark:text-gray-300">
             {{ jobsStore.queueStatus?.queue?.canceled || 0 }}
           </div>
-          <div class="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Canceled</div>
+          <div class="text-xs text-gray-700 dark:text-gray-300">Cancel</div>
+        </div>
+      </div>
+
+      <!-- Desktop: Original grid layout -->
+      <div class="hidden sm:grid grid-cols-3 md:grid-cols-7 gap-4">
+        <div
+          class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          :class="{ 'border-2 border-blue-500': jobsStore.filters.status === '' }"
+          @click="filterByStatus('')"
+        >
+          <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+            {{ jobsStore.queueStatus?.queue?.total || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Total Jobs</div>
+        </div>
+        <div
+          class="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
+          :class="{ 'border-2 border-yellow-500': jobsStore.filters.status === 'queued' }"
+          @click="filterByStatus('queued')"
+        >
+          <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+            {{ jobsStore.queueStatus?.queue?.queued || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Queued</div>
+        </div>
+        <div
+          class="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+          :class="{ 'border-2 border-green-500': jobsStore.filters.status === 'active' }"
+          @click="filterByStatus('active')"
+        >
+          <div class="text-2xl font-bold text-green-600 dark:text-green-400">
+            {{ jobsStore.queueStatus?.queue?.active || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Active</div>
+        </div>
+        <div
+          class="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+          :class="{ 'border-2 border-purple-500': jobsStore.filters.status === 'completed' }"
+          @click="filterByStatus('completed')"
+        >
+          <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+            {{ jobsStore.queueStatus?.queue?.completed || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Completed</div>
+        </div>
+        <div
+          class="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+          :class="{ 'border-2 border-red-500': jobsStore.filters.status === 'failed' }"
+          @click="filterByStatus('failed')"
+        >
+          <div class="text-2xl font-bold text-red-600 dark:text-red-400">
+            {{ jobsStore.queueStatus?.queue?.failed || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Failed</div>
+        </div>
+        <div
+          class="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+          :class="{ 'border-2 border-orange-500': jobsStore.filters.status === 'need_input' }"
+          @click="filterByStatus('need_input')"
+        >
+          <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+            {{ jobsStore.queueStatus?.queue?.need_input || 0 }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+        </div>
+        <div
+          class="text-center p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          :class="{ 'border-2 border-gray-500': jobsStore.filters.status === 'canceled' }"
+          @click="filterByStatus('canceled')"
+        >
+          <div class="text-2xl font-bold text-gray-700 dark:text-gray-300">
+            {{ jobsStore.queueStatus?.queue?.canceled || 0 }}
+          </div>
+          <div class="text-sm text-gray-700 dark:text-gray-300">Canceled</div>
         </div>
       </div>
 
@@ -138,11 +210,8 @@
     <!-- Subject Filter -->
     <UCard class="mb-3 sm:mb-6">
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Subject
-          </label>
           <UInputMenu
             v-model="selectedSubjectFilter"
             v-model:search-term="subjectSearchQuery"
@@ -156,7 +225,17 @@
           />
         </div>
         
-        <div class="flex items-end">
+        <div>
+          <USelect
+            v-model="selectedSourceTypeFilter"
+            :items="sourceTypeOptions"
+            placeholder="Filter by job type..."
+            class="w-full"
+            @update:model-value="handleSourceTypeFilterSelection"
+          />
+        </div>
+        
+        <div class="flex items-end gap-2">
           <UButton
             type="button"
             variant="outline"
@@ -164,8 +243,16 @@
             @click="clearSubjectFilter"
             :disabled="!selectedSubjectFilter"
           >
-            <span class="hidden sm:inline">Clear Subject Filter</span>
-            <span class="sm:hidden">Clear</span>
+            <span class="inline">Clear Subject</span>
+          </UButton>
+          <UButton
+            type="button"
+            variant="outline"
+            size="xs"
+            @click="clearSourceTypeFilter"
+            :disabled="selectedSourceTypeFilter === 'all'"
+          >
+            <span class="inline">Clear Type</span>
           </UButton>
         </div>
       </div>
@@ -173,6 +260,58 @@
 
     <!-- Jobs List -->
     <UCard>
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <UCheckbox
+              :model-value="allVisibleSelected"
+              :indeterminate="hasPartialSelection"
+              @update:model-value="toggleSelectAll"
+            />
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              Jobs
+              <span v-if="hasSelectedJobs" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                ({{ selectedJobs.size }} selected)
+              </span>
+            </h3>
+          </div>
+          
+          <!-- Bulk Actions -->
+          <div v-if="hasSelectedJobs" class="flex items-center gap-2">
+            <UButton
+              size="xs"
+              color="primary"
+              variant="outline"
+              @click="bulkQueue"
+            >
+              Queue Selected
+            </UButton>
+            <UButton
+              size="xs"
+              color="red"
+              variant="outline"
+              @click="bulkCancel"
+            >
+              Cancel Selected
+            </UButton>
+            <UButton
+              size="xs"
+              color="red"
+              variant="outline"
+              @click="bulkDelete"
+            >
+              Delete Selected
+            </UButton>
+            <UButton
+              size="xs"
+              variant="ghost"
+              @click="clearSelection"
+            >
+              Clear
+            </UButton>
+          </div>
+        </div>
+      </template>
 
       <div v-if="jobsStore.jobs.length === 0 && !jobsStore.isLoading" class="text-center py-8 text-gray-500 dark:text-gray-400">
         No jobs found
@@ -186,12 +325,19 @@
         <div
           v-for="job in jobsStore.jobs"
           :key="job.id"
-          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
+          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer"
+          :class="{ 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600': selectedJobs.has(job.id) }"
           @click="viewJobDetails(job.id)"
         >
           <!-- Main job info row -->
-          <div class="flex items-center justify-between pr-16">
+          <div class="flex items-center justify-between" :class="['queued', 'active'].includes(job.status) ? 'pr-24' : 'pr-12'">
             <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
+              <!-- Checkbox -->
+              <UCheckbox
+                :model-value="selectedJobs.has(job.id)"
+                @update:model-value="(checked) => toggleJobSelection(job.id, checked)"
+                @click.stop
+              />
               <UBadge
                 :color="getStatusColor(job.status)"
                 variant="solid"
@@ -202,9 +348,29 @@
               <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
                 {{ job.subject?.name || 'Unknown Subject' }}
               </span>
+              <!-- Desktop: Show full text -->
               <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
-                {{ job.job_type }}
+                {{ job.source_media_uuid ? 'vid' : 'source' }}
               </span>
+              <!-- Mobile: Show single letter badges -->
+              <UBadge
+                v-if="job.source_media_uuid"
+                color="blue"
+                variant="soft"
+                size="xs"
+                class="sm:hidden"
+              >
+                V
+              </UBadge>
+              <UBadge
+                v-else
+                color="green"
+                variant="soft"
+                size="xs"
+                class="sm:hidden"
+              >
+                S
+              </UBadge>
               <!-- Desktop: Show progress bar when available -->
               <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="hidden sm:flex items-center space-x-2">
                 <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
@@ -236,21 +402,21 @@
                  <span class="hidden sm:inline">Select Source Image</span>
                  <span class="sm:hidden">Select</span>
                </UButton>
-               <UButton
-                 v-if="['queued', 'active'].includes(job.status)"
-                 size="xs"
-                 color="error"
-                 variant="outline"
-                 @click.stop="cancelJob(job)"
-               >
-                 Cancel
-               </UButton>
              </div>
             </div>
           </div>
           
+          <!-- Full-height cancel button positioned absolutely (when applicable) -->
+          <div
+            v-if="['queued', 'active'].includes(job.status)"
+            class="absolute top-0 right-12 h-full w-12 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 flex items-center justify-center border-l border-gray-200 dark:border-gray-700 cursor-pointer"
+            @click.stop="cancelJob(job)"
+          >
+            <UIcon name="i-heroicons-x-mark" class="w-4 h-4 text-red-500 dark:text-red-400" />
+          </div>
+          
           <!-- Full-height dropdown button positioned absolutely -->
-          <div class="absolute top-0 right-0 h-full w-16 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center">
+          <div class="absolute top-0 right-0 h-full w-12 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center rounded-r-lg">
             <UDropdownMenu
               :items="getJobActions(job)"
               :ui="{ content: 'w-48' }"
@@ -286,8 +452,8 @@
       
       <template #body>
         <div v-if="selectedJob">
-          <!-- Thumbnails Section -->
-          <div class="space-y-3">
+          <!-- Thumbnails Section (only show when displayImages is true) -->
+          <div v-if="settingsStore.displayImages" class="space-y-3">
             <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
             <div class="flex flex-wrap gap-2 sm:gap-4 justify-center">
               <!-- Subject Thumbnail -->
@@ -382,8 +548,8 @@
               </div>
             </div>
             
-            <!-- Job Output Images Section (for need_input status) -->
-            <div v-if="selectedJob.status === 'need_input' && jobOutputImages.length > 0" class="mt-6">
+            <!-- Job Output Images Section (for need_input status, only show when displayImages is true) -->
+            <div v-if="selectedJob.status === 'need_input' && jobOutputImages.length > 0 && settingsStore.displayImages" class="mt-6">
               <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white mb-3">Generated Images</h4>
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
                 <div
@@ -457,6 +623,10 @@
                       <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
                       <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.subject_uuid }}</span>
                     </div>
+                    <div v-if="selectedJob.source_media_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Source UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.source_media_uuid }}</span>
+                    </div>
                     <div v-if="selectedJob.dest_media_uuid" class="flex flex-col space-y-1">
                       <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
                       <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ selectedJob.dest_media_uuid }}</span>
@@ -487,6 +657,18 @@
         <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:justify-between">
           <!-- Action buttons - left side on desktop, full width on mobile -->
           <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 order-2 sm:order-1">
+            <UButton
+              v-if="selectedJob && ['queued', 'active'].includes(selectedJob.status)"
+              color="red"
+              variant="outline"
+              icon="i-heroicons-x-mark"
+              size="sm"
+              @click="cancelJobFromModal"
+              class="w-full sm:w-auto"
+            >
+              <span class="hidden sm:inline">Cancel Job</span>
+              <span class="sm:hidden">Cancel</span>
+            </UButton>
             <UButton
               v-if="selectedJob && ['canceled', 'failed', 'completed', 'need_input'].includes(selectedJob.status)"
               color="primary"
@@ -537,6 +719,8 @@
 </template>
 
 <script setup>
+import { useSettingsStore } from '~/stores/settings'
+
 // Page metadata
 definePageMeta({
   title: 'Jobs'
@@ -544,6 +728,7 @@ definePageMeta({
 
 // Use the jobs store
 const jobsStore = useJobsStore()
+const settingsStore = useSettingsStore()
 
 // Local modal state
 const showJobModal = ref(false)
@@ -571,6 +756,9 @@ const itemsPerPage = 20
 // Local reactive filter state
 const currentFilter = ref('')
 
+// Bulk selection state
+const selectedJobs = ref(new Set())
+
 // Subject filtering using composable
 const {
   selectedSubject: selectedSubjectFilter,
@@ -580,6 +768,14 @@ const {
   clearSubject
 } = useSubjects()
 
+// Source type filtering
+const selectedSourceTypeFilter = ref('all')
+const sourceTypeOptions = [
+  { value: 'all', label: 'All Jobs' },
+  { value: 'vid', label: 'Video Jobs' },
+  { value: 'source', label: 'Source Jobs' }
+]
+
 // Subject filter handlers
 const handleSubjectFilterSelection = async (selected) => {
   handleSubjectSelection(selected)
@@ -588,7 +784,8 @@ const handleSubjectFilterSelection = async (selected) => {
     currentFilter.value = `subject:${selected.value}`
     currentPage.value = 1
     const statusFilter = jobsStore.filters.status || ''
-    await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, selected.value)
+    const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+    await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, selected.value, sourceTypeFilter)
   } else {
     await clearSubjectFilter()
   }
@@ -599,11 +796,64 @@ const clearSubjectFilter = async () => {
   currentFilter.value = ''
   currentPage.value = 1
   const statusFilter = jobsStore.filters.status || ''
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, '')
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, '', sourceTypeFilter)
+}
+
+// Source type filter handlers
+const handleSourceTypeFilterSelection = async (selected) => {
+  selectedSourceTypeFilter.value = selected
+  currentPage.value = 1
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, selected)
+}
+
+const clearSourceTypeFilter = async () => {
+  selectedSourceTypeFilter.value = 'all'
+  currentPage.value = 1
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, 'all')
 }
 
 // Computed properties
 const totalPages = computed(() => Math.ceil(jobsStore.totalJobs / itemsPerPage))
+
+// Bulk selection computed properties
+const visibleJobIds = computed(() => jobsStore.jobs.map(job => job.id))
+const selectedJobsArray = computed(() => Array.from(selectedJobs.value))
+const hasSelectedJobs = computed(() => selectedJobs.value.size > 0)
+const allVisibleSelected = computed(() => {
+  return visibleJobIds.value.length > 0 && visibleJobIds.value.every(id => selectedJobs.value.has(id))
+})
+const hasPartialSelection = computed(() => {
+  const selectedVisibleJobs = visibleJobIds.value.filter(id => selectedJobs.value.has(id))
+  return selectedVisibleJobs.length > 0 && selectedVisibleJobs.length < visibleJobIds.value.length
+})
+
+// Bulk selection methods
+const toggleSelectAll = () => {
+  if (allVisibleSelected.value) {
+    // If all are selected, unselect all visible jobs
+    visibleJobIds.value.forEach(id => selectedJobs.value.delete(id))
+  } else {
+    // If none or some are selected, select all visible jobs
+    visibleJobIds.value.forEach(id => selectedJobs.value.add(id))
+  }
+}
+
+const toggleJobSelection = (jobId, checked) => {
+  if (checked) {
+    selectedJobs.value.add(jobId)
+  } else {
+    selectedJobs.value.delete(jobId)
+  }
+}
+
+const clearSelection = () => {
+  selectedJobs.value.clear()
+}
 
 
 
@@ -620,14 +870,16 @@ const filterByStatus = async (status) => {
   
   // Fetch jobs with new filter
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, status, subjectUuid)
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, status, subjectUuid, sourceTypeFilter)
 }
 
 const refreshJobsWithCurrentState = async () => {
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   await Promise.all([
-    jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid),
+    jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter),
     jobsStore.fetchQueueStatus()
   ])
 }
@@ -637,7 +889,8 @@ const handlePageChange = async (newPage) => {
   currentPage.value = newPage
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid)
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter)
 }
 
 const viewJobDetails = async (jobId) => {
@@ -875,12 +1128,19 @@ const deleteJob = async (job) => {
   }
 }
 
-// Modal-specific retry and delete handlers
+// Modal-specific retry, cancel and delete handlers
 const retryJobFromModal = async () => {
   console.log('🔄 retryJobFromModal called')
   if (selectedJob.value) {
     showJobModal.value = false
     await retryJob(selectedJob.value)
+  }
+}
+
+const cancelJobFromModal = async () => {
+  if (selectedJob.value) {
+    showJobModal.value = false
+    await cancelJob(selectedJob.value)
   }
 }
 
@@ -892,6 +1152,163 @@ const deleteJobFromModal = async () => {
     await deleteJob(selectedJob.value)
   } else {
     console.log('❌ No selectedJob found!')
+  }
+}
+
+// Bulk operation methods
+const bulkQueue = async () => {
+  const jobsToQueue = selectedJobsArray.value.filter(jobId => {
+    const job = jobsStore.jobs.find(j => j.id === jobId)
+    return job && ['canceled', 'failed', 'completed', 'need_input'].includes(job.status)
+  })
+  
+  if (jobsToQueue.length === 0) {
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'No Jobs to Queue',
+      message: 'Selected jobs cannot be queued. Only canceled, failed, completed, or need_input jobs can be queued.',
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'warning'
+    })
+    return
+  }
+  
+  const { confirm } = useConfirmDialog()
+  const confirmed = await confirm({
+    title: 'Queue Selected Jobs',
+    message: `Are you sure you want to queue ${jobsToQueue.length} job(s)?`,
+    confirmLabel: 'Queue Jobs',
+    cancelLabel: 'Cancel',
+    variant: 'primary'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    // Queue jobs by retrying them
+    for (const jobId of jobsToQueue) {
+      await useApiFetch(`jobs/${jobId}/retry`, { method: 'POST' })
+    }
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Jobs Queued Successfully',
+      description: `${jobsToQueue.length} job(s) have been queued.`,
+      color: 'success',
+      duration: 2000
+    })
+    
+    clearSelection()
+    await refreshJobsWithCurrentState()
+  } catch (error) {
+    console.error('Failed to queue jobs:', error)
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'Error',
+      message: 'Failed to queue some jobs. Please try again.',
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'error'
+    })
+  }
+}
+
+const bulkCancel = async () => {
+  const jobsToCancel = selectedJobsArray.value.filter(jobId => {
+    const job = jobsStore.jobs.find(j => j.id === jobId)
+    return job && ['queued', 'active'].includes(job.status)
+  })
+  
+  if (jobsToCancel.length === 0) {
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'No Jobs to Cancel',
+      message: 'Selected jobs cannot be canceled. Only queued or active jobs can be canceled.',
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'warning'
+    })
+    return
+  }
+  
+  const { confirm } = useConfirmDialog()
+  const confirmed = await confirm({
+    title: 'Cancel Selected Jobs',
+    message: `Are you sure you want to cancel ${jobsToCancel.length} job(s)? This action cannot be undone.`,
+    confirmLabel: 'Cancel Jobs',
+    cancelLabel: 'Keep Jobs',
+    variant: 'error'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    for (const jobId of jobsToCancel) {
+      await useApiFetch(`jobs/${jobId}/cancel`, { method: 'POST' })
+    }
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Jobs Canceled Successfully',
+      description: `${jobsToCancel.length} job(s) have been canceled.`,
+      color: 'success',
+      duration: 2000
+    })
+    
+    clearSelection()
+    await refreshJobsWithCurrentState()
+  } catch (error) {
+    console.error('Failed to cancel jobs:', error)
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'Error',
+      message: 'Failed to cancel some jobs. Please try again.',
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'error'
+    })
+  }
+}
+
+const bulkDelete = async () => {
+  const { confirm } = useConfirmDialog()
+  const confirmed = await confirm({
+    title: 'Delete Selected Jobs',
+    message: `Are you sure you want to delete ${selectedJobs.value.size} job(s)? This action cannot be undone and will remove the jobs and any associated output media.`,
+    confirmLabel: 'Delete Jobs',
+    cancelLabel: 'Cancel',
+    variant: 'error'
+  })
+  
+  if (!confirmed) return
+  
+  try {
+    for (const jobId of selectedJobsArray.value) {
+      await useApiFetch(`jobs/${jobId}/delete`, { method: 'DELETE' })
+    }
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Jobs Deleted Successfully',
+      description: `${selectedJobs.value.size} job(s) have been deleted.`,
+      color: 'success',
+      duration: 2000
+    })
+    
+    clearSelection()
+    await refreshJobsWithCurrentState()
+    await jobsStore.fetchQueueStatus()
+  } catch (error) {
+    console.error('Failed to delete jobs:', error)
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'Error',
+      message: 'Failed to delete some jobs. Please try again.',
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'error'
+    })
   }
 }
 
@@ -912,6 +1329,12 @@ watch(showJobModal, (isOpen) => {
     destVideoReady.value = false
   }
 })
+
+// Clear selection when page changes or filters change
+watch([currentPage, () => jobsStore.filters.status, selectedSubjectFilter, selectedSourceTypeFilter], () => {
+  clearSelection()
+})
+
 
 // Lifecycle
 onMounted(() => {

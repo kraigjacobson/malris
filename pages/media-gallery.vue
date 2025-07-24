@@ -1,12 +1,9 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Media Gallery
+      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+        Media
       </h1>
-      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-        Browse encrypted media storage
-      </p>
     </div>
 
     <!-- Search Filters -->
@@ -24,7 +21,7 @@
               size="xs"
               @click="startSlideshow"
             >
-              <UIcon name="i-heroicons-play" class="mr-1" />
+              <UIcon name="i-heroicons-play" />
               <span class="hidden sm:inline">Slideshow</span>
             </UButton>
             <!-- Collapse Button -->
@@ -39,91 +36,104 @@
         </div>
       </template>
 
-      <div v-show="!filtersCollapsed" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <!-- Media Type Filter -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Media Type
-          </label>
-          <USelectMenu
-            v-model="filters.media_type"
-            :items="mediaTypeOptions"
-            placeholder="All types"
-            class="w-full"
-          />
-        </div>
-
-        <!-- Purpose Filter -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Purpose
-          </label>
-          <USelectMenu
-            v-model="filters.purpose"
-            :items="purposeOptions"
-            placeholder="All purposes"
-            class="w-full"
-          />
-        </div>
-
-        <!-- Subject Filter -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Subject
-          </label>
-          <SubjectSearch
-            v-model="selectedSubject"
-            placeholder="Search for a subject..."
-            @select="handleSubjectSelection"
-          />
-        </div>
-
-        <!-- Tags Filter -->
-        <div class="col-span-1 sm:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tags Search
-          </label>
-          <div class="space-y-2">
-            <UInputTags
-              v-model="selectedTags"
-              placeholder="Add tags (e.g., 1girl, long_hair, anime)"
+      <div v-show="!filtersCollapsed" class="space-y-3 sm:space-y-4">
+        <!-- Media Type and Purpose on same line -->
+        <div class="grid grid-cols-2 gap-3 sm:gap-4">
+          <!-- Media Type Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Media Type
+            </label>
+            <USelectMenu
+              v-model="filters.media_type"
+              :items="mediaTypeOptions"
+              placeholder="All types"
               class="w-full"
             />
-            
+          </div>
+
+          <!-- Purpose Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Purpose
+            </label>
+            <USelectMenu
+              v-model="filters.purpose"
+              :items="purposeOptions"
+              placeholder="All purposes"
+              class="w-full"
+            />
           </div>
         </div>
-        
-        <!-- Completion Filters (only show for videos) -->
-        <div v-if="filters.media_type?.value === 'video'" class="col-span-1 sm:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Completion Filters
-          </label>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Min Completions
-              </label>
-              <UInput
-                v-model.number="completionFilters.min_completions"
-                type="number"
-                placeholder="0"
-                min="0"
+
+        <!-- Second row for Subject and Tags -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+
+          <!-- Subject Filter -->
+          <div>
+            <SubjectSearch
+              v-model="selectedSubject"
+              placeholder="Subject..."
+              @select="handleSubjectSelection"
+            />
+          </div>
+
+          <!-- Tags Filter -->
+          <div>
+            <div class="space-y-2">
+              <UInputTags
+                v-model="selectedTags"
+                placeholder="Tags..."
                 class="w-full"
-                size="sm"
               />
             </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Max Completions
-              </label>
-              <UInput
-                v-model.number="completionFilters.max_completions"
-                type="number"
-                placeholder="No limit"
-                min="0"
-                class="w-full"
-                size="sm"
+          </div>
+        </div>
+
+        <!-- Third row for Tag Confirmation -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <!-- Tags Confirmed Filter -->
+          <div>
+            <div class="flex items-center space-x-3">
+              <UCheckbox
+                v-model="showUnconfirmedOnly"
+                label="Only show unconfirmed tags"
+                :ui="{
+                  label: 'text-sm text-gray-700 dark:text-gray-300'
+                }"
               />
+            </div>
+          </div>
+          
+          <!-- Completion Filters (only show for videos) -->
+          <div v-if="filters.media_type?.value === 'video'">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Min Completions
+                </label>
+                <UInput
+                  v-model.number="completionFilters.min_completions"
+                  type="number"
+                  placeholder="0"
+                  min="0"
+                  class="w-full"
+                  size="sm"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Max Completions
+                </label>
+                <UInput
+                  v-model.number="completionFilters.max_completions"
+                  type="number"
+                  placeholder="No limit"
+                  min="0"
+                  class="w-full"
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -132,9 +142,6 @@
       <!-- Sort Options and Limit -->
       <div v-show="!filtersCollapsed" class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Sort By
-          </label>
           <USelectMenu
             v-model="sortOptions.sort_by"
             :items="sortByOptions"
@@ -143,9 +150,6 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Sort Order
-          </label>
           <USelectMenu
             v-model="sortOptions.sort_order"
             :items="sortOrderOptions"
@@ -154,9 +158,6 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Results Per Page
-          </label>
           <USelectMenu
             v-model="pagination.limit"
             :items="limitOptions"
@@ -260,9 +261,9 @@
             </div>
           </div>
           
-          <!-- Video Preview -->
+          <!-- Video Preview (only show when displayImages is true) -->
           <div
-            v-else-if="media.type === 'video'"
+            v-else-if="media.type === 'video' && settingsStore.displayImages"
             class="aspect-[3/4] relative cursor-pointer"
             :data-video-uuid="media.uuid"
             @click="openModal(media)"
@@ -346,7 +347,7 @@
               >
               <ImagePlaceholder v-else-if="media.type === 'image'" />
               <div
-                v-else-if="media.type === 'video'"
+                v-else-if="media.type === 'video' && settingsStore.displayImages"
                 class="w-full h-full relative"
                 :data-video-uuid="media.uuid"
                 @mouseenter="handleVideoHover(media.uuid, true)"
@@ -373,6 +374,9 @@
                 >
                   <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
                 </div>
+              </div>
+              <div v-else-if="media.type === 'video'" class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
               </div>
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-heroicons-document" class="text-2xl text-gray-400" />
@@ -501,8 +505,8 @@
               />
             </div>
 
-            <!-- Video Display -->
-            <div v-else-if="selectedMedia.type === 'video'" class="max-w-full">
+            <!-- Video Display (only show when displayImages is true) -->
+            <div v-else-if="selectedMedia.type === 'video' && settingsStore.displayImages" class="max-w-full">
               <video
                 ref="modalVideo"
                 :src="`/api/stream/${selectedMedia.uuid}`"
@@ -516,6 +520,14 @@
               >
                 Your browser does not support the video tag.
               </video>
+            </div>
+            
+            <!-- Video placeholder when displayImages is false -->
+            <div v-else-if="selectedMedia.type === 'video'" class="w-full h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded">
+              <div class="text-center">
+                <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
+                <p class="text-gray-500">Video Hidden</p>
+              </div>
             </div>
 
             <!-- Media Details Accordion -->
@@ -637,6 +649,19 @@
       
     </div>
 
+    <!-- Tag Edit Modal -->
+    <TagEditModal
+      v-model="isTagEditModalOpen"
+      :media="selectedMediaForTagEdit"
+      :current-index="tagEditCurrentIndex"
+      :total-count="unconfirmedMediaResults.length"
+      :has-next="tagEditCurrentIndex < unconfirmedMediaResults.length - 1"
+      :show-skip-button="showUnconfirmedOnly"
+      @save="handleTagSave"
+      @skip="handleTagSkip"
+      @close="closeTagEditModal"
+    />
+
   </div>
 </template>
 
@@ -664,6 +689,13 @@ const filters = ref({
 
 // Tag search functionality
 const selectedTags = ref([])
+
+// Tag editing functionality
+const showUnconfirmedOnly = ref(false)
+const isTagEditModalOpen = ref(false)
+const selectedMediaForTagEdit = ref(null)
+const tagEditCurrentIndex = ref(-1)
+const unconfirmedMediaResults = ref([])
 
 // Completion filters with defaults for media gallery (min=0, max=null)
 const completionFilters = ref({
@@ -830,6 +862,11 @@ const searchMedia = async () => {
       if (completionFilters.value.max_completions != null) {
         params.append('max_completions', completionFilters.value.max_completions.toString())
       }
+    }
+    
+    // Add tags_confirmed filter
+    if (showUnconfirmedOnly.value) {
+      params.append('tags_confirmed', 'false')
     }
     
     // Handle limit - extract value if it's an object
@@ -1123,6 +1160,12 @@ const deleteMedia = async (uuid) => {
 }
 
 const openModal = async (media) => {
+  // If we're in unconfirmed tags mode, open tag edit modal instead
+  if (showUnconfirmedOnly.value) {
+    openTagEditModal(media)
+    return
+  }
+  
   selectedMedia.value = media
   isModalOpen.value = true
   
@@ -1228,6 +1271,116 @@ const handleVideoHover = async (videoId, isHovering) => {
       }
     }
   }
+}
+
+// Tag editing methods
+const openTagEditModal = (media) => {
+  const currentIndex = mediaResults.value.findIndex(m => m.uuid === media.uuid)
+  selectedMediaForTagEdit.value = media
+  tagEditCurrentIndex.value = currentIndex
+  unconfirmedMediaResults.value = mediaResults.value.filter(m => !m.tags_confirmed)
+  isTagEditModalOpen.value = true
+}
+
+const handleTagSave = async (data) => {
+  const toast = useToast()
+  
+  try {
+    // Call the API to update tags
+    await useApiFetch(`media/${data.uuid}/tags`, {
+      method: 'PUT',
+      body: {
+        tags: data.tags,
+        tags_confirmed: true
+      }
+    })
+    
+    // Update the local media record
+    const mediaIndex = mediaResults.value.findIndex(m => m.uuid === data.uuid)
+    if (mediaIndex !== -1) {
+      mediaResults.value[mediaIndex].tags = { tags: data.tags }
+      mediaResults.value[mediaIndex].tags_confirmed = true
+    }
+    
+    // Show success message
+    toast.add({
+      title: 'Tags Updated',
+      description: 'Tags have been saved and confirmed.',
+      color: 'green',
+      timeout: 2000
+    })
+    
+    // Load next unconfirmed media or refresh search
+    await loadNextUnconfirmedMedia()
+    
+  } catch (error) {
+    console.error('Failed to save tags:', error)
+    toast.add({
+      title: 'Save Failed',
+      description: 'Failed to save tags. Please try again.',
+      color: 'red',
+      timeout: 5000
+    })
+  }
+}
+
+const handleTagSkip = async () => {
+  await loadNextUnconfirmedMedia()
+}
+
+const loadNextUnconfirmedMedia = async () => {
+  // Filter current results for unconfirmed media
+  const unconfirmed = mediaResults.value.filter(m => !m.tags_confirmed)
+  
+  if (unconfirmed.length > 0) {
+    // Find next unconfirmed media
+    const currentIndex = unconfirmed.findIndex(m => m.uuid === selectedMediaForTagEdit.value?.uuid)
+    const nextIndex = currentIndex + 1
+    
+    if (nextIndex < unconfirmed.length) {
+      // Load next unconfirmed media
+      selectedMediaForTagEdit.value = unconfirmed[nextIndex]
+      tagEditCurrentIndex.value = nextIndex
+    } else {
+      // No more unconfirmed media, refresh search
+      await refreshSearchForUnconfirmed()
+    }
+  } else {
+    // No unconfirmed media left, refresh search
+    await refreshSearchForUnconfirmed()
+  }
+}
+
+const refreshSearchForUnconfirmed = async () => {
+  // Close modal first
+  isTagEditModalOpen.value = false
+  
+  // Run search again to get fresh batch of unconfirmed media
+  if (showUnconfirmedOnly.value) {
+    await searchMedia()
+    
+    // If we have new results, open the first one
+    const unconfirmed = mediaResults.value.filter(m => !m.tags_confirmed)
+    if (unconfirmed.length > 0) {
+      setTimeout(() => {
+        openTagEditModal(unconfirmed[0])
+      }, 500)
+    } else {
+      const toast = useToast()
+      toast.add({
+        title: 'All Done!',
+        description: 'No more unconfirmed media found.',
+        color: 'green',
+        timeout: 3000
+      })
+    }
+  }
+}
+
+const closeTagEditModal = () => {
+  isTagEditModalOpen.value = false
+  selectedMediaForTagEdit.value = null
+  tagEditCurrentIndex.value = -1
 }
 
 // Slideshow methods

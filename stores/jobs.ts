@@ -11,7 +11,8 @@ export const useJobsStore = defineStore('jobs', () => {
   const filters = ref<JobFilters>({
     jobId: '',
     status: '',
-    jobType: ''
+    jobType: '',
+    sourceType: 'all'
   })
 
   // Pagination state
@@ -19,6 +20,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const currentLimit = ref(20)
   const currentStatusFilter = ref('')
   const currentSubjectFilter = ref('')
+  const currentSourceTypeFilter = ref('all')
 
   // Auto-refresh state
   const autoRefreshEnabled = ref(true)
@@ -79,6 +81,11 @@ export const useJobsStore = defineStore('jobs', () => {
     try {
       const response = await useApiFetch('jobs') as QueueStatus
       queueStatus.value = response
+      
+      // Update processing status from queue status
+      if (response.queue && typeof response.queue.is_processing === 'boolean') {
+        isProcessing.value = response.queue.is_processing
+      }
     } catch (error) {
       console.error('❌ Failed to fetch queue status:', error)
       queueStatus.value = {
@@ -90,13 +97,16 @@ export const useJobsStore = defineStore('jobs', () => {
           failed: 0,
           canceled: 0,
           need_input: 0,
-          is_paused: false
+          is_paused: false,
+          is_processing: false
         }
       }
+      // Set processing to false on error
+      isProcessing.value = false
     }
   }
 
-  const fetchJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '') => {
+  const fetchJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '', sourceTypeFilter = 'all') => {
     if (showLoading) {
       isLoading.value = true
     }
@@ -106,6 +116,7 @@ export const useJobsStore = defineStore('jobs', () => {
     currentLimit.value = limit
     currentStatusFilter.value = statusFilter
     currentSubjectFilter.value = subjectFilter
+    currentSourceTypeFilter.value = sourceTypeFilter
 
     try {
       const searchParams = new URLSearchParams()
@@ -120,6 +131,10 @@ export const useJobsStore = defineStore('jobs', () => {
       
       if (subjectFilter) {
         searchParams.append('subject_uuid', subjectFilter)
+      }
+      
+      if (sourceTypeFilter && sourceTypeFilter !== 'all') {
+        searchParams.append('source_type', sourceTypeFilter)
       }
 
       const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
@@ -163,11 +178,8 @@ export const useJobsStore = defineStore('jobs', () => {
     try {
       // Load auto-refresh setting first
       await loadAutoRefreshSetting()
-      await fetchQueueStatus()
+      await fetchQueueStatus() // This now also updates processing status
       await fetchJobs()
-      
-      // Get current processing status from server
-      await getProcessingStatus()
       
       // Only start auto-refresh if it's enabled
       if (autoRefreshEnabled.value) {
@@ -178,15 +190,16 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  const refreshJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '') => {
-    await fetchJobs(showLoading, page, limit, statusFilter, subjectFilter)
+  const refreshJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '', sourceTypeFilter = 'all') => {
+    await fetchJobs(showLoading, page, limit, statusFilter, subjectFilter, sourceTypeFilter)
   }
 
   const clearFilters = () => {
     filters.value = {
       jobId: '',
       status: '',
-      jobType: ''
+      jobType: '',
+      sourceType: 'all'
     }
   }
 
@@ -207,7 +220,7 @@ export const useJobsStore = defineStore('jobs', () => {
         // Only refresh if not currently loading and page is visible
         if (!isLoading.value && !document.hidden) {
           Promise.all([
-            fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value),
+            fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value, currentSourceTypeFilter.value),
             fetchQueueStatus()
           ])
         }

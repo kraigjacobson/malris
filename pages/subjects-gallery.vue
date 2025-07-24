@@ -1,12 +1,9 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Subjects Gallery
+      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+        Subjects
       </h1>
-      <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-        Browse and search subjects with their associated media
-      </p>
     </div>
 
     <!-- Search Filters -->
@@ -151,7 +148,6 @@
           :has-more="false"
           :error="null"
           :selection-mode="false"
-          :display-images="settingsStore.displayImages"
           :empty-state-message="'Use the search filters above to find subjects'"
           @subject-click="openModal"
         />

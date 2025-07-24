@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
       source_media_uuid,
       dest_media_uuid,
       output_uuid,
+      source_type,
       min_progress,
       max_progress,
       created_after,
@@ -74,6 +75,18 @@ export default defineEventHandler(async (event) => {
 
     if (output_uuid) {
       conditions.push(eq(jobs.outputUuid, output_uuid as string))
+    }
+
+    // Source type filtering
+    if (source_type) {
+      if (source_type === 'vid') {
+        // Jobs with source_media_uuid (video jobs)
+        conditions.push(isNotNull(jobs.sourceMediaUuid))
+      } else if (source_type === 'source') {
+        // Jobs without source_media_uuid (source jobs)
+        conditions.push(isNull(jobs.sourceMediaUuid))
+      }
+      // 'all' case doesn't add any condition
     }
 
     if (min_progress !== undefined) {

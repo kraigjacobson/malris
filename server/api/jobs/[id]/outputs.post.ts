@@ -50,7 +50,6 @@ export default defineEventHandler(async (event) => {
     
     // Extract metadata from form data
     let purpose = 'output'
-    let mediaType = 'video'
     let errorMessage = null
     
     const metadataFields = formData.filter(field => !field.filename)
@@ -60,8 +59,6 @@ export default defineEventHandler(async (event) => {
       
       if (fieldName === 'purpose') {
         purpose = fieldValue
-      } else if (fieldName === 'media_type') {
-        mediaType = fieldValue
       } else if (fieldName === 'error_message') {
         errorMessage = fieldValue
       }
@@ -93,22 +90,74 @@ export default defineEventHandler(async (event) => {
     const files = formData.filter(field => field.filename)
     const savedMedia = []
     
+    // Categorize files by type
+    const videoFiles = []
+    const imageFiles = []
+    
     for (const file of files) {
       if (!file.data || file.data.length === 0) {
         console.log(`⚠️ Skipping empty file: ${file.filename}`)
         continue
       }
       
-      console.log(`💾 Processing output file: ${file.filename} (${file.data.length} bytes)`)
-      
-      // Get encryption key from environment
-      const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-      if (!encryptionKey) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: 'Media encryption not configured'
-        })
+      const filename = file.filename?.toLowerCase() || ''
+      if (filename.endsWith('.mp4') || filename.endsWith('.avi') || filename.endsWith('.mov') || filename.endsWith('.mkv') || filename.endsWith('.webm')) {
+        videoFiles.push(file)
+      } else if (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg') || filename.endsWith('.webp')) {
+        imageFiles.push(file)
       }
+    }
+    
+    console.log(`📁 Found ${videoFiles.length} video files and ${imageFiles.length} image files`)
+    
+    // If we have video files, clean up any existing output images for this job first
+    if (videoFiles.length > 0) {
+      try {
+        const { and } = await import('drizzle-orm')
+        const existingImages = await db.select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename
+        }).from(mediaRecords).where(
+          and(
+            eq(mediaRecords.jobId, jobId),
+            eq(mediaRecords.purpose, 'output'),
+            eq(mediaRecords.type, 'image')
+          )
+        )
+        
+        if (existingImages.length > 0) {
+          console.log(`🧹 Cleaning up ${existingImages.length} existing output images for job ${jobId}`)
+          
+          await db.delete(mediaRecords).where(
+            and(
+              eq(mediaRecords.jobId, jobId),
+              eq(mediaRecords.purpose, 'output'),
+              eq(mediaRecords.type, 'image')
+            )
+          )
+          
+          console.log(`✅ Cleaned up existing images: ${existingImages.map(img => img.filename).join(', ')}`)
+        }
+      } catch (cleanupError) {
+        console.error(`⚠️ Failed to cleanup existing images for job ${jobId}:`, cleanupError)
+        // Don't fail the job if cleanup fails
+      }
+    }
+    
+    // Get encryption key from environment
+    const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
+    if (!encryptionKey) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Media encryption not configured'
+      })
+    }
+    
+    let thumbnailRecord = null
+    
+    // Process image files first (as thumbnails if we have videos)
+    for (const file of imageFiles) {
+      console.log(`🖼️ Processing image file: ${file.filename} (${file.data.length} bytes)`)
       
       // Calculate checksum of the original file data
       const { createHash } = await import('crypto')
@@ -118,13 +167,17 @@ export default defineEventHandler(async (event) => {
       const { encryptMediaData } = await import('~/server/utils/encryption')
       const encryptedData = encryptMediaData(file.data, encryptionKey)
       
-      // Create media record
+      // Determine purpose based on whether we have videos
+      const imagePurpose = videoFiles.length > 0 ? 'thumbnail' : 'output'
+      const imageType = 'image'
+      
+      // Create image media record
       const mediaRecord = await db.insert(mediaRecords).values({
-        filename: file.filename || 'output.mp4',
-        type: mediaType,
-        purpose: purpose,
+        filename: file.filename || 'thumbnail.png',
+        type: imageType,
+        purpose: imagePurpose,
         subjectUuid: job.subjectUuid,
-        destMediaUuidRef: job.destMediaUuid, // Add the destination media UUID reference
+        destMediaUuidRef: job.destMediaUuid,
         encryptedData: encryptedData,
         fileSize: file.data.length,
         originalSize: file.data.length,
@@ -136,8 +189,63 @@ export default defineEventHandler(async (event) => {
         type: mediaRecords.type
       })
       
-      savedMedia.push(mediaRecord[0])
-      console.log(`✅ Saved output media: ${mediaRecord[0].uuid}`)
+      const imageRecord = mediaRecord[0]
+      savedMedia.push(imageRecord)
+      
+      if (imagePurpose === 'thumbnail') {
+        thumbnailRecord = imageRecord
+        console.log(`✅ Saved thumbnail: ${imageRecord.uuid}`)
+      } else {
+        console.log(`✅ Saved image: ${imageRecord.uuid}`)
+      }
+    }
+    
+    // Process video files with thumbnail reference
+    for (const file of videoFiles) {
+      console.log(`🎬 Processing video file: ${file.filename} (${file.data.length} bytes)`)
+      
+      // Calculate checksum of the original file data
+      const { createHash } = await import('crypto')
+      const checksum = createHash('sha256').update(file.data).digest('hex')
+      
+      // Encrypt the file data using Fernet encryption
+      const { encryptMediaData } = await import('~/server/utils/encryption')
+      const encryptedData = encryptMediaData(file.data, encryptionKey)
+      
+      // Create video media record with thumbnail reference
+      const mediaRecord = await db.insert(mediaRecords).values({
+        filename: file.filename || 'output.mp4',
+        type: 'video',
+        purpose: purpose,
+        subjectUuid: job.subjectUuid,
+        destMediaUuidRef: job.destMediaUuid,
+        thumbnailUuid: thumbnailRecord?.uuid || null, // Link to thumbnail if available
+        encryptedData: encryptedData,
+        fileSize: file.data.length,
+        originalSize: file.data.length,
+        checksum: checksum,
+        jobId: jobId
+      }).returning({
+        uuid: mediaRecords.uuid,
+        filename: mediaRecords.filename,
+        type: mediaRecords.type
+      })
+      
+      const videoRecord = mediaRecord[0]
+      savedMedia.push(videoRecord)
+      console.log(`✅ Saved video: ${videoRecord.uuid}${thumbnailRecord ? ` with thumbnail ${thumbnailRecord.uuid}` : ''}`)
+      
+      // Update thumbnail record to reference the video
+      if (thumbnailRecord) {
+        await db
+          .update(mediaRecords)
+          .set({
+            updatedAt: new Date()
+          })
+          .where(eq(mediaRecords.uuid, thumbnailRecord.uuid))
+        
+        console.log(`🔗 Linked thumbnail ${thumbnailRecord.uuid} to video ${videoRecord.uuid}`)
+      }
     }
     
     if (savedMedia.length === 0) {
@@ -155,50 +263,17 @@ export default defineEventHandler(async (event) => {
     let jobStatus: 'completed' | 'need_input' = 'completed'
     let statusMessage = `Job ${jobId} completed successfully`
     
-    // If we only got images and no videos, this likely means the job needs input
+    // If we only got images and no videos, this likely means the job needs input (test workflow)
     if (hasImages && !hasVideos) {
       jobStatus = 'need_input'
       statusMessage = `Job ${jobId} produced images - needs additional input for video generation`
       console.log(`🔄 Job ${jobId} marked as need_input - received ${savedMedia.length} images instead of video`)
     } else {
       console.log(`✅ Job ${jobId} completed successfully with ${savedMedia.length} output files`)
-      
-      // Clean up intermediate output images when job completes with video
-      try {
-        const { and } = await import('drizzle-orm')
-        const intermediateImages = await db.select({
-          uuid: mediaRecords.uuid,
-          filename: mediaRecords.filename
-        }).from(mediaRecords).where(
-          and(
-            eq(mediaRecords.jobId, jobId),
-            eq(mediaRecords.purpose, 'output'),
-            eq(mediaRecords.type, 'image')
-          )
-        )
-        
-        if (intermediateImages.length > 0) {
-          console.log(`🧹 Cleaning up ${intermediateImages.length} intermediate output images for job ${jobId}`)
-          
-          // Delete the intermediate images from database
-          await db.delete(mediaRecords).where(
-            and(
-              eq(mediaRecords.jobId, jobId),
-              eq(mediaRecords.purpose, 'output'),
-              eq(mediaRecords.type, 'image')
-            )
-          )
-          
-          console.log(`✅ Cleaned up intermediate images: ${intermediateImages.map(img => img.filename).join(', ')}`)
-        }
-      } catch (cleanupError) {
-        console.error(`⚠️ Failed to cleanup intermediate images for job ${jobId}:`, cleanupError)
-        // Don't fail the job completion if cleanup fails
-      }
     }
     
-    // Update job with output UUID (use the first/main output file)
-    const mainOutput = savedMedia[0]
+    // Update job with output UUID (use the video if available, otherwise first output)
+    const mainOutput = savedMedia.find(media => media.type === 'video') || savedMedia[0]
     await db
       .update(jobs)
       .set({
@@ -206,6 +281,7 @@ export default defineEventHandler(async (event) => {
         outputUuid: mainOutput.uuid,
         progress: jobStatus === 'completed' ? 100 : 75, // 75% if need_input, 100% if completed
         completedAt: jobStatus === 'completed' ? new Date() : null,
+        errorMessage: null, // Clear any previous error messages on successful completion
         updatedAt: new Date()
       })
       .where(eq(jobs.id, jobId))

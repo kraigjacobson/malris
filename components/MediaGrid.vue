@@ -15,25 +15,23 @@
           class="bg-neutral-800 overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer"
           @click="handleMediaClick(media)"
         >
-          <!-- Image Preview -->
+          <!-- Image Preview (only show when displayImages is true) -->
           <div
-            v-if="media.type === 'image'"
+            v-if="media.type === 'image' && settingsStore.displayImages"
             class="aspect-[3/4] relative"
           >
             <img
-              v-if="settingsStore.displayImages"
               :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
               :alt="media.filename"
               class="w-full h-full object-cover object-top"
               loading="lazy"
               @error="handleImageError"
             />
-            <ImagePlaceholder v-else />
           </div>
           
-          <!-- Video Preview -->
+          <!-- Video Preview (only show when displayImages is true) -->
           <div
-            v-else-if="media.type === 'video'"
+            v-else-if="media.type === 'video' && settingsStore.displayImages"
             class="aspect-[3/4] relative group"
             :data-video-uuid="media.uuid"
             :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }"
@@ -85,8 +83,8 @@
             </div>
           </div>
 
-          <!-- Media Info (only show if not in selection mode) -->
-          <div v-if="!selectionMode" class="p-3">
+          <!-- Media Info (always show, but expand when images are hidden) -->
+          <div class="p-3" :class="{ 'pb-6': !settingsStore.displayImages }">
             <h3 class="font-medium text-sm text-gray-900 dark:text-white truncate">
               {{ media.filename }}
             </h3>

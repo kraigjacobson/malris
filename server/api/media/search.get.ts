@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords, jobs } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql, or } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
       max_access_count,
       min_completions,
       max_completions,
+      tags_confirmed,
       sort_by = 'created_at',
       sort_order = 'desc',
       limit = 100,
@@ -68,11 +69,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Validate tag_match_mode
-    if (!['exact', 'partial'].includes(tag_match_mode as string)) {
+    // Only support partial tag matching
+    if (tag_match_mode !== 'partial') {
       throw createError({
         statusCode: 400,
-        statusMessage: "tag_match_mode must be 'exact' or 'partial'"
+        statusMessage: "Only 'partial' tag matching is supported"
       })
     }
 
@@ -200,12 +201,28 @@ export default defineEventHandler(async (event) => {
       conditions.push(lte(mediaRecords.completions, parseInt(max_completions as string)))
     }
 
-    // TODO: Implement tag filtering with JSONB operations
-    // This would require more complex SQL for exact/partial tag matching
+    // Tags confirmed filter
+    if (tags_confirmed !== undefined) {
+      if (tags_confirmed === 'true' || tags_confirmed === true) {
+        conditions.push(eq(mediaRecords.tagsConfirmed, true))
+      } else if (tags_confirmed === 'false' || tags_confirmed === false) {
+        conditions.push(eq(mediaRecords.tagsConfirmed, false))
+      }
+    }
+
+    // Tag filtering using string matching on JSONB field
     if (tags) {
-      // For now, we'll add a placeholder condition
-      // In a full implementation, this would use JSONB operators
-      console.warn('Tag filtering not yet implemented in direct database query')
+      const tagList = (tags as string).split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+      
+      if (tagList.length > 0) {
+        // Convert JSONB to text and check if any of the tags are contained within
+        const tagConditions = tagList.map(tag =>
+          sql`${mediaRecords.tags}::text LIKE ${'%"' + tag + '"%'}`
+        )
+        
+        // Use OR logic - match if any of the provided tags are found
+        conditions.push(or(...tagConditions))
+      }
     }
 
     // Exclude videos that are already assigned to jobs
@@ -268,7 +285,8 @@ export default defineEventHandler(async (event) => {
           updated_at: mediaRecords.updatedAt,
           last_accessed: mediaRecords.lastAccessed,
           access_count: mediaRecords.accessCount,
-          completions: mediaRecords.completions
+          completions: mediaRecords.completions,
+          tags_confirmed: mediaRecords.tagsConfirmed
         })
         .from(mediaRecords)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -362,7 +380,8 @@ export default defineEventHandler(async (event) => {
         updated_at: mediaRecords.updatedAt,
         last_accessed: mediaRecords.lastAccessed,
         access_count: mediaRecords.accessCount,
-        completions: mediaRecords.completions
+        completions: mediaRecords.completions,
+        tags_confirmed: mediaRecords.tagsConfirmed
       })
       .from(mediaRecords)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -401,6 +420,7 @@ export default defineEventHandler(async (event) => {
       last_accessed: result.last_accessed,
       access_count: result.access_count,
       completions: result.completions,
+      tags_confirmed: result.tags_confirmed,
       // Add thumbnail processing flags
       has_thumbnail: !!result.thumbnail_uuid,
       thumbnail: null as string | null

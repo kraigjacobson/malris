@@ -11,6 +11,11 @@
         </div>
         
         <div class="flex items-center space-x-1 sm:space-x-4">
+          <!-- Worker Health Indicator -->
+          <ClientOnly>
+            <WorkerHealthIndicator />
+          </ClientOnly>
+          
           <ClientOnly>
             <div v-if="user" class="flex items-center space-x-1 sm:space-x-4">
               <span class="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:inline">Welcome, {{ user.email }}</span>

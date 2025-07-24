@@ -24,17 +24,17 @@
     </div>
 
     <!-- Grid View -->
-    <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+    <div v-else class="grid grid-cols-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
       <div
         v-for="subject in subjects"
         :key="subject.uuid || subject.id"
         class="cursor-pointer"
         @click="$emit('subject-click', subject)"
       >
-        <!-- Image Only -->
-        <div class="aspect-square bg-gray-100 dark:bg-gray-700">
+        <!-- Image Only (only show when displayImages is true) -->
+        <div v-if="settingsStore.displayImages" class="aspect-square bg-gray-100 dark:bg-gray-700">
           <img
-            v-if="subject.has_thumbnail && subject.thumbnail_data && displayImages"
+            v-if="subject.has_thumbnail && subject.thumbnail_data"
             :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
             :alt="subject.name"
             class="w-full h-full object-cover"
@@ -44,6 +44,13 @@
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-heroicons-user-circle" class="text-4xl text-gray-400" />
           </div>
+        </div>
+        
+        <!-- Subject name when images are hidden -->
+        <div v-else class="p-3 bg-gray-100 dark:bg-gray-700 rounded">
+          <h3 class="font-medium text-sm text-gray-900 dark:text-white text-center">
+            {{ subject.name }}
+          </h3>
         </div>
       </div>
     </div>
@@ -63,6 +70,11 @@
 </template>
 
 <script setup>
+import { useSettingsStore } from '~/stores/settings'
+
+// Initialize settings store
+const settingsStore = useSettingsStore()
+
 defineProps({
   subjects: {
     type: Array,
@@ -91,10 +103,6 @@ defineProps({
   selectionMode: {
     type: Boolean,
     default: false
-  },
-  displayImages: {
-    type: Boolean,
-    default: true
   },
   emptyStateMessage: {
     type: String,

@@ -34,6 +34,7 @@ export interface QueueStatus {
     canceled: number
     need_input: number
     is_paused: boolean
+    is_processing: boolean
   }
 }
 
@@ -41,4 +42,5 @@ export interface JobFilters {
   jobId: string
   status: string
   jobType: string
+  sourceType: string // 'all', 'vid', 'source'
 }

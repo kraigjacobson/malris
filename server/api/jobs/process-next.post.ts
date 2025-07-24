@@ -47,6 +47,36 @@ export default defineEventHandler(async (_event) => {
       }
     }
     
+    // Check ComfyUI worker health and queue status using existing health check
+    try {
+      // Import the health check function from the toggle module
+      const { getCachedWorkerHealth } = await import('~/server/api/jobs/processing/toggle.post')
+      const workerHealth = getCachedWorkerHealth()
+      
+      // Only proceed if worker is healthy and completely available (queue = 0)
+      if (!workerHealth.healthy) {
+        return {
+          success: false,
+          message: `ComfyUI worker is not healthy: ${workerHealth.message}`
+        }
+      }
+      
+      if (!workerHealth.available) {
+        return {
+          success: false,
+          message: `ComfyUI worker queue is busy: ${workerHealth.running_jobs_count} running, ${workerHealth.queue_remaining} pending`
+        }
+      }
+      
+      console.log('✅ ComfyUI worker is healthy and queue is empty - proceeding with job processing')
+      
+    } catch (healthError: any) {
+      return {
+        success: false,
+        message: `Failed to check ComfyUI worker health: ${healthError.message}`
+      }
+    }
+    
     const job = queuedJobs[0]
     
     // Get subject and media data for the job
@@ -71,16 +101,6 @@ export default defineEventHandler(async (_event) => {
         statusMessage: `Destination media not found for job ${job.id}`
       })
     }
-    
-    // Update job status to active
-    await db
-      .update(jobs)
-      .set({
-        status: 'active',
-        startedAt: new Date(),
-        updatedAt: new Date()
-      })
-      .where(eq(jobs.id, job.id))
     
     // Prepare form data for comfyui-runpod-worker /process endpoint
     const formData = new FormData()
@@ -107,9 +127,13 @@ export default defineEventHandler(async (_event) => {
     }
     
     try {
+      // Get the correct API base URL for the current environment
+      const { getComfyApiBaseUrl } = await import('~/server/utils/api-url')
+      const baseUrl = getComfyApiBaseUrl()
+      
       // Download and attach destination video using Nuxt backend
       if (job.destMediaUuid) {
-        const destVideoResponse = await fetch(`http://localhost:3000/api/media/${job.destMediaUuid}/download`)
+        const destVideoResponse = await fetch(`${baseUrl}/api/media/${job.destMediaUuid}/download`)
         if (!destVideoResponse.ok) {
           throw new Error(`Failed to download destination video: ${destVideoResponse.statusText}`)
         }
@@ -119,7 +143,7 @@ export default defineEventHandler(async (_event) => {
       
       // Download and attach source image if available
       if (job.sourceMediaUuid && sourceMediaData.length > 0) {
-        const sourceImageResponse = await fetch(`http://localhost:3000/api/media/${job.sourceMediaUuid}/download`)
+        const sourceImageResponse = await fetch(`${baseUrl}/api/media/${job.sourceMediaUuid}/download`)
         if (!sourceImageResponse.ok) {
           throw new Error(`Failed to download source image: ${sourceImageResponse.statusText}`)
         }
@@ -144,7 +168,7 @@ export default defineEventHandler(async (_event) => {
         // Download and attach all source images for the subject
         for (let i = 0; i < subjectSourceImages.length; i++) {
           const sourceImage = subjectSourceImages[i]
-          const sourceImageResponse = await fetch(`http://localhost:3000/api/media/${sourceImage.uuid}/download`)
+          const sourceImageResponse = await fetch(`${baseUrl}/api/media/${sourceImage.uuid}/download`)
           if (!sourceImageResponse.ok) {
             throw new Error(`Failed to download subject source image ${sourceImage.uuid}: ${sourceImageResponse.statusText}`)
           }
@@ -154,8 +178,8 @@ export default defineEventHandler(async (_event) => {
         formData.append('subject_image_count', subjectSourceImages.length.toString())
       }
       
-      // Get worker URL - comfyui-runpod-worker runs on port 8001 (localhost when running outside Docker)
-      const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://localhost:8001'
+      // Get worker URL - use Docker network service name and internal port
+      const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
       
       // Send job to comfyui-runpod-worker
       console.log(`🚀 Sending job ${job.id} to comfyui-runpod-worker at ${workerUrl}/process`)
@@ -172,6 +196,27 @@ export default defineEventHandler(async (_event) => {
       
       const workerResult = await workerResponse.json()
       console.log('✅ Worker response:', workerResult)
+      
+      // Now that we got success from worker, reset any other active jobs back to queued
+      const { ne, and } = await import('drizzle-orm')
+      await db
+        .update(jobs)
+        .set({
+          status: 'queued',
+          startedAt: null,
+          updatedAt: new Date()
+        })
+        .where(and(eq(jobs.status, 'active'), ne(jobs.id, job.id)))
+      
+      // Update our job status to active
+      await db
+        .update(jobs)
+        .set({
+          status: 'active',
+          startedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(jobs.id, job.id))
       
       return {
         success: true,

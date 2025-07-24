@@ -28,18 +28,40 @@ export default defineEventHandler(async (_event) => {
       db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'canceled'))
     ])
 
+    // Get current processing status from the toggle endpoint
+    let processingEnabled = false
+    try {
+      const { getComfyApiBaseUrl } = await import('~/server/utils/api-url')
+      const baseUrl = getComfyApiBaseUrl()
+      const response = await fetch(`${baseUrl}/api/jobs/processing/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({}) // Empty body means just return current status
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        processingEnabled = result.processing_enabled || false
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to get processing status, defaulting to false:', error)
+      processingEnabled = false
+    }
+
     const queueStatus = {
       success: true,
       queue: {
-        total_jobs: totalJobs[0].count,
+        total: totalJobs[0].count,
         queued: queuedJobs[0].count,
         active: activeJobs[0].count,
         completed: completedJobs[0].count,
         failed: failedJobs[0].count,
         need_input: needInputJobs[0].count,
         canceled: canceledJobs[0].count,
-        is_paused: false, // TODO: Implement queue pause/resume functionality
-        is_processing: activeJobs[0].count > 0
+        is_paused: !processingEnabled, // Queue is paused when processing is disabled
+        is_processing: processingEnabled
       }
     }
 

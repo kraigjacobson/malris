@@ -53,12 +53,8 @@ export const useSubjectsStore = defineStore('subjects', () => {
         params.append('name_pattern', searchQuery.trim())
       }
 
-      console.log('🔍 Loading subjects with params:', Object.fromEntries(params))
-      
       // Use Nuxt API route instead of direct media server call
       const response = await $fetch<ApiSubjectsResponse>(`/api/subjects?${params.toString()}`)
-      
-      console.log('📊 Subjects response:', response)
       
       if (response.subjects && Array.isArray(response.subjects)) {
         const mappedItems = response.subjects.map((subject: Subject) => ({
@@ -77,7 +73,6 @@ export const useSubjectsStore = defineStore('subjects', () => {
         }
         
         lastSearchQuery.value = searchQuery
-        console.log('✅ Mapped subject items:', subjectItems.value)
       } else {
         console.warn('⚠️ No subjects found in response:', response)
         subjectItems.value = []
@@ -117,6 +112,17 @@ export const useSubjectsStore = defineStore('subjects', () => {
     return subjects.value.find(subject => subject.id === id)
   }
 
+  // Fetch a single subject with full data including tags
+  const fetchSubjectWithTags = async (id: string): Promise<Subject | null> => {
+    try {
+      const response = await $fetch<Subject>(`/api/subjects/${id}`)
+      return response
+    } catch (error) {
+      console.error('❌ Failed to fetch subject with tags:', error)
+      return null
+    }
+  }
+
   // Get subject items for a specific search (from cache if available)
   const getSubjectItems = (searchQuery = ''): SubjectItem[] => {
     const cacheKey = searchQuery.trim().toLowerCase()
@@ -138,6 +144,7 @@ export const useSubjectsStore = defineStore('subjects', () => {
     clearCache,
     refreshSubjects,
     getSubjectById,
+    fetchSubjectWithTags,
     getSubjectItems
   }
 })

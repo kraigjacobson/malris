@@ -31,11 +31,15 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Install curl for healthchecks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Copy only necessary files from the builder stage
 COPY --from=builder /app/.output /app/.output
 
 ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
+ENV DOCKER_CONTAINER=true
 
 EXPOSE 3000
 

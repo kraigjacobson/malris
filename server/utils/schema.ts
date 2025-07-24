@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, real, timestamp, jsonb, pgEnum, customType } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, text, integer, real, timestamp, jsonb, pgEnum, customType, boolean } from 'drizzle-orm/pg-core'
 
 const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
   dataType() {
@@ -51,6 +51,7 @@ export const mediaRecords = pgTable('media_records', {
   height: integer('height'),
   duration: real('duration'), // for videos/audio
   tags: jsonb('tags'), // JSONB field for tags
+  tagsConfirmed: boolean('tags_confirmed').default(false).notNull(), // Whether tags have been confirmed by user
   subjectUuid: uuid('subject_uuid').references(() => subjects.id),
   sourceMediaUuidRef: uuid('source_media_uuid_ref'), // Self-reference removed for now
   destMediaUuidRef: uuid('dest_media_uuid_ref'), // Self-reference removed for now

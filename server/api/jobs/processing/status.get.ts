@@ -6,7 +6,9 @@ export default defineEventHandler(async (_event) => {
   try {
     // Since we can't directly access the private variable, we'll call the toggle endpoint
     // with no body to get the current status
-    const response = await fetch('http://localhost:3000/api/jobs/processing/toggle', {
+    const { getComfyApiBaseUrl } = await import('~/server/utils/api-url')
+    const baseUrl = getComfyApiBaseUrl()
+    const response = await fetch(`${baseUrl}/api/jobs/processing/toggle`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -293,7 +293,8 @@ const loadImagesForJob = async (job) => {
       limit: 100,
       include_thumbnails: true,
       sort_by: 'created_at',
-      sort_order: 'desc'
+      sort_order: 'desc',
+      tag_match_mode: 'partial'
     }
     
     // Include dest_media_uuid_ref if available, as the media server seems to expect it

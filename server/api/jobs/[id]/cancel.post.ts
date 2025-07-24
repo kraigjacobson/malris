@@ -41,31 +41,33 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // If job is currently active, try to interrupt via rp_handler
+    // If job is currently active, try to interrupt ALL jobs via rp_handler
     if (job.status === 'active') {
-      console.log(`🛑 Canceling active job ${jobId} - attempting to interrupt via rp_handler`)
+      console.log(`🛑 Canceling active job ${jobId} - attempting to interrupt ALL jobs via rp_handler`)
       
       try {
-        // Use rp_handler interrupt endpoint
-        const rpHandlerUrl = process.env.RP_HANDLER_URL || 'http://comfyui-runpod-worker:8000'
+        // Use rp_handler interrupt endpoint - use Docker network service name and internal port
+        const rpHandlerUrl = process.env.RP_HANDLER_URL || process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
         
-        // Send interrupt signal to rp_handler which will handle ComfyUI interrupt and stop progress monitoring
-        const response = await fetch(`${rpHandlerUrl}/interrupt/${jobId}`, {
+        // Send interrupt signal to rp_handler to interrupt ALL jobs and clear the queue
+        const response = await fetch(`${rpHandlerUrl}/interrupt`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          // Add timeout to prevent hanging
+          signal: AbortSignal.timeout(10000) // 10 second timeout
         })
         
         if (response.ok) {
           const result = await response.json()
-          console.log(`✅ Successfully interrupted job ${jobId} via rp_handler:`, result)
+          console.log(`✅ Successfully interrupted ALL jobs via rp_handler:`, result)
         } else {
           const errorText = await response.text()
           console.log(`⚠️ rp_handler interrupt response: ${response.status} ${response.statusText} - ${errorText}`)
         }
       } catch (error: any) {
-        console.log(`⚠️ Error interrupting job ${jobId} via rp_handler: ${error.message}`)
+        console.log(`⚠️ Error interrupting ALL jobs via rp_handler: ${error.message}`)
         // Continue with cancellation even if interrupt fails
       }
     }

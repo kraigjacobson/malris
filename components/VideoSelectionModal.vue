@@ -134,6 +134,7 @@
 
 <script setup>
 import { useSearchStore } from '~/stores/search'
+import { useTags } from '~/composables/useTags'
 
 const props = defineProps({
   modelValue: {
@@ -148,8 +149,9 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
-// Use the search store
+// Use the search store and tags composable
 const searchStore = useSearchStore()
+const { filterHairTags } = useTags()
 
 // Initialize search store on mount
 onMounted(async () => {
@@ -316,8 +318,10 @@ const selectVideo = (video) => {
 watch(isOpen, (newValue) => {
   if (newValue) {
     // Only set initial tags if they're provided AND the store is empty
+    // Filter to only include hair-related tags
     if (props.initialTags && props.initialTags.length > 0 && searchStore.videoSearch.selectedTags.length === 0) {
-      searchStore.videoSearch.selectedTags = [...props.initialTags]
+      const hairTags = filterHairTags(props.initialTags)
+      searchStore.videoSearch.selectedTags = [...hairTags]
     }
     
     // Don't auto-search when modal opens - user needs to manually search
