@@ -12,9 +12,28 @@
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-neutral-800 overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer"
+          class="bg-neutral-800 overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer relative"
+          :class="{ 'ring-2 ring-blue-500': multiSelect && isSelected(media) }"
           @click="handleMediaClick(media)"
         >
+          <!-- Selection Indicator for Multi-Select -->
+          <div
+            v-if="multiSelect"
+            class="absolute top-2 left-2 z-10"
+          >
+            <div
+              class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
+              :class="isSelected(media)
+                ? 'bg-blue-500 border-blue-500 text-white'
+                : 'bg-white/80 border-gray-300 text-gray-600'"
+            >
+              <UIcon
+                v-if="isSelected(media)"
+                name="i-heroicons-check"
+                class="w-4 h-4"
+              />
+            </div>
+          </div>
           <!-- Image Preview (only show when displayImages is true) -->
           <div
             v-if="media.type === 'image' && settingsStore.displayImages"
@@ -167,6 +186,14 @@ const props = defineProps({
   selectionMode: {
     type: Boolean,
     default: false
+  },
+  multiSelect: {
+    type: Boolean,
+    default: false
+  },
+  selectedItems: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -189,6 +216,12 @@ const updatedVideoStatuses = ref(new Set())
 // Handle media click
 const handleMediaClick = (media) => {
   emit('media-click', media)
+}
+
+// Check if media is selected (for multi-select mode)
+const isSelected = (media) => {
+  if (!props.multiSelect || !props.selectedItems) return false
+  return props.selectedItems.some(item => item.uuid === media.uuid)
 }
 
 // Handle status dialog

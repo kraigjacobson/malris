@@ -1,4 +1,4 @@
-import { eq, ilike, and, or, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
+import { eq, ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
 import { subjects, mediaRecords } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { decryptMediaData } from '~/server/utils/encryption'
@@ -55,7 +55,8 @@ export default defineEventHandler(async (event) => {
           return sql`${subjects.tags}->'tags' ? ${tag}`
         }
       })
-      whereConditions.push(or(...tagConditions))
+      // Use AND logic - all tags must be found
+      whereConditions.push(and(...tagConditions))
     }
 
     // Build the query step by step to avoid TypeScript issues

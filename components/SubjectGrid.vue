@@ -28,11 +28,30 @@
       <div
         v-for="subject in subjects"
         :key="subject.uuid || subject.id"
-        class="cursor-pointer"
+        class="cursor-pointer relative"
+        :class="{ 'ring-2 ring-blue-500': multiSelect && isSelected(subject) }"
         @click="$emit('subject-click', subject)"
       >
+        <!-- Selection Indicator for Multi-Select -->
+        <div
+          v-if="multiSelect"
+          class="absolute top-2 left-2 z-10"
+        >
+          <div
+            class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
+            :class="isSelected(subject)
+              ? 'bg-blue-500 border-blue-500 text-white'
+              : 'bg-white/80 border-gray-300 text-gray-600'"
+          >
+            <UIcon
+              v-if="isSelected(subject)"
+              name="i-heroicons-check"
+              class="w-4 h-4"
+            />
+          </div>
+        </div>
         <!-- Image Only (only show when displayImages is true) -->
-        <div v-if="settingsStore.displayImages" class="aspect-square bg-gray-100 dark:bg-gray-700">
+        <div v-if="displayImages" class="aspect-square bg-gray-100 dark:bg-gray-700">
           <img
             v-if="subject.has_thumbnail && subject.thumbnail_data"
             :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
@@ -70,12 +89,7 @@
 </template>
 
 <script setup>
-import { useSettingsStore } from '~/stores/settings'
-
-// Initialize settings store
-const settingsStore = useSettingsStore()
-
-defineProps({
+const props = defineProps({
   subjects: {
     type: Array,
     default: () => []
@@ -104,13 +118,31 @@ defineProps({
     type: Boolean,
     default: false
   },
+  multiSelect: {
+    type: Boolean,
+    default: false
+  },
+  selectedItems: {
+    type: Array,
+    default: () => []
+  },
   emptyStateMessage: {
     type: String,
     default: null
+  },
+  displayImages: {
+    type: Boolean,
+    default: true
   }
 })
 
 defineEmits(['subject-click', 'load-more'])
+
+// Check if subject is selected (for multi-select mode)
+const isSelected = (subject) => {
+  if (!props.multiSelect || !props.selectedItems) return false
+  return props.selectedItems.some(item => item.id === subject.id)
+}
 
 const handleImageError = (event) => {
   // Hide the broken image and show placeholder instead

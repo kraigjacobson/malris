@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto p-3 sm:p-6 max-w-2xl">
+  <div class="container mx-auto p-3 sm:p-6 max-w-4xl">
     <div class="mb-4 sm:mb-8">
       <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
         Submit Job
@@ -7,95 +7,185 @@
     </div>
 
     <UCard class="w-full">
+      <!-- Job Type Selection -->
+      <div class="space-y-2 mb-6">
+        <USelectMenu
+          v-model="form.job_type"
+          :items="jobTypeOptions"
+          placeholder="Select job type..."
+          class="w-full"
+        />
+        <p class="text-xs text-gray-500 hidden sm:block">Choose the type of processing job</p>
+      </div>
 
-      <form @submit.prevent="submitJob" class="space-y-4 sm:space-y-6">
-        <!-- Job Type Selection -->
-        <div class="space-y-2">
-          <USelectMenu
-            v-model="form.job_type"
-            :items="jobTypeOptions"
-            placeholder="Select job type..."
-            class="w-full"
-          />
-          <p class="text-xs text-gray-500 hidden sm:block">Choose the type of processing job</p>
+      <!-- Initial Selection Mode (when no workflow is active) -->
+      <div v-if="!workflowMode && (form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap')" class="space-y-4">
+        <div class="text-center">
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Choose your workflow to create batch jobs:
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Subject First Workflow -->
+            <UButton
+              variant="outline"
+              size="lg"
+              class="h-24 flex flex-col items-center justify-center space-y-2"
+              @click="startSubjectFirstWorkflow"
+            >
+              <UIcon name="i-heroicons-user-20-solid" class="w-6 h-6" />
+              <span class="text-sm font-medium">Select Subject First</span>
+              <span class="text-xs text-gray-500">Choose subject, then select multiple videos</span>
+            </UButton>
+            
+            <!-- Video First Workflow -->
+            <UButton
+              variant="outline"
+              size="lg"
+              class="h-24 flex flex-col items-center justify-center space-y-2"
+              @click="startVideoFirstWorkflow"
+            >
+              <UIcon name="i-heroicons-film-20-solid" class="w-6 h-6" />
+              <span class="text-sm font-medium">Select Video First</span>
+              <span class="text-xs text-gray-500">Choose video, then select multiple subjects</span>
+            </UButton>
+          </div>
         </div>
+      </div>
 
-        <!-- Subject Selection (for vid_faceswap) -->
-        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
+      <!-- Subject First Workflow -->
+      <div v-if="workflowMode === 'subject-first'" class="space-y-6">
+        <!-- Step 1: Subject Selection -->
+        <div v-if="!selectedSubject" class="space-y-4">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 1: Select Subject</h3>
           
-          <!-- Subject Selection Options -->
-          <div class="space-y-2">
-            <!-- Subject Search and Select Button Row -->
-            <div class="flex flex-row items-center gap-2">
-              <!-- Subject Name Search with Dropdown -->
-              <div class="flex-1 w-full">
-                <SubjectSearch
-                  v-model="selectedSubject"
-                  placeholder="Search by subject name..."
-                  :disabled="isSubmitting"
-                  @select="handleSubjectSelection"
-                />
-              </div>
-              
-              <!-- Subject Selection Button -->
-              <UButton
-                variant="outline"
-                icon="i-heroicons-user-20-solid"
-                @click="showSubjectModal = true"
+          <!-- Subject Search and Select Button Row -->
+          <div class="flex flex-row items-center gap-2">
+            <div class="flex-1 w-full">
+              <SubjectSearch
+                v-model="selectedSubject"
+                placeholder="Search by subject name..."
                 :disabled="isSubmitting"
-                size="sm"
-                class="shrink-0"
-              >
-                <span class="hidden sm:inline">{{ selectedSubject ? 'Change Subject' : 'Select from List' }}</span>
-                <span class="sm:hidden">{{ selectedSubject ? 'Change' : 'Select from List' }}</span>
-              </UButton>
+                @select="handleSubjectSelection"
+              />
             </div>
             
-            <!-- Selected Subject Preview -->
-            <div v-if="selectedSubject" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <UButton
+              variant="outline"
+              icon="i-heroicons-user-20-solid"
+              @click="showSubjectModal = true"
+              :disabled="isSubmitting"
+              size="sm"
+              class="shrink-0"
+            >
+              <span class="hidden sm:inline">Select from List</span>
+              <span class="sm:hidden">Select</span>
+            </UButton>
+          </div>
+        </div>
+
+        <!-- Step 2: Video Selection (after subject is selected) -->
+        <div v-if="selectedSubject" class="space-y-4">
+          <!-- Selected Subject Preview -->
+          <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex items-center gap-3">
               <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
                 <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {{ selectedSubject.label }}
+                  Selected Subject: {{ selectedSubject.label }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
                   {{ selectedSubject.value }}
                 </p>
               </div>
-              <UButton
-                variant="ghost"
+            </div>
+            <UButton
+              variant="ghost"
+              color="error"
+              icon="i-heroicons-x-mark-20-solid"
+              size="xs"
+              @click="clearSelectedSubject"
+              :disabled="isSubmitting"
+            />
+          </div>
+
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 2: Select Videos</h3>
+          
+          <!-- Video Search Filters -->
+          <VideoSearchFilters 
+            @search="searchVideos"
+            @clear="clearVideoFilters"
+            :loading="videoLoading"
+          />
+
+          <!-- Selected Videos Count -->
+          <div v-if="selectedVideos.length > 0" class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
+              {{ selectedVideos.length }} video{{ selectedVideos.length !== 1 ? 's' : '' }} selected
+            </span>
+            <UButton
+              variant="ghost"
+              color="error"
+              size="xs"
+              @click="clearSelectedVideos"
+            >
+              Clear All
+            </UButton>
+          </div>
+
+          <!-- Video Grid -->
+          <div class="max-h-[60vh] overflow-y-auto">
+            <div v-if="videoError" class="text-center py-12">
+              <UAlert
                 color="error"
-                icon="i-heroicons-x-mark-20-solid"
-                size="xs"
-                @click="clearSelectedSubject"
-                :disabled="isSubmitting"
+                title="Error"
+                :description="videoError"
+                variant="subtle"
               />
             </div>
+
+            <MediaGrid
+              v-else
+              ref="mediaGrid"
+              :media-results="videos"
+              :loading="videoLoading"
+              :loading-more="videoLoadingMore"
+              :has-searched="videoHasSearched"
+              :has-more="videoHasMore"
+              :selection-mode="true"
+              :multi-select="true"
+              :selected-items="selectedVideos"
+              @media-click="toggleVideoSelection"
+              @load-more="loadMoreVideos"
+            />
           </div>
+        </div>
+      </div>
+
+      <!-- Video First Workflow -->
+      <div v-if="workflowMode === 'video-first'" class="space-y-6">
+        <!-- Step 1: Video Selection -->
+        <div v-if="!selectedVideo" class="space-y-4">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 1: Select Video</h3>
           
+          <UButton
+            variant="outline"
+            icon="i-heroicons-film-20-solid"
+            @click="showVideoModal = true"
+            :disabled="isSubmitting"
+            size="sm"
+            class="w-full sm:w-auto"
+          >
+            Select Destination Video
+          </UButton>
         </div>
 
-        <!-- Destination Video Selection (for vid_faceswap) -->
-        <div v-if="form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap'" class="space-y-2">
-          
-          <!-- Video Selection Button and Preview -->
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-            <UButton
-              variant="outline"
-              icon="i-heroicons-film-20-solid"
-              @click="showVideoModal = true"
-              :disabled="isSubmitting"
-              size="sm"
-              class="shrink-0 w-full sm:w-auto"
-            >
-              <span class="hidden sm:inline">{{ selectedVideo ? 'Change Video' : 'Select Destination Video' }}</span>
-              <span class="sm:hidden">{{ selectedVideo ? 'Change' : 'Select Video' }}</span>
-            </UButton>
-            
-            <!-- Selected Video Preview -->
-            <div v-if="selectedVideo" class="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex-1">
+        <!-- Step 2: Subject Selection (after video is selected) -->
+        <div v-if="selectedVideo" class="space-y-4">
+          <!-- Selected Video Preview -->
+          <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex items-center gap-3">
               <div v-if="displayImages" class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
                 <img
                   v-if="selectedVideo.thumbnail_uuid"
@@ -109,74 +199,103 @@
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {{ selectedVideo.filename }}
+                  Selected Video: {{ selectedVideo.filename }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
                   {{ selectedVideo.uuid }}
                 </p>
               </div>
-              <UButton
-                variant="ghost"
-                color="error"
-                icon="i-heroicons-x-mark-20-solid"
-                size="xs"
-                @click="clearSelectedVideo"
-                :disabled="isSubmitting"
-              />
             </div>
+            <UButton
+              variant="ghost"
+              color="error"
+              icon="i-heroicons-x-mark-20-solid"
+              size="xs"
+              @click="clearSelectedVideo"
+              :disabled="isSubmitting"
+            />
           </div>
-          
-        </div>
 
-        <!-- Additional Parameters -->
-        <!-- <UAccordion :items="additionalParametersItems">
-          <template #additional-parameters>
-            <div class="space-y-2">
-              <UTextarea
-                v-model="form.parameters_json"
-                placeholder='{"skip_seconds": 0, "quality": "high"}'
-                :disabled="isSubmitting"
-                class="w-full"
-                rows="3"
-              />
-              <p class="text-xs text-gray-500">Optional JSON parameters for the job</p>
-            </div>
-          </template>
-        </UAccordion> -->
-
-        <!-- Submit Buttons -->
-        <div class="flex gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
-          <UButton
-            type="submit"
-            :loading="isSubmitting"
-            :disabled="!isFormValid"
-            size="sm"
-            color="primary"
-          >
-            {{ isSubmitting ? 'Submitting...' : 'Submit Job' }}
-          </UButton>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 2: Select Subjects</h3>
           
-          <UButton
-            variant="outline"
-            @click="resetForm"
-            :disabled="isSubmitting"
-            size="sm"
-            color="primary"
-          >
-            Reset
-          </UButton>
+          <!-- Subject Search Filters -->
+          <SubjectSearchFilters 
+            @search="searchSubjects"
+            @clear="clearSubjectFilters"
+            :loading="subjectLoading"
+          />
+
+          <!-- Selected Subjects Count -->
+          <div v-if="selectedSubjects.length > 0" class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
+              {{ selectedSubjects.length }} subject{{ selectedSubjects.length !== 1 ? 's' : '' }} selected
+            </span>
+            <UButton
+              variant="ghost"
+              color="error"
+              size="xs"
+              @click="clearSelectedSubjects"
+            >
+              Clear All
+            </UButton>
+          </div>
+
+          <!-- Subject Grid -->
+          <div class="max-h-[60vh] overflow-y-auto">
+            <SubjectGrid
+              :subjects="subjects"
+              :loading="subjectLoading"
+              :loading-more="subjectLoadingMore"
+              :has-searched="subjectHasSearched"
+              :has-more="subjectHasMore"
+              :error="subjectError"
+              :selection-mode="true"
+              :multi-select="true"
+              :selected-items="selectedSubjects"
+              :display-images="displayImages"
+              @subject-click="toggleSubjectSelection"
+              @load-more="loadMoreSubjects"
+            />
+          </div>
         </div>
-      </form>
+      </div>
+
+      <!-- Action Buttons -->
+      <div v-if="workflowMode" class="flex gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <!-- Create Jobs Button -->
+        <UButton
+          v-if="canCreateJobs"
+          type="button"
+          :loading="isSubmitting"
+          :disabled="!canCreateJobs"
+          size="sm"
+          color="primary"
+          @click="createBatchJobs"
+        >
+          {{ isSubmitting ? 'Creating Jobs...' : `Create Jobs (${jobCount})` }}
+        </UButton>
+        
+        <!-- Reset Button -->
+        <UButton
+          variant="outline"
+          @click="resetWorkflow"
+          :disabled="isSubmitting"
+          size="sm"
+          color="primary"
+        >
+          Reset
+        </UButton>
+      </div>
     </UCard>
 
-    <!-- Video Selection Modal -->
+    <!-- Video Selection Modal (for video-first workflow) -->
     <VideoSelectionModal
       v-model="showVideoModal"
       :initial-tags="subjectHairTags"
       @select="handleVideoSelection"
     />
 
-    <!-- Subject Selection Modal -->
+    <!-- Subject Selection Modal (for subject-first workflow) -->
     <SubjectSelectionModal
       v-model="showSubjectModal"
       :initial-tags="videoHairTags"
@@ -190,107 +309,118 @@
 <script setup>
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
+import { useSearchStore } from '~/stores/search'
+import VideoSearchFilters from '~/components/VideoSearchFilters.vue'
+import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 
 // Page metadata
 definePageMeta({
   title: 'Submit Job'
 })
 
-// Use the tags composable
+// Use composables
 const { setSubjectTags, setVideoTags, getSubjectHairTags, getVideoHairTags, clearTags } = useTags()
-
-// Use the settings composable
 const { displayImages } = useSettings()
+const searchStore = useSearchStore()
 
 // Reactive form data
 const form = ref({
-  job_type: { label: 'Face Swap', value: 'vid_faceswap' },
-  dest_media_uuid: '',
-  subject_uuid: '',
-  parameters_json: ''
+  job_type: { label: 'Face Swap', value: 'vid_faceswap' }
 })
 
-// Video selection data
-const selectedVideo = ref(null)
-const showVideoModal = ref(false)
+// Workflow state
+const workflowMode = ref(null) // 'subject-first' | 'video-first' | null
+const isSubmitting = ref(false)
 
-// Subject selection data
+// Subject-first workflow state
 const selectedSubject = ref(null)
+const selectedVideos = ref([])
+const videos = ref([])
+const videoLoading = ref(false)
+const videoLoadingMore = ref(false)
+const videoError = ref(null)
+const videoHasMore = ref(true)
+const videoCurrentPage = ref(1)
+const videoHasSearched = ref(false)
+
+// Video-first workflow state
+const selectedVideo = ref(null)
+const selectedSubjects = ref([])
+const subjects = ref([])
+const subjectLoading = ref(false)
+const subjectLoadingMore = ref(false)
+const subjectError = ref(null)
+const subjectHasMore = ref(true)
+const subjectCurrentPage = ref(1)
+const subjectHasSearched = ref(false)
+
+// Modal state
+const showVideoModal = ref(false)
 const showSubjectModal = ref(false)
-
-// Subject selection is now handled by SubjectSearch component
-
-// Cross-modal tag synchronization using computed properties from the composable
-const subjectHairTags = computed(() => getSubjectHairTags())
-const videoHairTags = computed(() => getVideoHairTags())
-
-// Helper function to store subject tags when subject is selected
-const storeSubjectTags = (subject) => {
-  
-  if (subject && subject.tags && subject.tags.tags) {
-    setSubjectTags(subject.tags.tags)
-  } else {
-    setSubjectTags([])
-  }
-}
-
-// Helper function to store video tags when video is selected
-const storeVideoTags = (video) => {
-  if (video && video.tags && video.tags.tags) {
-    setVideoTags(video.tags.tags)
-  } else {
-    setVideoTags([])
-  }
-}
 
 // Job type options
 const jobTypeOptions = [
   { label: 'Face Swap', value: 'vid_faceswap' }
 ]
 
-// UI state
-const isSubmitting = ref(false)
+// Cross-modal tag synchronization
+const subjectHairTags = computed(() => getSubjectHairTags())
+const videoHairTags = computed(() => getVideoHairTags())
 
 // Computed properties
-const isFormValid = computed(() => {
-  const jobType = form.value.job_type?.value || form.value.job_type
-  
-  if (jobType === 'vid_faceswap') {
-    return jobType && form.value.dest_media_uuid && form.value.subject_uuid
+const canCreateJobs = computed(() => {
+  if (workflowMode.value === 'subject-first') {
+    return selectedSubject.value && selectedVideos.value.length > 0
+  } else if (workflowMode.value === 'video-first') {
+    return selectedVideo.value && selectedSubjects.value.length > 0
   }
-  
   return false
 })
 
-// const additionalParametersItems = computed(() => [
-//   {
-//     label: 'Additional Parameters (JSON)',
-//     slot: 'additional-parameters',
-//     defaultOpen: false
-//   }
-// ])
+const jobCount = computed(() => {
+  if (workflowMode.value === 'subject-first') {
+    return selectedVideos.value.length
+  } else if (workflowMode.value === 'video-first') {
+    return selectedSubjects.value.length
+  }
+  return 0
+})
 
-// Video selection handlers
-const handleVideoSelection = (video) => {
-  selectedVideo.value = video
-  form.value.dest_media_uuid = video.uuid
-  
-  // Store video tags in the composable
-  storeVideoTags(video)
+// Workflow methods
+const startSubjectFirstWorkflow = () => {
+  workflowMode.value = 'subject-first'
+  resetSelections()
 }
 
-const clearSelectedVideo = () => {
+const startVideoFirstWorkflow = () => {
+  workflowMode.value = 'video-first'
+  resetSelections()
+}
+
+const resetWorkflow = () => {
+  workflowMode.value = null
+  resetSelections()
+  clearTags()
+}
+
+const resetSelections = () => {
+  // Clear subject-first workflow
+  selectedSubject.value = null
+  selectedVideos.value = []
+  videos.value = []
+  videoHasSearched.value = false
+  
+  // Clear video-first workflow
   selectedVideo.value = null
-  form.value.dest_media_uuid = ''
-  setVideoTags([])
+  selectedSubjects.value = []
+  subjects.value = []
+  subjectHasSearched.value = false
 }
 
 // Subject selection handlers
 const handleSubjectSelection = (selected) => {
   selectedSubject.value = selected
-  form.value.subject_uuid = selected ? selected.value : ''
   
-  // Store subject tags in the composable
   if (selected) {
     storeSubjectTags(selected)
   } else {
@@ -300,72 +430,324 @@ const handleSubjectSelection = (selected) => {
 
 const clearSelectedSubject = () => {
   selectedSubject.value = null
-  form.value.subject_uuid = ''
   setSubjectTags([])
 }
 
+const toggleSubjectSelection = (subject) => {
+  const subjectData = {
+    id: subject.id,
+    name: subject.name,
+    tags: subject.tags
+  }
+  
+  const index = selectedSubjects.value.findIndex(s => s.id === subject.id)
+  if (index > -1) {
+    selectedSubjects.value.splice(index, 1)
+  } else {
+    selectedSubjects.value.push(subjectData)
+  }
+}
 
-// Methods
-const submitJob = async () => {
-  if (!isFormValid.value) return
+const clearSelectedSubjects = () => {
+  selectedSubjects.value = []
+}
 
-  isSubmitting.value = true
+// Video selection handlers
+const handleVideoSelection = (video) => {
+  selectedVideo.value = video
+  storeVideoTags(video)
+}
+
+const clearSelectedVideo = () => {
+  selectedVideo.value = null
+  setVideoTags([])
+}
+
+const toggleVideoSelection = (video) => {
+  const index = selectedVideos.value.findIndex(v => v.uuid === video.uuid)
+  if (index > -1) {
+    selectedVideos.value.splice(index, 1)
+  } else {
+    selectedVideos.value.push(video)
+  }
+}
+
+const clearSelectedVideos = () => {
+  selectedVideos.value = []
+}
+
+// Helper functions for tag storage
+const storeSubjectTags = (subject) => {
+  if (subject && subject.tags && subject.tags.tags) {
+    setSubjectTags(subject.tags.tags)
+  } else {
+    setSubjectTags([])
+  }
+}
+
+const storeVideoTags = (video) => {
+  if (video && video.tags && video.tags.tags) {
+    setVideoTags(video.tags.tags)
+  } else {
+    setVideoTags([])
+  }
+}
+
+// Search methods (to be implemented with filter components)
+const searchVideos = () => {
+  videoCurrentPage.value = 1
+  videoHasMore.value = true
+  loadVideos(true)
+}
+
+const clearVideoFilters = () => {
+  searchStore.resetVideoFilters()
+  videos.value = []
+  videoHasSearched.value = false
+}
+
+const searchSubjects = () => {
+  subjectCurrentPage.value = 1
+  subjectHasMore.value = true
+  loadSubjects(true)
+}
+
+const clearSubjectFilters = () => {
+  searchStore.resetSubjectFilters()
+  subjects.value = []
+  subjectHasSearched.value = false
+}
+
+// Load videos function (simplified from VideoSelectionModal)
+const loadVideos = async (reset = false) => {
+  if (reset) {
+    videoLoading.value = true
+    videos.value = []
+    videoCurrentPage.value = 1
+  } else {
+    videoLoadingMore.value = true
+  }
+  
+  videoError.value = null
+  videoHasSearched.value = true
 
   try {
-    // Parse parameters JSON if provided
-    let parameters = {}
-    if (form.value.parameters_json) {
-      try {
-        parameters = JSON.parse(form.value.parameters_json)
-      } catch (parseError) {
-        throw new Error(`Invalid JSON in parameters field: ${parseError.message}`)
+    const params = new URLSearchParams()
+    
+    params.append('media_type', 'video')
+    params.append('purpose', 'dest')
+    params.append('limit', '24')
+    params.append('offset', ((videoCurrentPage.value - 1) * 24).toString())
+    
+    // Handle dynamic sorting
+    const sortValue = typeof searchStore.videoSearch.sortOptions === 'object' ? searchStore.videoSearch.sortOptions.value : searchStore.videoSearch.sortOptions
+    
+    let sortBy, sortOrder
+    if (sortValue.endsWith('_desc')) {
+      sortBy = sortValue.slice(0, -5)
+      sortOrder = 'desc'
+    } else if (sortValue.endsWith('_asc')) {
+      sortBy = sortValue.slice(0, -4)
+      sortOrder = 'asc'
+    } else {
+      sortBy = 'created_at'
+      sortOrder = 'desc'
+    }
+    
+    params.append('sort_by', sortBy)
+    params.append('sort_order', sortOrder)
+
+    // Add selected tags
+    if (searchStore.videoSearch.selectedTags.length > 0) {
+      params.append('tags', searchStore.videoSearch.selectedTags.join(','))
+      params.append('tag_match_mode', 'partial')
+    }
+
+    // Add duration filters
+    if (searchStore.videoSearch.durationFilters.min_duration != null && searchStore.videoSearch.durationFilters.min_duration > 0) {
+      params.append('min_duration', searchStore.videoSearch.durationFilters.min_duration.toString())
+    }
+    if (searchStore.videoSearch.durationFilters.max_duration != null && searchStore.videoSearch.durationFilters.max_duration > 0) {
+      params.append('max_duration', searchStore.videoSearch.durationFilters.max_duration.toString())
+    }
+
+    // Filter out videos assigned to jobs if checkbox is checked
+    if (searchStore.videoSearch.excludeAssignedVideos) {
+      params.append('exclude_videos_with_jobs', 'true')
+    }
+
+    params.append('include_thumbnails', 'true')
+
+    const response = await useApiFetch(`media/search?${params.toString()}`)
+
+    if (reset) {
+      videos.value = response.results || []
+    } else {
+      videos.value.push(...(response.results || []))
+    }
+
+    videoHasMore.value = (response.results || []).length === 24
+
+  } catch (err) {
+    console.error('Error loading videos:', err)
+    videoError.value = err.message || 'Failed to load videos'
+  } finally {
+    videoLoading.value = false
+    videoLoadingMore.value = false
+  }
+}
+
+const loadMoreVideos = () => {
+  if (videoHasMore.value && !videoLoadingMore.value) {
+    videoCurrentPage.value++
+    loadVideos(false)
+  }
+}
+
+// Load subjects function (simplified from SubjectSelectionModal)
+const loadSubjects = async (reset = false) => {
+  if (reset) {
+    subjectLoading.value = true
+    subjects.value = []
+    subjectCurrentPage.value = 1
+  } else {
+    subjectLoadingMore.value = true
+  }
+  
+  subjectError.value = null
+  subjectHasSearched.value = true
+
+  try {
+    const params = new URLSearchParams()
+    
+    params.append('limit', '24')
+    params.append('page', subjectCurrentPage.value.toString())
+    params.append('include_images', 'true')
+    params.append('image_size', 'thumb')
+    params.append('sort_by', 'name')
+    params.append('sort_order', 'asc')
+    
+    // Add selected tags if provided
+    if (searchStore.subjectSearch.selectedTags.length > 0) {
+      params.append('tags', searchStore.subjectSearch.selectedTags.join(','))
+      params.append('tag_match_mode', 'partial')
+    }
+
+    const response = await useApiFetch(`subjects/search?${params.toString()}`)
+
+    if (reset) {
+      subjects.value = response.subjects || []
+    } else {
+      subjects.value.push(...(response.subjects || []))
+    }
+
+    subjectHasMore.value = response.pagination?.has_more || false
+
+  } catch (err) {
+    console.error('Error loading subjects:', err)
+    subjectError.value = err.message || 'Failed to load subjects'
+  } finally {
+    subjectLoading.value = false
+    subjectLoadingMore.value = false
+  }
+}
+
+const loadMoreSubjects = () => {
+  if (subjectHasMore.value && !subjectLoadingMore.value) {
+    subjectCurrentPage.value++
+    loadSubjects(false)
+  }
+}
+
+// Batch job creation
+const createBatchJobs = async () => {
+  if (!canCreateJobs.value) return
+
+  isSubmitting.value = true
+  const toast = useToast()
+  let successCount = 0
+  let errorCount = 0
+  const errors = []
+
+  try {
+    const jobTypeValue = form.value.job_type?.value || form.value.job_type
+
+    if (workflowMode.value === 'subject-first') {
+      // Create jobs for each selected video with the selected subject
+      for (const video of selectedVideos.value) {
+        try {
+          const payload = {
+            job_type: jobTypeValue,
+            dest_media_uuid: video.uuid,
+            subject_uuid: selectedSubject.value.value,
+            parameters: {}
+          }
+
+          await useApiFetch('submit-job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          })
+
+          successCount++
+        } catch (error) {
+          errorCount++
+          errors.push(`${video.filename}: ${error.message}`)
+        }
+      }
+    } else if (workflowMode.value === 'video-first') {
+      // Create jobs for each selected subject with the selected video
+      for (const subject of selectedSubjects.value) {
+        try {
+          const payload = {
+            job_type: jobTypeValue,
+            dest_media_uuid: selectedVideo.value.uuid,
+            subject_uuid: subject.id,
+            parameters: {}
+          }
+
+          await useApiFetch('submit-job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          })
+
+          successCount++
+        } catch (error) {
+          errorCount++
+          errors.push(`${subject.name}: ${error.message}`)
+        }
       }
     }
 
-    // Get the actual job type value
-    const jobTypeValue = form.value.job_type?.value || form.value.job_type
-
-    // Prepare the payload for the new API format
-    const payload = {
-      job_type: jobTypeValue,
-      parameters: parameters
+    // Show results
+    if (successCount > 0) {
+      toast.add({
+        title: 'Success',
+        description: `Successfully created ${successCount} job${successCount !== 1 ? 's' : ''}!`,
+        color: 'green'
+      })
     }
 
-    // Add required fields based on job type
-    if (jobTypeValue === 'vid_faceswap') {
-      payload.dest_media_uuid = form.value.dest_media_uuid
-      payload.subject_uuid = form.value.subject_uuid
+    if (errorCount > 0) {
+      toast.add({
+        title: 'Partial Success',
+        description: `${errorCount} job${errorCount !== 1 ? 's' : ''} failed to create. Check console for details.`,
+        color: 'orange'
+      })
+      console.error('Job creation errors:', errors)
     }
 
-    // Submit the job via our server API
-    const response = await useApiFetch('submit-job', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: payload
-    })
-
-    // Show success toast
-    const toast = useToast()
-    toast.add({
-      title: 'Success',
-      description: `Job submitted successfully! Job ID: ${response.job_id}. Status: ${response.status}`,
-      color: 'green'
-    })
-
-    // Reset video selection after successful job submission
-    clearSelectedVideo()
-
-    console.log('Job response:', response)
+    // Reset workflow after successful creation
+    if (successCount > 0) {
+      resetWorkflow()
+    }
 
   } catch (error) {
-    console.error('Job submission error:', error)
-    // Show error toast
-    const toast = useToast()
+    console.error('Batch job creation error:', error)
     toast.add({
       title: 'Error',
-      description: `Failed to submit job: ${error.message || 'Unknown error occurred'}`,
+      description: `Failed to create jobs: ${error.message || 'Unknown error occurred'}`,
       color: 'red'
     })
   } finally {
@@ -373,29 +755,22 @@ const submitJob = async () => {
   }
 }
 
-const resetForm = () => {
-  form.value = {
-    job_type: { label: 'Face Swap', value: 'vid_faceswap' },
-    dest_media_uuid: '',
-    subject_uuid: '',
-    parameters_json: ''
+// Initialize search store on mount
+onMounted(async () => {
+  try {
+    if (searchStore.initializeSearch) {
+      await searchStore.initializeSearch()
+    }
+  } catch (error) {
+    console.error('Failed to initialize search store on mount:', error)
   }
-  selectedVideo.value = null
-  selectedSubject.value = null
-  clearTags()
-}
+})
 
-
-// Watch for job type changes to clear selections when switching job types
+// Watch for job type changes
 watch(() => form.value.job_type, (newJobType) => {
   const jobTypeValue = newJobType?.value || newJobType
   if (jobTypeValue !== 'vid_faceswap') {
-    // Clear selections when switching away from vid_faceswap
-    selectedSubject.value = null
-    form.value.subject_uuid = ''
-    selectedVideo.value = null
-    form.value.dest_media_uuid = ''
-    clearTags()
+    resetWorkflow()
   }
 })
 

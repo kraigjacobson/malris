@@ -889,10 +889,6 @@ const searchMedia = async () => {
     
     const allResults = response.results || []
     
-    console.log('📊 Media Gallery Search Results:')
-    console.log('Total results:', allResults.length)
-    console.log('First result:', JSON.stringify(allResults[0], null, 2))
-    
     // Filter results based on media type selection
     mediaResults.value = allResults.filter(media => {
       // If searching specifically for images, exclude thumbnails to avoid duplicates
@@ -906,12 +902,6 @@ const searchMedia = async () => {
       // For general searches, exclude thumbnails to avoid duplicates
       return media.purpose !== 'thumbnail'
     })
-    
-    console.log('📹 Video filtering debug:')
-    console.log('Media type filter:', mediaType)
-    console.log('All results count:', allResults.length)
-    console.log('Filtered results count:', mediaResults.value.length)
-    console.log('Video results:', mediaResults.value.filter(m => m.type === 'video').length)
     
     // Log any videos without thumbnails but don't filter them out
     mediaResults.value.forEach(media => {

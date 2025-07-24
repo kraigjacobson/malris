@@ -46,7 +46,7 @@
             />
             
             <!-- Tag Search Options -->
-            <div>
+            <!-- <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Search Mode
               </label>
@@ -56,7 +56,7 @@
                 class="w-full"
                 size="sm"
               />
-            </div>
+            </div> -->
           </div>
         </div>
       </div>
@@ -148,6 +148,7 @@
           :has-more="false"
           :error="null"
           :selection-mode="false"
+          :display-images="settingsStore.displayImages"
           :empty-state-message="'Use the search filters above to find subjects'"
           @subject-click="openModal"
         />
@@ -185,9 +186,9 @@
               <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">
                 Created {{ formatDate(subject.created_at) }}
               </p>
-              <div v-if="subject.tags && subject.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
+              <div v-if="subject.tags && subject.tags.tags && subject.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
                 <span
-                  v-for="tag in subject.tags.slice(0, 3)"
+                  v-for="tag in subject.tags.tags.slice(0, 3)"
                   :key="tag"
                   class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-xs rounded"
                 >
@@ -276,17 +277,15 @@
             </div>
 
             <!-- Tags -->
-            <div v-if="selectedSubject.tags && selectedSubject.tags.length > 0">
-              <span class="font-medium text-sm">Tags:</span>
-              <div class="flex flex-wrap gap-2 mt-2">
-                <span
-                  v-for="tag in selectedSubject.tags"
-                  :key="tag"
-                  class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-sm rounded"
-                >
-                  {{ tag }}
-                </span>
-              </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Tags
+              </label>
+              <UInputTags
+                v-model="editableTags"
+                placeholder="Add tags (e.g., portrait, landscape, anime)"
+                class="w-full"
+              />
             </div>
 
             <!-- ID -->
@@ -295,6 +294,24 @@
               <span class="ml-2 font-mono">{{ selectedSubject.id }}</span>
             </div>
           </div>
+        </div>
+      </template>
+      
+      <template #footer>
+        <div class="flex justify-end gap-3 p-3 sm:p-6 pt-0">
+          <UButton
+            variant="outline"
+            @click="isModalOpen = false"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="primary"
+            :loading="isSavingTags"
+            @click="saveTags"
+          >
+            Save Tags
+          </UButton>
         </div>
       </template>
     </UModal>
@@ -311,6 +328,28 @@ definePageMeta({
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
+
+// Date formatting utility
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown'
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  } catch (error) {
+    console.error('Error formatting date:', error)
+    return 'Invalid Date'
+  }
+}
+
+// Image error handler
+const handleImageError = (event) => {
+  console.warn('Failed to load image:', event.target.src)
+  // Hide the broken image
+  event.target.style.display = 'none'
+}
 
 // Reactive data
 const searchTerm = ref('')
@@ -348,6 +387,8 @@ const hasSearched = ref(false)
 const viewMode = ref('grid')
 const selectedSubject = ref(null)
 const isModalOpen = ref(false)
+const editableTags = ref([])
+const isSavingTags = ref(false)
 const currentPage = ref(1)
 const pagination = ref({
   total: 0,
@@ -374,10 +415,10 @@ const limitOptions = [
   { label: '48 per page', value: 48 }
 ]
 
-const tagSearchModeOptions = [
-  { label: 'Partial Match', value: 'partial' },
-  { label: 'Exact Match', value: 'exact' }
-]
+// const tagSearchModeOptions = [
+//   { label: 'Partial Match', value: 'partial' },
+//   { label: 'Exact Match', value: 'exact' }
+// ]
 
 // Handle subject selection from dropdown
 const handleSearchSubjectSelection = (selectedSubject) => {
@@ -420,13 +461,7 @@ const searchSubjects = async () => {
     
     if (sortBy) params.append('sort_by', sortBy)
     if (sortOrder) params.append('sort_order', sortOrder)
-console.log('🌐 API URL:', `/api/auth/subjects/search?${params.toString()}`)
-const response = await useApiFetch(`subjects/search?${params.toString()}`)
-
-    
-    console.log('📊 Subjects Gallery Search Results:')
-    console.log('Total results:', response.subjects?.length || 0)
-    console.log('First result:', JSON.stringify(response.subjects?.[0], null, 2))
+    const response = await useApiFetch(`subjects/search?${params.toString()}`)
     
     subjectResults.value = response.subjects || []
     pagination.value = response.pagination || pagination.value
@@ -477,7 +512,62 @@ const clearFilters = () => {
 
 const openModal = (subject) => {
   selectedSubject.value = subject
+  // Initialize editable tags with current subject tags
+  editableTags.value = subject.tags && subject.tags.tags ? [...subject.tags.tags] : []
   isModalOpen.value = true
+}
+
+const saveTags = async () => {
+  if (!selectedSubject.value) return
+  
+  isSavingTags.value = true
+  
+  try {
+    const response = await useApiFetch(`subjects/${selectedSubject.value.id}/tags`, {
+      method: 'PUT',
+      body: {
+        tags: editableTags.value
+      }
+    })
+    
+    if (response.success) {
+      // Update the selected subject with new tags
+      selectedSubject.value.tags = editableTags.value
+      
+      // Update the subject in the results list
+      const subjectIndex = subjectResults.value.findIndex(s => s.id === selectedSubject.value.id)
+      if (subjectIndex !== -1) {
+        subjectResults.value[subjectIndex].tags = editableTags.value
+      }
+      
+      const toast = useToast()
+      toast.add({
+        title: 'Success',
+        description: 'Subject tags updated successfully',
+        color: 'green',
+        timeout: 3000
+      })
+      
+      isModalOpen.value = false
+    }
+  } catch (err) {
+    console.error('Error saving tags:', err)
+    const toast = useToast()
+    
+    let errorMessage = 'Failed to save tags'
+    if (err.data?.message) {
+      errorMessage = err.data.message
+    }
+    
+    toast.add({
+      title: 'Error',
+      description: errorMessage,
+      color: 'red',
+      timeout: 5000
+    })
+  } finally {
+    isSavingTags.value = false
+  }
 }
 
 // Watch for page changes

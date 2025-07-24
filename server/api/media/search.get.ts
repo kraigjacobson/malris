@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords, jobs } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql, or } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -210,18 +210,18 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // Tag filtering using string matching on JSONB field
+    // Tag filtering using JSONB array element search like subjects
     if (tags) {
       const tagList = (tags as string).split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
       
       if (tagList.length > 0) {
-        // Convert JSONB to text and check if any of the tags are contained within
+        // Use JSONB array element text search for partial matching (AND logic)
         const tagConditions = tagList.map(tag =>
-          sql`${mediaRecords.tags}::text LIKE ${'%"' + tag + '"%'}`
+          sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${mediaRecords.tags}->'tags') AS tag_elem WHERE tag_elem ILIKE ${`%${tag}%`})`
         )
         
-        // Use OR logic - match if any of the provided tags are found
-        conditions.push(or(...tagConditions))
+        // Use AND logic - all tags must be found
+        conditions.push(and(...tagConditions))
       }
     }
 
