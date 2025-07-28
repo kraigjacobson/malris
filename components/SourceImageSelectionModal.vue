@@ -430,6 +430,23 @@ const loadSourceImagesForJob = async (job) => {
   
   isLoadingSourceImages.value = true
   try {
+    // Get all unique source_media_uuid_ref values from output images
+    const sourceUuidsFromOutputs = [...new Set(
+      outputImages.value
+        .map(outputImg => outputImg.source_media_uuid_ref)
+        .filter(Boolean)
+    )]
+    
+    console.log('🎯 Found unique source UUIDs from outputs:', sourceUuidsFromOutputs.length, sourceUuidsFromOutputs)
+    
+    if (sourceUuidsFromOutputs.length === 0) {
+      console.log('❌ No source UUIDs found in output images')
+      sourceImages.value = []
+      return
+    }
+    
+    // Since the API doesn't support searching by multiple UUIDs directly,
+    // we'll get all source images for the subject and then filter them
     const subjectSourceParams = {
       media_type: 'image',
       purpose: 'source',
@@ -441,7 +458,7 @@ const loadSourceImagesForJob = async (job) => {
     }
     
     const searchStartTime = performance.now()
-    console.log(`⏱️ [SourceImageModal] Starting source images search...`)
+    console.log(`⏱️ [SourceImageModal] Starting source images search for subject...`)
     
     const subjectSourceResponse = await useApiFetch('media/search', {
       query: subjectSourceParams
@@ -452,13 +469,30 @@ const loadSourceImagesForJob = async (job) => {
     console.log('🔍 Source search response:', subjectSourceResponse)
     
     if (subjectSourceResponse.results && Array.isArray(subjectSourceResponse.results)) {
-      // Filter source images to only include those that have corresponding output images
+      // Filter to only include source images that have corresponding outputs
       const sourceImagesWithOutputs = subjectSourceResponse.results.filter(sourceImg =>
-        outputImages.value.some(outputImg => outputImg.source_media_uuid_ref === sourceImg.uuid)
+        sourceUuidsFromOutputs.includes(sourceImg.uuid)
       )
       
-      console.log('👤 Found source images with outputs:', sourceImagesWithOutputs.length, 'out of', subjectSourceResponse.results.length, 'total source images')
-      sourceImages.value = sourceImagesWithOutputs
+      // Sort source images to maintain consistent order based on when outputs were created
+      const sortedSourceImages = sourceImagesWithOutputs.sort((a, b) => {
+        // Find the earliest output for each source image to determine order
+        const aOutputs = outputImages.value.filter(output => output.source_media_uuid_ref === a.uuid)
+        const bOutputs = outputImages.value.filter(output => output.source_media_uuid_ref === b.uuid)
+        
+        const aEarliestOutput = aOutputs.reduce((earliest, current) =>
+          new Date(current.created_at) < new Date(earliest.created_at) ? current : earliest
+        )
+        const bEarliestOutput = bOutputs.reduce((earliest, current) =>
+          new Date(current.created_at) < new Date(earliest.created_at) ? current : earliest
+        )
+        
+        return new Date(aEarliestOutput.created_at) - new Date(bEarliestOutput.created_at)
+      })
+      
+      console.log('👤 Found source images with outputs:', sortedSourceImages.length, 'out of', subjectSourceResponse.results.length, 'total source images')
+      console.log('🎯 Source UUIDs that have outputs:', sortedSourceImages.map(img => img.uuid))
+      sourceImages.value = sortedSourceImages
     } else {
       console.log('❌ No source images found in response')
       sourceImages.value = []

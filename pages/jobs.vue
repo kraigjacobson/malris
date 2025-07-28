@@ -391,21 +391,16 @@
           <!-- Full-height button container positioned absolutely -->
           <div class="absolute top-0 right-0 h-full flex items-center">
             <!-- Select button for need_input jobs -->
-            <UDropdownMenu
+            <div
               v-if="job.status === 'need_input'"
-              :items="getJobActions(job)"
-              :ui="{ content: 'w-48' }"
+              class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer"
+              @click.stop="openImageSelectionModal(job)"
             >
-              <div
-                class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer"
-                @click.stop
-              >
-                <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                  <span class="hidden sm:inline">Select</span>
-                  <span class="sm:hidden">Sel</span>
-                </span>
-              </div>
-            </UDropdownMenu>
+              <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                <span class="hidden sm:inline">Select</span>
+                <span class="sm:hidden">Sel</span>
+              </span>
+            </div>
             
             <!-- Dropdown menu button -->
             <UDropdownMenu
@@ -414,6 +409,7 @@
             >
               <div
                 class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 rounded-r-lg cursor-pointer"
+                :class="{ 'rounded-l-lg': job.status !== 'need_input' }"
                 @click.stop
               >
                 <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -710,6 +706,12 @@ const getJobActions = (job) => {
   })
   
   return [actions]
+}
+
+// Image selection modal methods
+const openImageSelectionModal = (job) => {
+  selectedJobForImage.value = job
+  showImageModal.value = true
 }
 
 // Image selection methods (keeping handleImageSelected for potential future use)
