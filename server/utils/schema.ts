@@ -50,6 +50,7 @@ export const mediaRecords = pgTable('media_records', {
   width: integer('width'),
   height: integer('height'),
   duration: real('duration'), // for videos/audio
+  metadata: jsonb('metadata'), // JSONB field for video metadata (codec, format, etc.)
   tags: jsonb('tags'), // JSONB field for tags
   tagsConfirmed: boolean('tags_confirmed').default(false).notNull(), // Whether tags have been confirmed by user
   subjectUuid: uuid('subject_uuid').references(() => subjects.id),

@@ -33,11 +33,11 @@ export default defineEventHandler(async (event) => {
 
     const job = existingJob[0]
     
-    // Check if job can be canceled (only queued or active jobs can be canceled)
-    if (!['queued', 'active'].includes(job.status)) {
+    // Check if job can be canceled (only queued, active, or need_input jobs can be canceled)
+    if (!['queued', 'active', 'need_input'].includes(job.status)) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Cannot cancel job with status: ${job.status}. Only queued or active jobs can be canceled.`
+        statusMessage: `Cannot cancel job with status: ${job.status}. Only queued, active, or need_input jobs can be canceled.`
       })
     }
 
@@ -72,6 +72,27 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    // Delete all output purpose media records associated with this job
+    const { mediaRecords } = await import('~/server/utils/schema')
+    const { and } = await import('drizzle-orm')
+    
+    console.log(`🗑️ Deleting output media records for job ${jobId}...`)
+    const deletedMedia = await db.delete(mediaRecords)
+      .where(and(
+        eq(mediaRecords.jobId, jobId),
+        eq(mediaRecords.purpose, 'output')
+      ))
+      .returning({
+        uuid: mediaRecords.uuid,
+        filename: mediaRecords.filename
+      })
+    
+    if (deletedMedia.length > 0) {
+      console.log(`✅ Deleted ${deletedMedia.length} output media records:`, deletedMedia.map(m => m.filename))
+    } else {
+      console.log(`ℹ️ No output media records found for job ${jobId}`)
+    }
+
     // Update job status to canceled
     const canceledJob = await db.update(jobs)
       .set({
@@ -89,6 +110,31 @@ export default defineEventHandler(async (event) => {
     
     const canceled = canceledJob[0]
     console.log(`✅ Successfully canceled job ${jobId}:`, canceled)
+
+    // FIXED: After canceling a job, check if processing is enabled before trying to start the next job
+    // This ensures we respect the paused state and only process when the user wants it
+    try {
+      const { getProcessingStatus } = await import('~/server/api/jobs/processing/toggle.post')
+      const isProcessingEnabled = getProcessingStatus()
+      
+      if (isProcessingEnabled) {
+        console.log('🔄 Processing is enabled - attempting to start next job after cancellation')
+        const { processNextJob } = await import('~/server/services/jobProcessingService')
+        const nextJobResult = await processNextJob()
+        
+        if (nextJobResult.success) {
+          console.log(`🚀 Successfully started next job after cancellation: ${nextJobResult.job_id}`)
+        } else if (!nextJobResult.skip) {
+          console.log(`⚠️ Failed to start next job after cancellation: ${nextJobResult.message}`)
+        }
+        // If skip=true, it means no jobs in queue or worker busy, which is fine
+      } else {
+        console.log('⏸️ Processing is paused - not starting next job after cancellation')
+      }
+    } catch (nextJobError: any) {
+      console.log(`⚠️ Error trying to process next job after cancellation: ${nextJobError.message}`)
+      // Don't fail the cancellation if next job processing fails
+    }
 
     return {
       success: true,

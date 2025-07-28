@@ -1,10 +1,16 @@
 /**
- * Get the correct Comfy API base URL based on environment
- * Uses port 3000 for both local development and internal container calls
- * The container always uses port 3000 internally, even though it's exposed as 42069 externally
+ * Get the correct API base URL based on the type of call
+ * For malris internal calls: use localhost:3000 (malris internal port)
+ * For comfy-docker calls: use comfyui-runpod-worker:8000 (comfy-docker internal port)
  */
 export function getComfyApiBaseUrl(): string {
-  // Always use port 3000 for internal API calls
-  // The container runs on port 3000 internally, regardless of external port mapping
+  // This function is used for malris internal API calls (like processing toggle)
+  // Use the malris internal port
   return `http://localhost:3000`
+}
+
+export function getComfyWorkerUrl(): string {
+  // This function is used for comfy-docker worker calls
+  // Use the comfy-docker container name and internal port
+  return process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
 }

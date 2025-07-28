@@ -32,14 +32,6 @@
         </div>
         
         
-        <!-- Job Assignment Filter -->
-        <div>
-          <UCheckbox
-            v-model="searchStore.videoSearch.excludeAssignedVideos"
-            label="Hide Used"
-            class="text-sm"
-          />
-        </div>
         
         <!-- Duration Filters -->
         <div class="grid grid-cols-2 gap-2">
@@ -144,6 +136,10 @@ const props = defineProps({
   initialTags: {
     type: Array,
     default: () => []
+  },
+  excludeSubjectUuid: {
+    type: String,
+    default: null
   }
 })
 
@@ -179,11 +175,12 @@ const error = ref(null)
 const hasMore = ref(true)
 const currentPage = ref(1)
 const hasSearched = ref(false)
-const limit = 24
+const limit = 8
 
 
 // Sort options
 const sortOptionsItems = [
+  { label: 'Random', value: 'random' },
   { label: 'Created Date (Newest)', value: 'created_at_desc' },
   { label: 'Created Date (Oldest)', value: 'created_at_asc' },
   { label: 'Updated Date (Newest)', value: 'updated_at_desc' },
@@ -214,12 +211,19 @@ const clearFilters = () => {
   hasSearched.value = false
 }
 
+// Background preloading state
+const preloadQueue = ref([])
+const isPreloading = ref(false)
+const preloadedPages = ref(new Set())
+
 // Load videos function
 const loadVideos = async (reset = false) => {
   if (reset) {
     loading.value = true
     videos.value = []
     currentPage.value = 1
+    preloadQueue.value = []
+    preloadedPages.value.clear()
   } else {
     loadingMore.value = true
   }
@@ -238,30 +242,33 @@ const loadVideos = async (reset = false) => {
     // Handle dynamic sorting
     const sortValue = typeof searchStore.videoSearch.sortOptions === 'object' ? searchStore.videoSearch.sortOptions.value : searchStore.videoSearch.sortOptions
     
-    // Parse sort value properly for API format
-    let sortBy, sortOrder
-    if (sortValue.endsWith('_desc')) {
-      sortBy = sortValue.slice(0, -5) // Remove '_desc'
-      sortOrder = 'desc'
-    } else if (sortValue.endsWith('_asc')) {
-      sortBy = sortValue.slice(0, -4) // Remove '_asc'
-      sortOrder = 'asc'
+    // Check if random sorting is selected
+    if (sortValue === 'random') {
+      params.append('sort_by', 'random')
+      params.append('sort_order', 'asc') // Order doesn't matter for random, but API expects it
     } else {
-      // Fallback - shouldn't happen with current options
-      sortBy = 'created_at'
-      sortOrder = 'desc'
+      // Parse sort value properly for API format
+      let sortBy, sortOrder
+      if (sortValue.endsWith('_desc')) {
+        sortBy = sortValue.slice(0, -5) // Remove '_desc'
+        sortOrder = 'desc'
+      } else if (sortValue.endsWith('_asc')) {
+        sortBy = sortValue.slice(0, -4) // Remove '_asc'
+        sortOrder = 'asc'
+      } else {
+        // Fallback - shouldn't happen with current options
+        sortBy = 'created_at'
+        sortOrder = 'desc'
+      }
+      
+      params.append('sort_by', sortBy)
+      params.append('sort_order', sortOrder)
     }
-    
-    params.append('sort_by', sortBy)
-    params.append('sort_order', sortOrder)
     
 
     // Add selected tags from UInputTags component
     if (searchStore.videoSearch.selectedTags.length > 0) {
       params.append('tags', searchStore.videoSearch.selectedTags.join(','))
-      
-      // Always use partial match mode
-      params.append('tag_match_mode', 'partial')
     }
 
 
@@ -273,9 +280,10 @@ const loadVideos = async (reset = false) => {
       params.append('max_duration', searchStore.videoSearch.durationFilters.max_duration.toString())
     }
 
-    // Filter out videos assigned to jobs if checkbox is checked
-    if (searchStore.videoSearch.excludeAssignedVideos) {
-      params.append('exclude_videos_with_jobs', 'true')
+
+    // Filter out videos already assigned to the specified subject UUID
+    if (props.excludeSubjectUuid) {
+      params.append('exclude_subject_uuid', props.excludeSubjectUuid)
     }
 
     params.append('include_thumbnails', 'true')
@@ -284,6 +292,8 @@ const loadVideos = async (reset = false) => {
 
     if (reset) {
       videos.value = response.results || []
+      // Start background preloading after first batch loads
+      startBackgroundPreloading()
     } else {
       videos.value.push(...(response.results || []))
     }
@@ -300,11 +310,106 @@ const loadVideos = async (reset = false) => {
   }
 }
 
+// Background preloading function
+const startBackgroundPreloading = async () => {
+  if (isPreloading.value) return
+  isPreloading.value = true
+  
+  // Calculate how many pages we need to preload to stay ahead
+  const currentDisplayedPages = Math.ceil(videos.value.length / limit)
+  const targetPreloadPages = currentDisplayedPages + 20 // Always stay 20 pages (160 videos) ahead
+  
+  // Preload from current position to target
+  for (let i = currentDisplayedPages + 1; i <= targetPreloadPages; i++) {
+    if (preloadedPages.value.has(i)) continue
+    
+    try {
+      const params = new URLSearchParams()
+      params.append('media_type', 'video')
+      params.append('purpose', 'dest')
+      params.append('limit', limit.toString())
+      params.append('offset', ((i - 1) * limit).toString())
+      
+      // Add all the same filters as the main search
+      const sortValue = typeof searchStore.videoSearch.sortOptions === 'object' ? searchStore.videoSearch.sortOptions.value : searchStore.videoSearch.sortOptions
+      
+      if (sortValue === 'random') {
+        params.append('sort_by', 'random')
+        params.append('sort_order', 'asc')
+      } else {
+        let sortBy, sortOrder
+        if (sortValue.endsWith('_desc')) {
+          sortBy = sortValue.slice(0, -5)
+          sortOrder = 'desc'
+        } else if (sortValue.endsWith('_asc')) {
+          sortBy = sortValue.slice(0, -4)
+          sortOrder = 'asc'
+        } else {
+          sortBy = 'created_at'
+          sortOrder = 'desc'
+        }
+        params.append('sort_by', sortBy)
+        params.append('sort_order', sortOrder)
+      }
+
+      if (searchStore.videoSearch.selectedTags.length > 0) {
+        params.append('tags', searchStore.videoSearch.selectedTags.join(','))
+      }
+
+      if (searchStore.videoSearch.durationFilters.min_duration != null && searchStore.videoSearch.durationFilters.min_duration > 0) {
+        params.append('min_duration', searchStore.videoSearch.durationFilters.min_duration.toString())
+      }
+      if (searchStore.videoSearch.durationFilters.max_duration != null && searchStore.videoSearch.durationFilters.max_duration > 0) {
+        params.append('max_duration', searchStore.videoSearch.durationFilters.max_duration.toString())
+      }
+
+
+      // Filter out videos already assigned to the specified subject UUID (for background preloading)
+      if (props.excludeSubjectUuid) {
+        params.append('exclude_subject_uuid', props.excludeSubjectUuid)
+      }
+
+      params.append('include_thumbnails', 'true')
+
+      const response = await useApiFetch(`media/search?${params.toString()}`)
+      
+      if (response.results && response.results.length > 0) {
+        preloadQueue.value.push(...response.results)
+        preloadedPages.value.add(i)
+      } else {
+        break // No more results
+      }
+      
+      // Smaller delay for faster preloading
+      await new Promise(resolve => setTimeout(resolve, 50))
+      
+    } catch (error) {
+      console.error('Background preload error:', error)
+      break
+    }
+  }
+  
+  isPreloading.value = false
+}
+
 // Load more videos
 const loadMore = () => {
   if (hasMore.value && !loadingMore.value) {
-    currentPage.value++
-    loadVideos(false)
+    // Check if we have preloaded content
+    if (preloadQueue.value.length >= limit) {
+      const nextBatch = preloadQueue.value.splice(0, limit)
+      videos.value.push(...nextBatch)
+      currentPage.value++
+      
+      // Always keep preloading to stay well ahead - trigger when we have less than 80 videos queued
+      if (preloadQueue.value.length < limit * 10) {
+        startBackgroundPreloading()
+      }
+    } else {
+      // Fallback to regular loading
+      currentPage.value++
+      loadVideos(false)
+    }
   }
 }
 

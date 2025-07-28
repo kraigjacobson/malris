@@ -1,6 +1,7 @@
 import { getDb } from '~/server/utils/database'
-import { mediaRecords, jobs } from '~/server/utils/schema'
+import { mediaRecords, jobs, subjects } from '~/server/utils/schema'
 import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -12,11 +13,10 @@ export default defineEventHandler(async (event) => {
       status,
       exclude_statuses,
       tags,
-      tag_match_mode = 'exact',
       filename_pattern,
       subject_uuid,
+      exclude_subject_uuid,
       job_id,
-      exclude_videos_with_jobs,
       dest_media_uuid_ref,
       has_subject,
       min_file_size,
@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
     // Validate sort parameters
     const validMediaSortFields = [
       'filename', 'type', 'purpose', 'status', 'file_size', 'original_size',
-      'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count'
+      'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random'
     ]
     
     if (!validMediaSortFields.includes(sort_by as string)) {
@@ -66,14 +66,6 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: 400,
         statusMessage: "sort_order must be 'asc' or 'desc'"
-      })
-    }
-
-    // Only support partial tag matching
-    if (tag_match_mode !== 'partial') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: "Only 'partial' tag matching is supported"
       })
     }
 
@@ -113,6 +105,19 @@ export default defineEventHandler(async (event) => {
 
     if (subject_uuid) {
       conditions.push(eq(mediaRecords.subjectUuid, subject_uuid as string))
+    }
+
+    // Exclude destination videos that are already assigned to jobs with the SAME subject UUID
+    // This allows the same video to be used for different subjects simultaneously
+    if (exclude_subject_uuid) {
+      conditions.push(
+        notExists(
+          db.select().from(jobs).where(and(
+            eq(jobs.subjectUuid, exclude_subject_uuid as string),
+            eq(jobs.destMediaUuid, mediaRecords.uuid)
+          ))
+        )
+      )
     }
 
     if (has_subject !== undefined) {
@@ -225,16 +230,6 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // Exclude videos that are already assigned to jobs
-    if (exclude_videos_with_jobs === 'true' || exclude_videos_with_jobs === true) {
-      conditions.push(and(
-        isNull(mediaRecords.jobId),
-        notExists(
-          db.select().from(jobs).where(eq(jobs.destMediaUuid, mediaRecords.uuid))
-        )
-      ))
-    }
-
     // Handle pagination
     const limitNum = Math.min(parseInt(limit as string) || 100, 1000)
     let offsetNum = parseInt(offset as string) || 0
@@ -316,6 +311,9 @@ export default defineEventHandler(async (event) => {
     const sortDirection = (sort_order as string).toLowerCase() === 'desc' ? desc : asc
     
     switch (sort_by) {
+      case 'random':
+        orderByClause = sql`RANDOM()`
+        break
       case 'filename':
         orderByClause = sortDirection(mediaRecords.filename)
         break
@@ -357,7 +355,11 @@ export default defineEventHandler(async (event) => {
         break
     }
 
-    // Execute the main query
+    // Create aliases for the different media record joins
+    const videoThumbnailMedia = alias(mediaRecords, 'video_thumbnail_media')
+    const subjectThumbnailMedia = alias(mediaRecords, 'subject_thumbnail_media')
+
+    // Execute the main query with left joins to subjects and thumbnail media records
     const results = await db
       .select({
         uuid: mediaRecords.uuid,
@@ -381,9 +383,18 @@ export default defineEventHandler(async (event) => {
         last_accessed: mediaRecords.lastAccessed,
         access_count: mediaRecords.accessCount,
         completions: mediaRecords.completions,
-        tags_confirmed: mediaRecords.tagsConfirmed
+        tags_confirmed: mediaRecords.tagsConfirmed,
+        subject_thumbnail_uuid: subjects.thumbnail,
+        // Include encrypted data for both video and subject thumbnails
+        video_thumbnail_data: videoThumbnailMedia.encryptedData,
+        video_thumbnail_filename: videoThumbnailMedia.filename,
+        subject_thumbnail_data: subjectThumbnailMedia.encryptedData,
+        subject_thumbnail_filename: subjectThumbnailMedia.filename
       })
       .from(mediaRecords)
+      .leftJoin(subjects, eq(mediaRecords.subjectUuid, subjects.id))
+      .leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid))
+      .leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(orderByClause)
       .limit(limitNum)
@@ -415,15 +426,21 @@ export default defineEventHandler(async (event) => {
       dest_media_uuid_ref: result.dest_media_uuid_ref,
       job_id: result.job_id,
       thumbnail_uuid: result.thumbnail_uuid,
+      subject_thumbnail_uuid: result.subject_thumbnail_uuid,
       created_at: result.created_at,
       updated_at: result.updated_at,
       last_accessed: result.last_accessed,
       access_count: result.access_count,
       completions: result.completions,
       tags_confirmed: result.tags_confirmed,
-      // Add thumbnail processing flags
-      has_thumbnail: !!result.thumbnail_uuid,
-      thumbnail: null as string | null
+      // Add thumbnail processing flags - prioritize subject thumbnail for videos
+      has_thumbnail: result.type === 'video' ? !!result.subject_thumbnail_uuid : !!result.thumbnail_uuid,
+      thumbnail: null as string | null,
+      // Include raw thumbnail data for processing
+      _video_thumbnail_data: result.video_thumbnail_data,
+      _video_thumbnail_filename: result.video_thumbnail_filename,
+      _subject_thumbnail_data: result.subject_thumbnail_data,
+      _subject_thumbnail_filename: result.subject_thumbnail_filename
     }))
 
     // Process thumbnails and images if include_thumbnails is true
@@ -431,43 +448,50 @@ export default defineEventHandler(async (event) => {
       console.log('Processing thumbnails and images for media results...')
       
       for (const result of transformedResults) {
-        // Handle video thumbnails
-        if (result.thumbnail_uuid && result.type === 'video') {
+        // Handle video thumbnails - prioritize subject thumbnail over video thumbnail
+        if (result.type === 'video') {
+          let encryptedData = null
+          let filename = null
+          let thumbnailType = 'none'
           
-          try {
-            // Get the thumbnail data and convert to base64
-            const thumbnailRecord = await db
-              .select({ encryptedData: mediaRecords.encryptedData, filename: mediaRecords.filename })
-              .from(mediaRecords)
-              .where(eq(mediaRecords.uuid, result.thumbnail_uuid))
-              .limit(1)
-            
-            if (thumbnailRecord && thumbnailRecord.length > 0 && thumbnailRecord[0].encryptedData) {
+          // Prioritize subject thumbnail for videos
+          if (result._subject_thumbnail_data) {
+            encryptedData = result._subject_thumbnail_data
+            filename = result._subject_thumbnail_filename
+            thumbnailType = 'subject'
+          } else if (result._video_thumbnail_data) {
+            encryptedData = result._video_thumbnail_data
+            filename = result._video_thumbnail_filename
+            thumbnailType = 'video'
+          }
+          
+          if (encryptedData && filename) {
+            try {
               const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
               if (encryptionKey) {
                 const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
                 // Handle bytea data - convert to Buffer if needed
-                const encryptedData = thumbnailRecord[0].encryptedData
                 const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
                 const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                const contentType = getContentType(thumbnailRecord[0].filename, 'image/jpeg')
+                const contentType = getContentType(filename, 'image/jpeg')
                 const base64Data = decryptedData.toString('base64')
                 result.thumbnail = `data:${contentType};base64,${base64Data}`
+                console.log(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
               }
+            } catch (error) {
+              console.error(`❌ Failed to generate ${thumbnailType} thumbnail for video ${result.uuid}:`, error)
             }
-          } catch (error) {
-            console.error(`❌ Failed to generate thumbnail for video ${result.uuid}:`, error)
+          } else {
+            console.warn(`⚠️ Video ${result.uuid} has no subject thumbnail or video thumbnail`)
           }
-        } else if (result.type === 'video') {
-          console.warn(`⚠️ Video ${result.uuid} has no thumbnail_uuid`)
         }
         
-        // Handle image data directly
-        if (result.type === 'image') {
+        // Handle image data directly - images still use their own data
+        else if (result.type === 'image') {
           console.log(`✅ Processing image ${result.uuid}`)
           
           try {
-            // Get the image data from database - select encryptedData field
+            // For images, we need to get the data separately since we didn't join it
             const imageRecord = await db
               .select({ encryptedData: mediaRecords.encryptedData })
               .from(mediaRecords)
@@ -492,6 +516,10 @@ export default defineEventHandler(async (event) => {
             console.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
           }
         }
+        
+        // Clean up internal fields by creating a new object without them
+        const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
+        Object.assign(result, cleanResult)
       }
     }
 

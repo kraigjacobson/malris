@@ -157,7 +157,7 @@ const hasMore = ref(true)
 const currentPage = ref(1)
 const hasSearched = ref(false)
 const isClearing = ref(false)
-const limit = 24
+const limit = 48
 
 
 // Video hover functionality (similar to MediaGrid)

@@ -4,7 +4,7 @@
  */
 
 // Global processing state
-let isProcessingEnabled = true // Start enabled by default
+let isProcessingEnabled = false // Start disabled by default - only enable via manual button click
 let processingInterval: NodeJS.Timeout | null = null
 const PROCESSING_INTERVAL = 3000 // 3 seconds
 let isCurrentlyProcessing = false // Prevent concurrent processing
@@ -24,6 +24,44 @@ const cachedWorkerHealth = {
 export function getCachedWorkerHealth() {
   return { ...cachedWorkerHealth }
 }
+
+// Function to get current processing status (for API endpoint)
+export function getProcessingStatus() {
+  return isProcessingEnabled
+}
+
+// Initialize worker health check on module load
+let healthCheckInterval: NodeJS.Timeout | null = null
+const HEALTH_CHECK_INTERVAL = 10000 // 10 seconds
+
+// Function to start independent health checking
+function startHealthChecking() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval)
+  }
+  
+  console.log('🏥 Starting independent worker health monitoring...')
+  
+  // Check immediately
+  checkWorkerHealth()
+  
+  // Set up interval for regular health checks
+  healthCheckInterval = setInterval(async () => {
+    await checkWorkerHealth()
+  }, HEALTH_CHECK_INTERVAL)
+}
+
+// Function to stop health checking
+function _stopHealthChecking() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval)
+    healthCheckInterval = null
+    console.log('🏥 Stopped worker health monitoring')
+  }
+}
+
+// Start health checking immediately when module loads
+startHealthChecking()
 
 // Function to check ComfyUI worker health and availability
 async function checkWorkerHealth() {
@@ -95,50 +133,6 @@ async function checkWorkerHealth() {
   }
 }
 
-// Function to recover stuck active jobs when worker is unhealthy
-async function recoverStuckJobs() {
-  try {
-    const { getDb } = await import('~/server/utils/database')
-    const { jobs } = await import('~/server/utils/schema')
-    const { eq } = await import('drizzle-orm')
-    
-    const db = getDb()
-    
-    // Check worker health
-    const { healthy } = await checkWorkerHealth()
-    
-    if (!healthy) {
-      // Find active jobs that might be stuck
-      const activeJobs = await db
-        .select({ id: jobs.id, startedAt: jobs.startedAt })
-        .from(jobs)
-        .where(eq(jobs.status, 'active'))
-      
-      if (activeJobs.length > 0) {
-        console.log(`🔧 Worker unhealthy - recovering ${activeJobs.length} stuck active job(s)`)
-        
-        // Reset all active jobs back to queued
-        await db
-          .update(jobs)
-          .set({
-            status: 'queued',
-            startedAt: null,
-            updatedAt: new Date(),
-            errorMessage: 'Job recovered due to worker health issues'
-          })
-          .where(eq(jobs.status, 'active'))
-        
-        console.log(`✅ Recovered ${activeJobs.length} stuck jobs back to queued`)
-        return { recovered: activeJobs.length }
-      }
-    }
-    
-    return { recovered: 0 }
-  } catch (error: any) {
-    console.error('❌ Failed to recover stuck jobs:', error)
-    return { recovered: 0 }
-  }
-}
 
 // Function to process next job
 async function processNextJobInternal() {
@@ -156,8 +150,6 @@ async function processNextJobInternal() {
     
     const db = getDb()
     
-    // First, try to recover any stuck jobs if worker is unhealthy
-    await recoverStuckJobs()
     
     // Check if there are any active jobs in database
     const activeJobs = await db
@@ -201,15 +193,9 @@ async function processNextJobInternal() {
     
     console.log(`🚀 Worker is healthy and available - proceeding with job processing for job ${queuedJobs[0].id}`)
     
-    // Only make the HTTP call when we actually have a job to process
-    // This prevents unnecessary calls when conditions aren't met
-    const { getComfyApiBaseUrl } = await import('~/server/utils/api-url')
-    const baseUrl = getComfyApiBaseUrl()
-    const response = await fetch(`${baseUrl}/api/jobs/process-next`, {
-      method: 'POST'
-    })
-    
-    const result = await response.json()
+    // Use the job processing service directly instead of making HTTP calls
+    const { processNextJob } = await import('~/server/services/jobProcessingService')
+    const result = await processNextJob()
     console.log(`✅ Job processing result:`, result.success ? 'SUCCESS' : 'FAILED', result.message)
     return result
     
@@ -239,8 +225,8 @@ function startProcessing() {
     if (isProcessingEnabled) {
       const result = await processNextJobInternal()
       // Only log when something interesting happens (not when skipping)
-      if (result.success || !result.skip) {
-        console.log('🔄 Processing result:', result.message || 'Unknown')
+      if (result.success || !('skip' in result && result.skip)) {
+        console.log('🔄 Processing result:', ('message' in result ? result.message : 'Unknown'))
       }
     }
   }, PROCESSING_INTERVAL)
@@ -292,16 +278,16 @@ async function stopProcessing() {
       .where(eq(jobs.status, 'active'))
     
     if (activeJobs.length > 0) {
-      console.log(`🔄 Cancelling ${activeJobs.length} active job(s) and putting back to queued...`)
+      console.log(`🔄 Cancelling ${activeJobs.length} active job(s)...`)
       
-      // Update all active jobs back to queued
+      // Mark all active jobs as cancelled (don't retry automatically)
       await db
         .update(jobs)
         .set({
-          status: 'queued',
+          status: 'canceled',
           startedAt: null,
           updatedAt: new Date(),
-          errorMessage: 'Job processing was disabled by user'
+          errorMessage: 'Job cancelled - processing was disabled by user'
         })
         .where(eq(jobs.status, 'active'))
     }
@@ -348,5 +334,5 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-// Auto-start processing when the module loads
-startProcessing()
+// Processing will only start when manually triggered via the toggle button
+// No auto-start on server startup

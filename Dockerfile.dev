@@ -1,0 +1,23 @@
+FROM node:20
+
+WORKDIR /app
+
+# Install curl for healthchecks and ffmpeg for video processing
+RUN apt-get update && apt-get install -y curl ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Copy package.json and yarn.lock first to leverage layer caching
+COPY package.json yarn.lock ./
+
+# Install dependencies (this layer will be cached unless package.json/yarn.lock changes)
+RUN yarn install
+
+# Set environment variables for development
+ENV NUXT_HOST=0.0.0.0
+ENV NUXT_PORT=3000
+ENV NODE_ENV=development
+ENV DOCKER_CONTAINER=true
+
+EXPOSE 3000
+
+# Start the development server with hot reloading
+CMD ["yarn", "dev"]

@@ -8,6 +8,8 @@
               <UInput
                 v-model="state.email"
                 type="email"
+                name="email"
+                autocomplete="email"
                 placeholder="Enter your email"
                 icon="i-heroicons-envelope"
                 :disabled="loading"
@@ -19,6 +21,8 @@
               <UInput
                 v-model="state.password"
                 type="password"
+                name="password"
+                autocomplete="off"
                 placeholder="Enter your password"
                 icon="i-heroicons-key"
                 :disabled="loading"

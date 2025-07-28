@@ -18,7 +18,7 @@
           
           <ClientOnly>
             <div v-if="user" class="flex items-center space-x-1 sm:space-x-4">
-              <span class="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:inline">Welcome, {{ user.email }}</span>
+              <span class="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:inline">Welcome, Kraig</span>
               <UButton
                 variant="outline"
                 size="xs"
@@ -87,6 +87,18 @@ const navigationItems = ref<NavigationMenuItem[]>([
         description: 'Browse and search subjects with their associated media and hero images.',
         icon: 'i-heroicons-user-group',
         to: '/subjects-gallery'
+      }
+    ]
+  },
+  {
+    label: 'System Tools',
+    icon: 'i-heroicons-wrench-screwdriver',
+    children: [
+      {
+        label: 'Utilities',
+        description: 'System utilities including AI tagging and other tools.',
+        icon: 'i-heroicons-cog-6-tooth',
+        to: '/utilities'
       }
     ]
   },

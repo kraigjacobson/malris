@@ -207,7 +207,7 @@
         <!-- Action buttons - all on the same line -->
         <div class="flex flex-wrap gap-2">
           <UButton
-            v-if="job && ['queued', 'active'].includes(job.status)"
+            v-if="job && ['queued', 'active', 'need_input'].includes(job.status)"
             color="red"
             variant="outline"
             icon="i-heroicons-x-mark"

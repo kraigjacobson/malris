@@ -14,6 +14,16 @@
             Search Filters
           </h2>
           <div class="flex gap-2 items-center">
+            <!-- Upload Videos Button -->
+            <UButton
+              color="green"
+              variant="outline"
+              size="xs"
+              @click="openUploadModal"
+            >
+              <UIcon name="i-heroicons-arrow-up-tray" />
+              <span class="hidden sm:inline">Upload Videos</span>
+            </UButton>
             <!-- Slideshow Button -->
             <UButton
               color="primary"
@@ -662,6 +672,172 @@
       @close="closeTagEditModal"
     />
 
+    <!-- Video Upload Modal -->
+    <UModal v-model:open="isUploadModalOpen" :ui="{ width: 'sm:max-w-2xl' }">
+      <template #body>
+        <div class="p-3 sm:p-6">
+          <!-- Header -->
+          <div class="flex justify-between items-center mb-3 sm:mb-6">
+            <h3 class="text-base sm:text-lg font-semibold">Upload Destination Videos</h3>
+            <UButton
+              variant="ghost"
+              icon="i-heroicons-x-mark"
+              size="xs"
+              @click="closeUploadModal"
+            />
+          </div>
+
+          <div class="space-y-4">
+          <!-- File Selection -->
+          <div v-if="!isUploading && uploadedFiles.length === 0">
+            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
+              <UIcon name="i-heroicons-folder" class="text-4xl text-gray-400 mb-4" />
+              <p class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                Select Video Folder
+              </p>
+              <p class="text-sm text-gray-500 mb-4">
+                Choose a folder containing destination videos to upload
+              </p>
+              <input
+                ref="folderInput"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                accept="video/*"
+                class="hidden"
+                @change="handleFolderSelection"
+              >
+              <UButton
+                color="primary"
+                @click="$refs.folderInput?.click()"
+              >
+                <UIcon name="i-heroicons-folder-open" class="mr-2" />
+                Choose Folder
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Selected Files Preview -->
+          <div v-if="selectedFiles.length > 0 && !isUploading">
+            <div class="mb-4">
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-2">
+                Selected Videos ({{ selectedFiles.length }})
+              </h4>
+              <p class="text-sm text-gray-500">
+                Total size: {{ formatFileSize(totalSize) }}
+              </p>
+            </div>
+            
+            <!-- Summary Card -->
+            <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    Ready to upload {{ selectedFiles.length }} video{{ selectedFiles.length === 1 ? '' : 's' }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    {{ formatFileSize(totalSize) }} total • Will be processed in batches of 5
+                  </p>
+                </div>
+                <UIcon name="i-heroicons-video-camera" class="text-2xl text-gray-400" />
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <UButton
+                color="primary"
+                :loading="isUploading"
+                @click="startUpload"
+              >
+                <UIcon name="i-heroicons-arrow-up-tray" class="mr-2" />
+                Upload {{ selectedFiles.length }} Videos
+              </UButton>
+              <UButton
+                variant="outline"
+                @click="clearSelection"
+              >
+                Clear Selection
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Upload Progress -->
+          <div v-if="isUploading">
+            <div class="mb-4">
+              <div class="flex justify-between items-center mb-2">
+                <h4 class="text-md font-medium text-gray-900 dark:text-white">
+                  Uploading Videos...
+                </h4>
+                <span class="text-sm text-gray-500">
+                  {{ uploadProgress.completed }} / {{ uploadProgress.total }}
+                </span>
+              </div>
+              <UProgress
+                :value="(uploadProgress.completed / uploadProgress.total) * 100"
+                class="mb-2"
+              />
+              <p class="text-sm text-gray-500">
+                {{ uploadProgress.currentFile || 'Processing...' }}
+              </p>
+            </div>
+
+            <!-- Upload Results -->
+            <div v-if="uploadResults.length > 0" class="max-h-40 overflow-y-auto space-y-2">
+              <div
+                v-for="result in uploadResults"
+                :key="result.filename"
+                class="flex items-center justify-between p-2 rounded"
+                :class="result.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'"
+              >
+                <div class="flex items-center gap-2">
+                  <UIcon
+                    :name="result.success ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'"
+                    :class="result.success ? 'text-green-500' : 'text-red-500'"
+                  />
+                  <span class="text-sm font-medium">{{ result.filename }}</span>
+                </div>
+                <span v-if="!result.success" class="text-xs text-red-600 dark:text-red-400">
+                  {{ result.error }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Complete -->
+          <div v-if="uploadComplete">
+            <div class="text-center py-4">
+              <UIcon name="i-heroicons-check-circle" class="text-4xl text-green-500 mb-2" />
+              <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                Upload Complete!
+              </h4>
+              <p class="text-sm text-gray-500">
+                Successfully uploaded {{ uploadResults.filter(r => r.success).length }} videos
+                {{ uploadResults.filter(r => !r.success).length > 0 ?
+                  `(${uploadResults.filter(r => !r.success).length} failed)` : '' }}
+              </p>
+            </div>
+            
+            <div class="flex gap-2 justify-center">
+              <UButton
+                color="primary"
+                @click="refreshAfterUpload"
+              >
+                Refresh Gallery
+              </UButton>
+              <UButton
+                variant="outline"
+                @click="closeUploadModal"
+              >
+                Close
+              </UButton>
+            </div>
+          </div>
+        </div>
+        </div>
+      </template>
+    </UModal>
+
   </div>
 </template>
 
@@ -696,6 +872,19 @@ const isTagEditModalOpen = ref(false)
 const selectedMediaForTagEdit = ref(null)
 const tagEditCurrentIndex = ref(-1)
 const unconfirmedMediaResults = ref([])
+
+// Video upload functionality
+const isUploadModalOpen = ref(false)
+const selectedFiles = ref([])
+const isUploading = ref(false)
+const uploadComplete = ref(false)
+const uploadProgress = ref({
+  completed: 0,
+  total: 0,
+  currentFile: ''
+})
+const uploadResults = ref([])
+const uploadedFiles = ref([])
 
 // Completion filters with defaults for media gallery (min=0, max=null)
 const completionFilters = ref({
@@ -776,6 +965,11 @@ const mediaDetailsItems = computed(() => {
   }]
 })
 
+// Upload computed properties
+const totalSize = computed(() => {
+  return selectedFiles.value.reduce((total, file) => total + file.size, 0)
+})
+
 // Filter options
 const mediaTypeOptions = [
   { label: 'Images', value: 'image' },
@@ -793,6 +987,7 @@ const purposeOptions = [
 ]
 
 const sortByOptions = [
+  { label: 'Random', value: 'random' },
   { label: 'Created Date', value: 'created_at' },
   { label: 'Updated Date', value: 'updated_at' },
   { label: 'Filename', value: 'filename' },
@@ -850,9 +1045,9 @@ const searchMedia = async () => {
     // Add selected tags from UInputTags component
     if (selectedTags.value.length > 0) {
       params.append('tags', selectedTags.value.join(','))
-      // Always use partial match mode
-      params.append('tag_match_mode', 'partial')
     }
+    // Always use partial match mode (API only supports this)
+    params.append('tag_match_mode', 'partial')
     
     // Add completion filters (only for video searches)
     if (mediaType === 'video') {
@@ -878,8 +1073,15 @@ const searchMedia = async () => {
     const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
     const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
     
-    if (sortBy) params.append('sort_by', sortBy)
-    if (sortOrder) params.append('sort_order', sortOrder)
+    if (sortBy) {
+      params.append('sort_by', sortBy)
+      // For random sorting, order doesn't matter but API expects it
+      if (sortBy === 'random') {
+        params.append('sort_order', 'asc')
+      } else if (sortOrder) {
+        params.append('sort_order', sortOrder)
+      }
+    }
     
     params.append('include_thumbnails', 'true')
 
@@ -989,7 +1191,7 @@ const clearFilters = () => {
   
   filters.value = {
     media_type: currentMediaType, // Keep the currently selected media type
-    purpose: { label: 'All Purposes', value: '' }, // Reset to all purposes
+    purpose: { label: 'Output', value: 'output' }, // Reset to output purpose
     subject_uuid: ''
   }
   
@@ -1002,15 +1204,30 @@ const clearFilters = () => {
     max_completions: null
   }
   
-  handleComposableSubjectSelection(null)
+  // Clear unconfirmed tags filter
+  showUnconfirmedOnly.value = false
+  
+  // Clear subject selection
+  selectedSubject.value = null
+  
   sortOptions.value = {
-    sort_by: { label: 'Created Date', value: 'created_at' },
-    sort_order: { label: 'Descending', value: 'desc' }
+    sort_by: { label: 'Random', value: 'random' },
+    sort_order: { label: 'Ascending', value: 'asc' }
   }
   pagination.value.limit = 16
   currentPage.value = 1
+  
+  // Clear results and reset to initial state
   mediaResults.value = []
   hasSearched.value = false
+  
+  // Reset pagination
+  pagination.value = {
+    total: 0,
+    limit: 16,
+    offset: 0,
+    has_more: false
+  }
 }
 
 // Subject selection handler
@@ -1614,8 +1831,9 @@ const startPreloadingNextVideo = async () => {
       // Add selected tags
       if (selectedTags.value.length > 0) {
         params.append('tags', selectedTags.value.join(','))
-        params.append('tag_match_mode', 'partial')
       }
+      // Always use partial match mode (API only supports this)
+      params.append('tag_match_mode', 'partial')
       
       // Add completion filters (only for video searches)
       if (mediaType === 'video') {
@@ -1771,9 +1989,9 @@ const loadNextSlideshowVideo = async (fromTimeout = false) => {
     // Add selected tags
     if (selectedTags.value.length > 0) {
       params.append('tags', selectedTags.value.join(','))
-      // Always use partial match mode
-      params.append('tag_match_mode', 'partial')
     }
+    // Always use partial match mode (API only supports this)
+    params.append('tag_match_mode', 'partial')
     
     // Add completion filters (only for video searches)
     if (mediaType === 'video') {
@@ -1950,6 +2168,179 @@ watch(isModalOpen, (isOpen) => {
     }
   }
 })
+
+// Video upload methods
+const openUploadModal = () => {
+  isUploadModalOpen.value = true
+  resetUploadState()
+}
+
+const closeUploadModal = () => {
+  isUploadModalOpen.value = false
+  resetUploadState()
+}
+
+const resetUploadState = () => {
+  selectedFiles.value = []
+  isUploading.value = false
+  uploadComplete.value = false
+  uploadProgress.value = {
+    completed: 0,
+    total: 0,
+    currentFile: ''
+  }
+  uploadResults.value = []
+  uploadedFiles.value = []
+}
+
+const handleFolderSelection = (event) => {
+  const files = Array.from(event.target.files || [])
+  
+  // Filter for video files only
+  const videoFiles = files.filter(file =>
+    file.type.startsWith('video/') &&
+    file.size > 0
+  )
+  
+  selectedFiles.value = videoFiles
+  
+  const toast = useToast()
+  toast.add({
+    title: 'Files Selected',
+    description: `Selected ${videoFiles.length} video files (${formatFileSize(totalSize.value)})`,
+    color: 'green',
+    timeout: 3000
+  })
+}
+
+const clearSelection = () => {
+  selectedFiles.value = []
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const startUpload = async () => {
+  if (selectedFiles.value.length === 0) return
+  
+  isUploading.value = true
+  uploadComplete.value = false
+  uploadProgress.value = {
+    completed: 0,
+    total: selectedFiles.value.length,
+    currentFile: ''
+  }
+  uploadResults.value = []
+  
+  const toast = useToast()
+  const BATCH_SIZE = 5 // Process 5 videos at a time
+  
+  // Process files in batches
+  for (let i = 0; i < selectedFiles.value.length; i += BATCH_SIZE) {
+    const batch = selectedFiles.value.slice(i, i + BATCH_SIZE)
+    
+    try {
+      // Create FormData for this batch
+      const formData = new FormData()
+      batch.forEach(file => {
+        formData.append('videos', file)
+      })
+      
+      // Update progress
+      uploadProgress.value.currentFile = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`
+      
+      // Upload batch
+      const response = await $fetch('/api/media/upload-videos', {
+        method: 'POST',
+        body: formData
+      })
+      
+      // Process results
+      if (response.results) {
+        response.results.forEach(result => {
+          uploadResults.value.push({
+            filename: result.filename,
+            success: true,
+            video_uuid: result.video_uuid,
+            thumbnail_uuid: result.thumbnail_uuid
+          })
+          uploadProgress.value.completed++
+        })
+      }
+      
+      // Process errors
+      if (response.errors) {
+        response.errors.forEach(error => {
+          uploadResults.value.push({
+            filename: error.filename,
+            success: false,
+            error: error.error
+          })
+          uploadProgress.value.completed++
+        })
+      }
+      
+    } catch (error) {
+      console.error('Batch upload error:', error)
+      
+      // Mark all files in this batch as failed
+      batch.forEach(file => {
+        uploadResults.value.push({
+          filename: file.name,
+          success: false,
+          error: error.data?.message || error.message || 'Upload failed'
+        })
+        uploadProgress.value.completed++
+      })
+      
+      toast.add({
+        title: 'Batch Upload Error',
+        description: `Failed to upload batch: ${error.data?.message || error.message}`,
+        color: 'red',
+        timeout: 5000
+      })
+    }
+  }
+  
+  // Upload complete
+  isUploading.value = false
+  uploadComplete.value = true
+  
+  const successCount = uploadResults.value.filter(r => r.success).length
+  const failCount = uploadResults.value.filter(r => !r.success).length
+  
+  toast.add({
+    title: 'Upload Complete',
+    description: `Successfully uploaded ${successCount} videos${failCount > 0 ? `, ${failCount} failed` : ''}`,
+    color: successCount > 0 ? 'green' : 'red',
+    timeout: 5000
+  })
+}
+
+const refreshAfterUpload = async () => {
+  // Set filters to show destination videos
+  filters.value.media_type = { label: 'Videos', value: 'video' }
+  filters.value.purpose = { label: 'Destination', value: 'dest' }
+  
+  // Refresh the search
+  await searchMedia()
+  
+  // Close modal
+  closeUploadModal()
+  
+  const toast = useToast()
+  toast.add({
+    title: 'Gallery Refreshed',
+    description: 'Showing newly uploaded destination videos',
+    color: 'green',
+    timeout: 3000
+  })
+}
 
 // Initialize settings on mount (but don't auto-search)
 onMounted(async () => {

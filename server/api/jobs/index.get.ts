@@ -4,9 +4,6 @@ import { count, eq } from 'drizzle-orm'
 
 export default defineEventHandler(async (_event) => {
   try {
-    console.log('🔄 [API] Starting /api/jobs request...')
-    const startTime = Date.now()
-    
     const db = getDb()
     
     // Get queue status by counting jobs in different states
@@ -28,23 +25,12 @@ export default defineEventHandler(async (_event) => {
       db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'canceled'))
     ])
 
-    // Get current processing status from the toggle endpoint
+    // Get current processing status directly from the toggle module
     let processingEnabled = false
     try {
-      const { getComfyApiBaseUrl } = await import('~/server/utils/api-url')
-      const baseUrl = getComfyApiBaseUrl()
-      const response = await fetch(`${baseUrl}/api/jobs/processing/toggle`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({}) // Empty body means just return current status
-      })
-      
-      if (response.ok) {
-        const result = await response.json()
-        processingEnabled = result.processing_enabled || false
-      }
+      // Simply import and get the processing status directly - no HTTP calls needed!
+      const { getProcessingStatus } = await import('~/server/api/jobs/processing/toggle.post')
+      processingEnabled = getProcessingStatus()
     } catch (error) {
       console.warn('⚠️ Failed to get processing status, defaulting to false:', error)
       processingEnabled = false
@@ -65,7 +51,6 @@ export default defineEventHandler(async (_event) => {
       }
     }
 
-    console.log(`✅ [API] Queue status fetched in ${Date.now() - startTime}ms`)
     return queueStatus
 
   } catch (error: any) {

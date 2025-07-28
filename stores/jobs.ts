@@ -145,10 +145,14 @@ export const useJobsStore = defineStore('jobs', () => {
       
       if (response.results) {
         newJobs = response.results as Job[]
-        total = response.total_jobs_count || response.total || newJobs.length
+        // Use filtered count for pagination when filters are applied, otherwise use total count
+        const hasFilters = statusFilter || subjectFilter || sourceTypeFilter !== 'all'
+        total = hasFilters ? (response.count || newJobs.length) : (response.total_jobs_count || response.total || newJobs.length)
       } else if (response.jobs) {
         newJobs = response.jobs as Job[]
-        total = response.total_jobs_count || response.total || newJobs.length
+        // Use filtered count for pagination when filters are applied, otherwise use total count
+        const hasFilters = statusFilter || subjectFilter || sourceTypeFilter !== 'all'
+        total = hasFilters ? (response.count || newJobs.length) : (response.total_jobs_count || response.total || newJobs.length)
       } else if (Array.isArray(response)) {
         newJobs = response as Job[]
         total = newJobs.length

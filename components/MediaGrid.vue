@@ -40,7 +40,7 @@
             class="aspect-[3/4] relative"
           >
             <img
-              :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
+              :src="getImageUrl(media, 'sm')"
               :alt="media.filename"
               class="w-full h-full object-cover object-top"
               loading="lazy"
@@ -60,7 +60,7 @@
             <!-- Video element -->
             <video
               :ref="`video-${media.uuid}`"
-              :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
+              :poster="getVideoPosterUrl(media)"
               class="w-full h-full object-cover object-top"
               muted
               loop
@@ -263,8 +263,8 @@ onMounted(() => {
         }
       },
       {
-        threshold: 0.1,
-        rootMargin: '100px'
+        threshold: 0.05,
+        rootMargin: '1000px'
       }
     )
     observer.observe(infiniteScrollTrigger.value)
@@ -293,7 +293,7 @@ watch(() => infiniteScrollTrigger.value, (newTrigger) => {
       },
       {
         threshold: 0.1,
-        rootMargin: '100px'
+        rootMargin: '500px'
       }
     )
     observer.observe(newTrigger)
@@ -433,6 +433,42 @@ const cleanupVideos = () => {
       }
     }
   })
+}
+
+// Helper methods for safe URL generation
+const getImageUrl = (media, size = 'md') => {
+  if (!media || !media.uuid) return ''
+  
+  // Use direct thumbnail if available
+  if (media.thumbnail) return media.thumbnail
+  
+  // Use thumbnail_uuid if available and valid
+  if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+    return `/api/media/${media.thumbnail_uuid}/image?size=${size}`
+  }
+  
+  // Fall back to main media UUID
+  return `/api/media/${media.uuid}/image?size=${size}`
+}
+
+const getVideoPosterUrl = (media) => {
+  if (!media || !media.uuid) return undefined
+  
+  // Use direct thumbnail if available
+  if (media.thumbnail) return media.thumbnail
+  
+  // Check for subject thumbnail UUID
+  if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
+    return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
+  }
+  
+  // Check for thumbnail UUID
+  if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+    return `/api/media/${media.thumbnail_uuid}/image?size=sm`
+  }
+  
+  // No valid poster available
+  return undefined
 }
 
 // Expose cleanup function

@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     
     const db = getDb()
     
-    // Get the job to verify it exists and is active
+    // Verify the job exists in the database
     const existingJob = await db.select({
       id: jobs.id,
       status: jobs.status,
@@ -51,6 +51,7 @@ export default defineEventHandler(async (event) => {
     // Extract metadata from form data
     let purpose = 'output'
     let errorMessage = null
+    let sourceMediaUuid = null
     
     const metadataFields = formData.filter(field => !field.filename)
     for (const field of metadataFields) {
@@ -61,6 +62,9 @@ export default defineEventHandler(async (event) => {
         purpose = fieldValue
       } else if (fieldName === 'error_message') {
         errorMessage = fieldValue
+      } else if (fieldName === 'source_media_uuid') {
+        sourceMediaUuid = fieldValue
+        console.log(`🔗 Received source media UUID for output linking: ${sourceMediaUuid}`)
       }
     }
     
@@ -86,7 +90,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     
-    // Process output files
+    // Process output files (only for regular jobs)
     const files = formData.filter(field => field.filename)
     const savedMedia = []
     
@@ -176,8 +180,9 @@ export default defineEventHandler(async (event) => {
         filename: file.filename || 'thumbnail.png',
         type: imageType,
         purpose: imagePurpose,
-        subjectUuid: job.subjectUuid,
-        destMediaUuidRef: job.destMediaUuid,
+        subjectUuid: job?.subjectUuid || null,
+        destMediaUuidRef: job?.destMediaUuid || null,
+        sourceMediaUuidRef: sourceMediaUuid || null, // Link to source subject image
         encryptedData: encryptedData,
         fileSize: file.data.length,
         originalSize: file.data.length,
@@ -217,8 +222,9 @@ export default defineEventHandler(async (event) => {
         filename: file.filename || 'output.mp4',
         type: 'video',
         purpose: purpose,
-        subjectUuid: job.subjectUuid,
-        destMediaUuidRef: job.destMediaUuid,
+        subjectUuid: job?.subjectUuid || null,
+        destMediaUuidRef: job?.destMediaUuid || null,
+        sourceMediaUuidRef: sourceMediaUuid || null, // Link to source subject image
         thumbnailUuid: thumbnailRecord?.uuid || null, // Link to thumbnail if available
         encryptedData: encryptedData,
         fileSize: file.data.length,

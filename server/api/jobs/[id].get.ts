@@ -14,6 +14,14 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Check if this is a prefixed tagging job ID - these are not stored in the jobs table
+    if (jobId.startsWith('tag_')) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Tagging jobs are not stored in the jobs table. This is a temporary workflow identifier.'
+      })
+    }
+
     // Get query parameters for thumbnails
     const query = getQuery(event)
     const _thumbnailSize = query.thumbnail_size || 'md'

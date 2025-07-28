@@ -31,8 +31,8 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install curl for healthchecks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Install curl for healthchecks and ffmpeg for video processing
+RUN apt-get update && apt-get install -y curl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from the builder stage
 COPY --from=builder /app/.output /app/.output

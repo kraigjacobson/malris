@@ -28,17 +28,6 @@
     >
       {{ statusText }}
     </span>
-    
-    <!-- Tooltip with details -->
-    <UTooltip 
-      :text="tooltipText"
-      :popper="{ placement: 'bottom' }"
-    >
-      <UIcon 
-        name="i-heroicons-information-circle" 
-        class="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help"
-      />
-    </UTooltip>
   </div>
 </template>
 
@@ -71,25 +60,6 @@ const statusText = computed(() => {
     return 'Worker Busy'
   }
   return 'Worker Ready'
-})
-
-// Computed tooltip text
-const tooltipText = computed(() => {
-  const status = healthStatus.value
-  let text = `Status: ${status.status}\n`
-  
-  if (status.healthy) {
-    text += `Queue: ${status.queue_remaining || 0} remaining\n`
-    text += `Running: ${status.running_jobs_count || 0} jobs\n`
-  }
-  
-  if (status.message) {
-    text += `Message: ${status.message}\n`
-  }
-  
-  text += `Last check: ${new Date(status.timestamp).toLocaleTimeString()}`
-  
-  return text
 })
 
 // Function to check worker health

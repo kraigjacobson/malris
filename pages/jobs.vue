@@ -185,7 +185,7 @@
           <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
             {{ jobsStore.queueStatus?.queue?.need_input || 0 }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">Needs Input</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">Input</div>
         </div>
         <div
           class="text-center p-4 bg-gray-200 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
@@ -330,7 +330,7 @@
           @click="viewJobDetails(job.id)"
         >
           <!-- Main job info row -->
-          <div class="flex items-center justify-between" :class="['queued', 'active'].includes(job.status) ? 'pr-24' : 'pr-12'">
+          <div class="flex items-center justify-between">
             <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
               <!-- Checkbox -->
               <UCheckbox
@@ -338,12 +338,16 @@
                 @update:model-value="(checked) => toggleJobSelection(job.id, checked)"
                 @click.stop
               />
+              <!-- Time since updated - moved to left side -->
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ formatDateCompact(job.updated_at) }}
+              </span>
               <UBadge
                 :color="getStatusColor(job.status)"
                 variant="solid"
                 size="xs"
               >
-                {{ job.status }}
+                {{ getStatusDisplayText(job.status) }}
               </UBadge>
               <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
                 {{ job.subject?.name || 'Unknown Subject' }}
@@ -381,48 +385,35 @@
                 </div>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
               </div>
-              <!-- Mobile: Always show time since updated (never progress bar) -->
-              <div class="sm:hidden ml-auto">
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateCompact(job.updated_at) }}</span>
+            </div>
+          </div>
+          
+          <!-- Full-height button container positioned absolutely -->
+          <div class="absolute top-0 right-0 h-full flex items-center">
+            <!-- Select button for need_input jobs -->
+            <UDropdownMenu
+              v-if="job.status === 'need_input'"
+              :items="getJobActions(job)"
+              :ui="{ content: 'w-48' }"
+            >
+              <div
+                class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer"
+                @click.stop
+              >
+                <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                  <span class="hidden sm:inline">Select</span>
+                  <span class="sm:hidden">Sel</span>
+                </span>
               </div>
-            </div>
+            </UDropdownMenu>
             
-            <div class="flex items-center space-x-1 sm:space-x-2 shrink-0">
-              <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-                {{ formatDateCompact(job.updated_at) }}
-              </span>
-              <div class="flex gap-1 ml-2">
-               <UButton
-                 v-if="job.status === 'need_input'"
-                 size="xs"
-                 color="warning"
-                 variant="outline"
-                 @click.stop="openImageSelection(job)"
-               >
-                 <span class="hidden sm:inline">Select Source Image</span>
-                 <span class="sm:hidden">Select</span>
-               </UButton>
-             </div>
-            </div>
-          </div>
-          
-          <!-- Full-height cancel button positioned absolutely (when applicable) -->
-          <div
-            v-if="['queued', 'active'].includes(job.status)"
-            class="absolute top-0 right-12 h-full w-12 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 flex items-center justify-center border-l border-gray-200 dark:border-gray-700 cursor-pointer"
-            @click.stop="cancelJob(job)"
-          >
-            <UIcon name="i-heroicons-x-mark" class="w-4 h-4 text-red-500 dark:text-red-400" />
-          </div>
-          
-          <!-- Full-height dropdown button positioned absolutely -->
-          <div class="absolute top-0 right-0 h-full w-12 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center rounded-r-lg">
+            <!-- Dropdown menu button -->
             <UDropdownMenu
               :items="getJobActions(job)"
               :ui="{ content: 'w-48' }"
             >
               <div
-                class="h-full w-full flex items-center justify-center cursor-pointer"
+                class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 rounded-r-lg cursor-pointer"
                 @click.stop
               >
                 <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -482,7 +473,7 @@ const outputVideoReady = ref(false)
 const destVideoReady = ref(false)
 const jobOutputImages = ref([])
 
-// Image selection modal data
+// Image selection modal data (keeping for potential future use)
 const showImageModal = ref(false)
 const selectedJobForImage = ref(null)
 
@@ -675,9 +666,28 @@ const formatDateCompact = (dateString) => {
   }).format(date)
 }
 
+// Helper method to format status display text
+const getStatusDisplayText = (status) => {
+  if (status === 'need_input') {
+    return 'input'
+  }
+  return status
+}
+
 // Get job actions for dropdown menu
 const getJobActions = (job) => {
   const actions = []
+  
+  // Add cancel option for queued/active/need_input jobs
+  if (['queued', 'active', 'need_input'].includes(job.status)) {
+    actions.push({
+      label: 'Cancel Job',
+      icon: 'i-heroicons-x-mark',
+      onSelect: async () => {
+        await cancelJob(job)
+      }
+    })
+  }
   
   // Add retry option for failed, canceled, completed, or need_input jobs
   if (['canceled', 'failed', 'completed', 'need_input'].includes(job.status)) {
@@ -702,12 +712,7 @@ const getJobActions = (job) => {
   return [actions]
 }
 
-// Image selection methods
-const openImageSelection = (job) => {
-  selectedJobForImage.value = job
-  showImageModal.value = true
-}
-
+// Image selection methods (keeping handleImageSelected for potential future use)
 const handleImageSelected = async () => {
   await refreshJobsWithCurrentState()
 }
@@ -954,14 +959,14 @@ const bulkQueue = async () => {
 const bulkCancel = async () => {
   const jobsToCancel = selectedJobsArray.value.filter(jobId => {
     const job = jobsStore.jobs.find(j => j.id === jobId)
-    return job && ['queued', 'active'].includes(job.status)
+    return job && ['queued', 'active', 'need_input'].includes(job.status)
   })
   
   if (jobsToCancel.length === 0) {
     const { confirm } = useConfirmDialog()
     await confirm({
       title: 'No Jobs to Cancel',
-      message: 'Selected jobs cannot be canceled. Only queued or active jobs can be canceled.',
+      message: 'Selected jobs cannot be canceled. Only queued, active, or need_input jobs can be canceled.',
       confirmLabel: 'OK',
       cancelLabel: '',
       variant: 'warning'
