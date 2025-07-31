@@ -14,39 +14,68 @@
             Queue Status
           </h2>
           <div class="flex items-center gap-1 sm:gap-2">
-            <!-- Play/Pause Toggle -->
-            <UButton
-              type="button"
-              size="xs"
-              :variant="jobsStore.isProcessing ? 'solid' : 'outline'"
-              :color="jobsStore.isProcessing ? 'red' : 'green'"
-              @click.prevent="jobsStore.toggleProcessing()"
-              :disabled="jobsStore.isLoading"
-            >
-              <UIcon
-                :name="jobsStore.isProcessing ? 'i-heroicons-pause' : 'i-heroicons-play'"
-                class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
-              />
-              <span class="hidden sm:inline">{{ jobsStore.isProcessing ? 'Pause' : 'Play' }}</span>
-            </UButton>
+            <!-- Processing Control Buttons -->
+            <template v-if="!isAnyProcessingActive">
+              <!-- Single Job Processing Button (▶️) -->
+              <UButton
+                type="button"
+                size="xs"
+                variant="outline"
+                color="primary"
+                @click.prevent="startSingleProcessing()"
+                :loading="isStartingSingle"
+              >
+                <UIcon
+                  name="i-heroicons-play"
+                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
+                />
+                <span class="hidden sm:inline">Process One</span>
+              </UButton>
+              
+              <!-- Continuous Processing Button (🔄) -->
+              <UButton
+                type="button"
+                size="xs"
+                variant="outline"
+                color="blue"
+                @click.prevent="startContinuousProcessing()"
+                :loading="isStartingContinuous"
+              >
+                <UIcon
+                  name="i-heroicons-arrow-path"
+                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
+                />
+                <span class="hidden sm:inline">Process All</span>
+              </UButton>
+            </template>
             
-            <USwitch
-              v-model="jobsStore.autoRefreshEnabled"
-              :disabled="jobsStore.isLoading"
-              @update:model-value="(value) => jobsStore.toggleAutoRefresh(value)"
-            />
-            <span class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1 hidden sm:flex">
-              Auto-refresh {{ jobsStore.autoRefreshEnabled ? 'ON' : 'OFF' }}
-            </span>
-            <UButton
-              type="button"
-              size="xs"
-              variant="outline"
-              @click.prevent="() => refreshJobsWithCurrentState()"
-            >
-              <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" :class="{ 'animate-spin': jobsStore.isLoading }" />
-              <span class="hidden sm:inline">Refresh</span>
-            </UButton>
+            <!-- Stop Button (⏹️) - shown when any processing is active -->
+            <template v-else>
+              <UButton
+                type="button"
+                size="xs"
+                variant="outline"
+                color="red"
+                @click.prevent="stopAllProcessing()"
+                :loading="isStopping"
+              >
+                <UIcon
+                  name="i-heroicons-stop"
+                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
+                />
+                <span class="hidden sm:inline">Stop Processing</span>
+              </UButton>
+              
+              <!-- Processing Mode Indicator -->
+              <UBadge
+                :color="processingMode === 'single' ? 'primary' : 'blue'"
+                variant="soft"
+                size="xs"
+                class="hidden sm:inline-flex"
+              >
+                {{ processingMode === 'single' ? 'Processing One' : 'Processing All' }}
+              </UBadge>
+            </template>
           </div>
         </div>
       </template>
@@ -199,10 +228,64 @@
         </div>
       </div>
 
-      <div v-if="jobsStore.queueStatus?.queue?.is_paused" class="mt-2 sm:mt-4 p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-        <div class="flex items-center">
-          <UIcon name="i-heroicons-pause-circle" class="w-5 h-5 text-red-500 mr-2" />
-          <span class="text-red-700 dark:text-red-300 font-medium">Queue is paused</span>
+      
+      <!-- Enhanced System Status Display -->
+      <div v-if="jobsStore.systemStatus" class="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <!-- Overall System Health -->
+          <div class="flex items-center gap-2">
+            <UIcon
+              :name="getSystemHealthIcon(jobsStore.systemStatus.systemHealth)"
+              :class="getSystemHealthColor(jobsStore.systemStatus.systemHealth)"
+              class="w-4 h-4"
+            />
+            <span class="font-medium">System:</span>
+            <span :class="getSystemHealthColor(jobsStore.systemStatus.systemHealth)">
+              {{ jobsStore.systemStatus.systemHealth.toUpperCase() }}
+            </span>
+          </div>
+          
+          <!-- RunPod Worker Status -->
+          <div class="flex items-center gap-2">
+            <UIcon
+              :name="getWorkerStatusIcon(jobsStore.systemStatus.runpodWorker.status)"
+              :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)"
+              class="w-4 h-4"
+            />
+            <span class="font-medium">RunPod:</span>
+            <span :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)">
+              {{ jobsStore.systemStatus.runpodWorker.status.toUpperCase() }}
+            </span>
+          </div>
+          
+          <!-- ComfyUI Status -->
+          <div class="flex items-center gap-2">
+            <UIcon
+              :name="getWorkerStatusIcon(jobsStore.systemStatus.comfyui.status)"
+              :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)"
+              class="w-4 h-4"
+            />
+            <span class="font-medium">ComfyUI:</span>
+            <span :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)">
+              {{ jobsStore.systemStatus.comfyui.status.toUpperCase() }}
+            </span>
+          </div>
+          
+          <!-- ComfyUI Processing Status -->
+          <div class="flex items-center gap-2">
+            <UIcon
+              :name="getProcessingStatusIcon(jobsStore.systemStatus.comfyuiProcessing.status)"
+              :class="getProcessingStatusColor(jobsStore.systemStatus.comfyuiProcessing.status)"
+              class="w-4 h-4"
+            />
+            <span class="font-medium">Processing:</span>
+            <span :class="getProcessingStatusColor(jobsStore.systemStatus.comfyuiProcessing.status)">
+              {{ jobsStore.systemStatus.comfyuiProcessing.status.toUpperCase() }}
+            </span>
+            <span v-if="jobsStore.systemStatus.comfyuiProcessing.runningJobs > 0" class="text-blue-600 dark:text-blue-400">
+              ({{ jobsStore.systemStatus.comfyuiProcessing.runningJobs }} running)
+            </span>
+          </div>
         </div>
       </div>
     </UCard>
@@ -422,7 +505,7 @@
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
         <UPagination
-          v-model:page="currentPage"
+          v-model:page="pageNumber"
           :total="jobsStore.totalJobs"
           :items-per-page="itemsPerPage"
           :max="5"
@@ -446,7 +529,9 @@
     <SourceImageSelectionModal
       v-model="showImageModal"
       :job="selectedJobForImage"
+      :need-input-jobs="needInputJobs"
       @image-selected="handleImageSelected"
+      @job-changed="handleJobChanged"
     />
   </div>
 </template>
@@ -474,7 +559,7 @@ const showImageModal = ref(false)
 const selectedJobForImage = ref(null)
 
 // Pagination
-const currentPage = ref(1)
+const pageNumber = ref(1)
 const itemsPerPage = 20
 
 // Local reactive filter state
@@ -482,6 +567,12 @@ const currentFilter = ref('')
 
 // Bulk selection state
 const selectedJobs = ref(new Set())
+
+// New processing state for the updated UI
+const isStartingSingle = ref(false)
+const isStartingContinuous = ref(false)
+const isStopping = ref(false)
+const processingMode = ref('idle')
 
 // Subject filtering using composable
 const {
@@ -506,10 +597,10 @@ const handleSubjectFilterSelection = async (selected) => {
   if (selected && selected.value) {
     // Filter jobs by subject UUID
     currentFilter.value = `subject:${selected.value}`
-    currentPage.value = 1
+    pageNumber.value = 1
     const statusFilter = jobsStore.filters.status || ''
     const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-    await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, selected.value, sourceTypeFilter)
+    await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, selected.value, sourceTypeFilter)
   } else {
     await clearSubjectFilter()
   }
@@ -518,31 +609,70 @@ const handleSubjectFilterSelection = async (selected) => {
 const clearSubjectFilter = async () => {
   clearSubject()
   currentFilter.value = ''
-  currentPage.value = 1
+  pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, '', sourceTypeFilter)
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, '', sourceTypeFilter)
 }
 
 // Source type filter handlers
 const handleSourceTypeFilterSelection = async (selected) => {
   selectedSourceTypeFilter.value = selected
-  currentPage.value = 1
+  pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, selected)
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, selected)
 }
 
 const clearSourceTypeFilter = async () => {
   selectedSourceTypeFilter.value = 'all'
-  currentPage.value = 1
+  pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, 'all')
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, 'all')
 }
 
 // Computed properties
 const totalPages = computed(() => Math.ceil(jobsStore.totalJobs / itemsPerPage))
+
+// Check if any processing is currently active
+const isAnyProcessingActive = computed(() => {
+  // Show stop button if:
+  // 1. Our local mode indicates we're processing (single or continuous)
+  // 2. OR ComfyUI is actually processing something
+  return processingMode.value !== 'idle' ||
+         jobsStore.systemStatus?.comfyuiProcessing?.status === 'processing'
+})
+
+// Get all jobs that need input for modal navigation
+const needInputJobs = ref([])
+
+// Fetch all jobs that need input (not just current page)
+const fetchAllNeedInputJobs = async () => {
+  try {
+    const response = await useApiFetch('jobs/search', {
+      query: {
+        status: 'need_input',
+        limit: 1000, // Get a large number to ensure we get all
+        sort_by: 'updated_at',
+        sort_order: 'desc'
+      }
+    })
+    
+    if (response.results) {
+      needInputJobs.value = response.results
+    } else if (response.jobs) {
+      needInputJobs.value = response.jobs
+    } else if (Array.isArray(response)) {
+      needInputJobs.value = response
+    } else {
+      needInputJobs.value = []
+    }
+  } catch (error) {
+    console.error('Failed to fetch need_input jobs:', error)
+    needInputJobs.value = []
+  }
+}
 
 // Bulk selection computed properties
 const visibleJobIds = computed(() => jobsStore.jobs.map(job => job.id))
@@ -585,7 +715,7 @@ const clearSelection = () => {
 const filterByStatus = async (status) => {
   // Update local filter immediately
   currentFilter.value = status
-  currentPage.value = 1
+  pageNumber.value = 1
   
   // Also update store for UI consistency
   jobsStore.filters.status = status
@@ -595,7 +725,7 @@ const filterByStatus = async (status) => {
   // Fetch jobs with new filter
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, status, subjectUuid, sourceTypeFilter)
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, status, subjectUuid, sourceTypeFilter)
 }
 
 const refreshJobsWithCurrentState = async () => {
@@ -603,14 +733,134 @@ const refreshJobsWithCurrentState = async () => {
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   await Promise.all([
-    jobsStore.fetchJobs(true, currentPage.value, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter),
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter),
     jobsStore.fetchQueueStatus()
   ])
 }
 
+// New processing methods for the updated UI
+const startSingleProcessing = async () => {
+  try {
+    isStartingSingle.value = true
+    processingMode.value = 'single'
+    
+    const response = await useApiFetch('jobs/processing/single', {
+      method: 'POST'
+    })
+    
+    if (response.success) {
+      const toast = useToast()
+      toast.add({
+        title: 'Single Job Processing Started',
+        description: response.message || 'Processing one job',
+        color: 'success',
+        duration: 3000
+      })
+    } else {
+      const toast = useToast()
+      toast.add({
+        title: 'No Jobs to Process',
+        description: response.message || 'No jobs available for processing',
+        color: 'warning',
+        duration: 2000
+      })
+      processingMode.value = 'idle'
+    }
+  } catch (error) {
+    console.error('Failed to start single processing:', error)
+    processingMode.value = 'idle'
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Processing Failed',
+      description: error.data?.statusMessage || error.message || 'Failed to start processing',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isStartingSingle.value = false
+  }
+}
+
+const startContinuousProcessing = async () => {
+  try {
+    isStartingContinuous.value = true
+    processingMode.value = 'continuous'
+    
+    const response = await useApiFetch('jobs/processing/continuous', {
+      method: 'POST'
+    })
+    
+    if (response.success) {
+      const toast = useToast()
+      toast.add({
+        title: 'Continuous Processing Started',
+        description: response.message || 'Processing all jobs continuously',
+        color: 'success',
+        duration: 3000
+      })
+    } else {
+      const toast = useToast()
+      toast.add({
+        title: 'No Jobs to Process',
+        description: response.message || 'No jobs available for processing',
+        color: 'warning',
+        duration: 2000
+      })
+      processingMode.value = 'idle'
+    }
+  } catch (error) {
+    console.error('Failed to start continuous processing:', error)
+    processingMode.value = 'idle'
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Processing Failed',
+      description: error.data?.statusMessage || error.message || 'Failed to start processing',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isStartingContinuous.value = false
+  }
+}
+
+const stopAllProcessing = async () => {
+  try {
+    isStopping.value = true
+    
+    const response = await useApiFetch('jobs/processing/interrupt', {
+      method: 'POST'
+    })
+    
+    if (response.success) {
+      processingMode.value = 'idle'
+      const toast = useToast()
+      toast.add({
+        title: 'Processing Stopped',
+        description: 'All job processing has been stopped',
+        color: 'success',
+        duration: 3000
+      })
+    }
+  } catch (error) {
+    console.error('Failed to stop processing:', error)
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Stop Failed',
+      description: error.data?.statusMessage || error.message || 'Failed to stop processing',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isStopping.value = false
+  }
+}
+
 // Handle pagination page changes
 const handlePageChange = async (newPage) => {
-  currentPage.value = newPage
+  pageNumber.value = newPage
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
@@ -709,7 +959,9 @@ const getJobActions = (job) => {
 }
 
 // Image selection modal methods
-const openImageSelectionModal = (job) => {
+const openImageSelectionModal = async (job) => {
+  // Fetch all need_input jobs before opening modal
+  await fetchAllNeedInputJobs()
   selectedJobForImage.value = job
   showImageModal.value = true
 }
@@ -717,6 +969,11 @@ const openImageSelectionModal = (job) => {
 // Image selection methods (keeping handleImageSelected for potential future use)
 const handleImageSelected = async () => {
   await refreshJobsWithCurrentState()
+}
+
+// Handle job navigation in the modal
+const handleJobChanged = (newJob) => {
+  selectedJobForImage.value = newJob
 }
 
 const openImageFullscreen = (image) => {
@@ -1056,12 +1313,11 @@ const bulkDelete = async () => {
   }
 }
 
-// Handle page visibility changes
+// Handle page visibility changes (simplified since WebSocket handles real-time updates)
 const handleVisibilityChange = () => {
-  if (document.hidden) {
-    jobsStore.stopAutoRefresh()
-  } else if (jobsStore.autoRefreshEnabled) {
-    jobsStore.startAutoRefresh()
+  if (!document.hidden && !jobsStore.wsConnected) {
+    // Reconnect WebSocket if page becomes visible and connection is lost
+    jobsStore.connectWebSocket()
   }
 }
 
@@ -1075,21 +1331,32 @@ watch(showJobModal, (isOpen) => {
 })
 
 // Clear selection when page changes or filters change
-watch([currentPage, () => jobsStore.filters.status, selectedSubjectFilter, selectedSourceTypeFilter], () => {
+watch([pageNumber, () => jobsStore.filters.status, selectedSubjectFilter, selectedSourceTypeFilter], () => {
   clearSelection()
+})
+
+// Watch for processing status changes from the backend
+watch(() => jobsStore.systemStatus?.comfyuiProcessing?.status, (newStatus) => {
+  // If ComfyUI goes idle and we're not in the middle of starting something, reset mode
+  if (newStatus === 'idle' && !isStartingSingle.value && !isStartingContinuous.value) {
+    processingMode.value = 'idle'
+  }
 })
 
 
 // Lifecycle
-onMounted(() => {
-  jobsStore.fetchInitialData()
+onMounted(async () => {
+  // Reset processing mode on page load
+  processingMode.value = 'idle'
+  
+  await jobsStore.fetchInitialData()
   
   // Listen for page visibility changes
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
-  jobsStore.stopAutoRefresh()
+  jobsStore.cleanup()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
@@ -1100,5 +1367,58 @@ useHead({
     { name: 'description', content: 'Monitor and manage video processing jobs' }
   ]
 })
+
+// System status helper functions
+const getSystemHealthIcon = (health) => {
+  switch (health) {
+    case 'healthy': return 'i-heroicons-check-circle'
+    case 'degraded': return 'i-heroicons-exclamation-triangle'
+    case 'unhealthy': return 'i-heroicons-x-circle'
+    default: return 'i-heroicons-question-mark-circle'
+  }
+}
+
+const getSystemHealthColor = (health) => {
+  switch (health) {
+    case 'healthy': return 'text-green-600 dark:text-green-400'
+    case 'degraded': return 'text-yellow-600 dark:text-yellow-400'
+    case 'unhealthy': return 'text-red-600 dark:text-red-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+const getWorkerStatusIcon = (status) => {
+  switch (status) {
+    case 'healthy': return 'i-heroicons-check-circle'
+    case 'unhealthy': return 'i-heroicons-x-circle'
+    default: return 'i-heroicons-question-mark-circle'
+  }
+}
+
+const getWorkerStatusColor = (status) => {
+  switch (status) {
+    case 'healthy': return 'text-green-600 dark:text-green-400'
+    case 'unhealthy': return 'text-red-600 dark:text-red-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+const getProcessingStatusIcon = (status) => {
+  switch (status) {
+    case 'idle': return 'i-heroicons-pause-circle'
+    case 'processing': return 'i-heroicons-play-circle'
+    case 'queued': return 'i-heroicons-clock'
+    default: return 'i-heroicons-question-mark-circle'
+  }
+}
+
+const getProcessingStatusColor = (status) => {
+  switch (status) {
+    case 'idle': return 'text-gray-600 dark:text-gray-400'
+    case 'processing': return 'text-blue-600 dark:text-blue-400'
+    case 'queued': return 'text-yellow-600 dark:text-yellow-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
 </script>
 

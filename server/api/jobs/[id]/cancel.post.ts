@@ -111,6 +111,14 @@ export default defineEventHandler(async (event) => {
     const canceled = canceledJob[0]
     console.log(`✅ Successfully canceled job ${jobId}:`, canceled)
 
+    // Update job counts for WebSocket clients
+    try {
+      const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+      await updateJobCounts()
+    } catch (error) {
+      console.error('Failed to update job counts after job cancellation:', error)
+    }
+
     // FIXED: After canceling a job, check if processing is enabled before trying to start the next job
     // This ensures we respect the paused state and only process when the user wants it
     try {

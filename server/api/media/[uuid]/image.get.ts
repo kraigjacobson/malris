@@ -154,8 +154,6 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'access-control-allow-origin', '*')
     setHeader(event, 'access-control-allow-methods', 'GET')
     
-    console.log(`🖼️ Successfully serving image: ${uuid}, size: ${size}, type: ${contentType}, original: ${decryptedData.length} bytes, processed: ${processedData.length} bytes`)
-    
     return processedData
 
   } catch (error: any) {

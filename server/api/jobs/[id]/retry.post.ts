@@ -98,6 +98,14 @@ export default defineEventHandler(async (event) => {
     console.log('🔍 Debug - retried job:', retried)
     console.log(`Successfully reset job ${jobId} to queued status`)
 
+    // Update job counts for WebSocket clients after status change
+    try {
+      const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+      await updateJobCounts()
+    } catch (error) {
+      console.error('Failed to update job counts after job retry:', error)
+    }
+
     return {
       success: true,
       job_id: retried.id,

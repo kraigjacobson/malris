@@ -44,8 +44,18 @@ export default defineEventHandler(async (event) => {
       offset = 0,
       page,
       pick_random = false,
-      include_thumbnails = true
+      include_thumbnails = false
     } = query
+
+    // Debug logging for include_thumbnails parameter
+    console.log('🔍 Media search parameters:', {
+      include_thumbnails,
+      include_thumbnails_type: typeof include_thumbnails,
+      media_type,
+      purpose,
+      job_id,
+      limit
+    })
 
     const db = getDb()
 
@@ -359,8 +369,11 @@ export default defineEventHandler(async (event) => {
     const videoThumbnailMedia = alias(mediaRecords, 'video_thumbnail_media')
     const subjectThumbnailMedia = alias(mediaRecords, 'subject_thumbnail_media')
 
-    // Execute the main query with left joins to subjects and thumbnail media records
-    const results = await db
+    // Conditionally include thumbnail data based on include_thumbnails parameter
+    const shouldIncludeThumbnails = include_thumbnails === 'true' || include_thumbnails === true
+
+    // Build query conditionally based on whether thumbnails are needed
+    let queryBuilder = db
       .select({
         uuid: mediaRecords.uuid,
         filename: mediaRecords.filename,
@@ -385,16 +398,24 @@ export default defineEventHandler(async (event) => {
         completions: mediaRecords.completions,
         tags_confirmed: mediaRecords.tagsConfirmed,
         subject_thumbnail_uuid: subjects.thumbnail,
-        // Include encrypted data for both video and subject thumbnails
-        video_thumbnail_data: videoThumbnailMedia.encryptedData,
-        video_thumbnail_filename: videoThumbnailMedia.filename,
-        subject_thumbnail_data: subjectThumbnailMedia.encryptedData,
-        subject_thumbnail_filename: subjectThumbnailMedia.filename
+        // Only include encrypted data if thumbnails are requested to avoid massive response
+        video_thumbnail_data: shouldIncludeThumbnails ? videoThumbnailMedia.encryptedData : sql`NULL`,
+        video_thumbnail_filename: shouldIncludeThumbnails ? videoThumbnailMedia.filename : sql`NULL`,
+        subject_thumbnail_data: shouldIncludeThumbnails ? subjectThumbnailMedia.encryptedData : sql`NULL`,
+        subject_thumbnail_filename: shouldIncludeThumbnails ? subjectThumbnailMedia.filename : sql`NULL`
       })
       .from(mediaRecords)
       .leftJoin(subjects, eq(mediaRecords.subjectUuid, subjects.id))
-      .leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid))
-      .leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
+
+    // Add thumbnail joins only if thumbnails are requested
+    if (shouldIncludeThumbnails) {
+      queryBuilder = queryBuilder
+        .leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid))
+        .leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
+    }
+
+    // Execute the query
+    const results = await queryBuilder
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(orderByClause)
       .limit(limitNum)
@@ -443,9 +464,9 @@ export default defineEventHandler(async (event) => {
       _subject_thumbnail_filename: result.subject_thumbnail_filename
     }))
 
-    // Process thumbnails and images if include_thumbnails is true
+    // Process thumbnails and images if include_thumbnails is explicitly true
     if (include_thumbnails === 'true' || include_thumbnails === true) {
-      console.log('Processing thumbnails and images for media results...')
+      console.log('🖼️ Processing thumbnails and images for media results...')
       
       for (const result of transformedResults) {
         // Handle video thumbnails - prioritize subject thumbnail over video thumbnail
@@ -465,7 +486,7 @@ export default defineEventHandler(async (event) => {
             thumbnailType = 'video'
           }
           
-          if (encryptedData && filename) {
+          if (encryptedData && filename && filename !== null) {
             try {
               const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
               if (encryptionKey) {
@@ -473,7 +494,7 @@ export default defineEventHandler(async (event) => {
                 // Handle bytea data - convert to Buffer if needed
                 const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
                 const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                const contentType = getContentType(filename, 'image/jpeg')
+                const contentType = getContentType(filename as string, 'image/jpeg')
                 const base64Data = decryptedData.toString('base64')
                 result.thumbnail = `data:${contentType};base64,${base64Data}`
                 console.log(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
@@ -521,6 +542,8 @@ export default defineEventHandler(async (event) => {
         const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
         Object.assign(result, cleanResult)
       }
+    } else {
+      console.log('🚫 Skipping thumbnail processing - include_thumbnails is false')
     }
 
     const response = {

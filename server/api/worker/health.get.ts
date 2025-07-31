@@ -5,8 +5,8 @@
  */
 export default defineEventHandler(async (_event) => {
   try {
-    // Import the cached health getter from the processing toggle module
-    const { getCachedWorkerHealth } = await import('~/server/api/jobs/processing/toggle.post')
+    // Import the cached health getter from the job processing service
+    const { getCachedWorkerHealth } = await import('~/server/services/jobProcessingService')
     
     // Return the cached health status
     return getCachedWorkerHealth()

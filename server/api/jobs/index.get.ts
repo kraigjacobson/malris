@@ -1,64 +1,43 @@
-import { getDb } from '~/server/utils/database'
-import { jobs } from '~/server/utils/schema'
-import { count, eq } from 'drizzle-orm'
+import { getCurrentStatus } from '~/server/services/systemStatusManager'
 
 export default defineEventHandler(async (_event) => {
   try {
-    const db = getDb()
+    // Get comprehensive system status from our centralized manager
+    const systemStatus = getCurrentStatus()
     
-    // Get queue status by counting jobs in different states
-    const [
-      totalJobs,
-      queuedJobs,
-      activeJobs,
-      completedJobs,
-      failedJobs,
-      needInputJobs,
-      canceledJobs
-    ] = await Promise.all([
-      db.select({ count: count() }).from(jobs),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'queued')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'active')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'completed')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'failed')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'need_input')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'canceled'))
-    ])
-
-    // Get current processing status directly from the toggle module
-    let processingEnabled = false
-    try {
-      // Simply import and get the processing status directly - no HTTP calls needed!
-      const { getProcessingStatus } = await import('~/server/api/jobs/processing/toggle.post')
-      processingEnabled = getProcessingStatus()
-    } catch (error) {
-      console.warn('⚠️ Failed to get processing status, defaulting to false:', error)
-      processingEnabled = false
-    }
-
+    // Return enhanced queue status with all system information
     const queueStatus = {
       success: true,
       queue: {
-        total: totalJobs[0].count,
-        queued: queuedJobs[0].count,
-        active: activeJobs[0].count,
-        completed: completedJobs[0].count,
-        failed: failedJobs[0].count,
-        need_input: needInputJobs[0].count,
-        canceled: canceledJobs[0].count,
-        is_paused: !processingEnabled, // Queue is paused when processing is disabled
-        is_processing: processingEnabled
+        total: systemStatus.jobCounts.total,
+        queued: systemStatus.jobCounts.queued,
+        active: systemStatus.jobCounts.active,
+        completed: systemStatus.jobCounts.completed,
+        failed: systemStatus.jobCounts.failed,
+        need_input: systemStatus.jobCounts.needInput,
+        canceled: systemStatus.jobCounts.canceled,
+        is_paused: systemStatus.autoProcessing.status !== 'enabled',
+        is_processing: systemStatus.autoProcessing.status === 'enabled'
+      },
+      // Enhanced system status information
+      system_status: {
+        overall_health: systemStatus.systemHealth,
+        timestamp: systemStatus.timestamp,
+        runpod_worker: systemStatus.runpodWorker,
+        comfyui: systemStatus.comfyui,
+        comfyui_processing: systemStatus.comfyuiProcessing,
+        auto_processing: systemStatus.autoProcessing
       }
     }
 
     return queueStatus
 
   } catch (error: any) {
-    console.error('❌ [API] Error fetching queue status from database:', error)
+    console.error('❌ [API] Error fetching system status:', error)
     
     throw createError({
       statusCode: 500,
-      statusMessage: `Failed to fetch queue status: ${error.message || 'Unknown error'}`
+      statusMessage: `Failed to fetch system status: ${error.message || 'Unknown error'}`
     })
   }
 })

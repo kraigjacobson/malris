@@ -123,6 +123,14 @@ export default defineEventHandler(async (event) => {
     
     const createdJob = newJob[0]
     
+    // Update job counts for WebSocket clients
+    try {
+      const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+      await updateJobCounts()
+    } catch (error) {
+      console.error('Failed to update job counts after job creation:', error)
+    }
+    
     return {
       success: true,
       job_id: createdJob.id,

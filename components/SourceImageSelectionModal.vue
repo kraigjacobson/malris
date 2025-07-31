@@ -1,237 +1,325 @@
 <template>
   <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
     <template #header>
-      <h3 class="text-lg font-semibold">Select Source Image</h3>
-    </template>
-    
-    <template #body>
-      <div class="space-y-4">
-
-        <!-- Job Details Accordion (always show) -->
-        <div class="mb-4">
-          <UAccordion :items="jobDetailsItems">
-            <template #job-info>
-              <div class="space-y-3 text-left">
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Job ID</span>
-                  <span class="text-sm text-gray-600 dark:text-gray-400">{{ job?.id }}</span>
-                </div>
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Image Count</span>
-                  <span class="text-sm text-gray-600 dark:text-gray-400">{{ sourceImages.length }} subject images available</span>
-                </div>
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Current Selection</span>
-                  <span class="text-sm text-gray-600 dark:text-gray-400">Image {{ currentImageIndex + 1 }} of {{ sourceImages.length }}</span>
-                </div>
-              </div>
-            </template>
-          </UAccordion>
+      <div class="flex items-center justify-between w-full">
+        <h3 class="text-lg font-semibold">Select Source Image</h3>
+        <div v-if="hasMultipleJobs && currentJobInfo" class="text-sm text-gray-600 dark:text-gray-400 font-medium">
+          Job {{ currentJobInfo.current }} of {{ currentJobInfo.total }}
         </div>
+        <UButton
+          variant="ghost"
+          size="lg"
+          icon="i-heroicons-x-mark"
+          @click="closeModal"
+          :disabled="isSubmittingSource || isDeletingJob"
+          class="ml-4"
+        />
+      </div>
+    </template>
 
-        <!-- Loading State -->
-        <div v-if="isLoadingImages && outputImages.length === 0" class="text-center">
+    <template #body>
+      <div class="space-y-4 h-[600px] overflow-y-auto custom-scrollbar">
+
+
+        <!-- Loading State - show skeletons while loading or when no images are available yet -->
+        <div v-if="isLoadingImages || isLoadingSourceImages" class="text-center h-full flex flex-col">
           <!-- Main Image Skeleton -->
-          <div class="relative inline-block max-w-full">
-            <div class="w-96 h-64 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse mx-auto"></div>
+          <div class="relative w-full flex-shrink-0">
+            <div class="relative overflow-hidden rounded-lg shadow-lg w-full h-96 bg-gray-200 dark:bg-gray-700 animate-pulse">
+            </div>
           </div>
-          
+
           <!-- Details Skeleton -->
-          <div class="mt-4 space-y-2">
+          <div class="mt-4 space-y-2 flex-shrink-0">
             <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/3 mx-auto"></div>
             <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/4 mx-auto"></div>
+          </div>
+
+          <!-- Additional skeleton content to fill remaining space -->
+          <div class="mt-4 space-y-3 flex-1">
+            <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-full"></div>
+            <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4"></div>
+            <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/2"></div>
+            <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-full"></div>
+            <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-2/3"></div>
           </div>
         </div>
 
         <!-- No Images State -->
-        <div v-else-if="!isLoadingImages && outputImages.length === 0" class="text-center py-8">
+        <div v-else-if="outputImages.length === 0 && sourceImages.length === 0" class="text-center py-8">
           <UIcon name="i-heroicons-photo" class="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <p class="text-gray-600 dark:text-gray-400">
             No images found for this job.
           </p>
         </div>
 
-        <!-- Content (show when we have images or are loading with existing images) -->
+        <!-- Content (show when we have images and loading is complete) -->
         <div v-else>
           <!-- Current Image Display with Arrow Overlays -->
-        <div v-if="currentImage" class="text-center">
-          <!-- Image Display (only show when displayImages is true) -->
-          <div v-if="settingsStore.displayImages" class="relative inline-block max-w-full group">
-            <!-- Zoomable Image Container -->
-            <div
-              ref="imageContainer"
-              class="relative overflow-hidden rounded-lg shadow-lg max-w-full max-h-96 mx-auto bg-gray-100 dark:bg-gray-800"
-              style="touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
-              @wheel.prevent="handleWheel"
-              @mousedown.prevent="handleMouseDown"
-              @touchstart.prevent="handleTouchStart"
-              @touchmove.prevent="handleTouchMove"
-              @touchend.prevent="handleTouchEnd"
-              @gesturestart.prevent
-              @gesturechange.prevent
-              @gestureend.prevent
-            >
-              <img
-                ref="zoomableImage"
-                :src="getImageUrl(currentImage)"
-                :alt="currentImage.filename"
-                class="block transition-transform duration-200 ease-out select-none"
-                :style="imageTransformStyle"
-                @dragstart.prevent
-              />
-            </div>
-            
-            <!-- Left Arrow Overlay -->
-            <div
-              v-if="sourceImages.length > 1"
-              class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-              @click="previousImage"
-            >
-              <UIcon name="i-heroicons-chevron-left" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
-            </div>
-            
-            <!-- Right Arrow Overlay -->
-            <div
-              v-if="sourceImages.length > 1"
-              class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-              @click="nextImage"
-            >
-              <UIcon name="i-heroicons-chevron-right" class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
-            </div>
-            
-            <!-- Image Counter -->
-            <div v-if="sourceImages.length > 1" class="absolute top-2 left-2">
-              <div class="bg-black bg-opacity-70 text-white text-sm font-medium px-2 py-1 rounded">
-                {{ currentImageIndex + 1 }}/{{ sourceImages.length }}
+          <div v-if="currentImage" class="text-center">
+            <!-- Image Display (only show when displayImages is true) -->
+            <div v-if="settingsStore.displayImages" class="relative w-full group">
+              <!-- Zoomable Image Container with Fixed Height -->
+              <div ref="imageContainer"
+                class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800"
+                style="height: 384px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
+                @wheel.prevent="handleWheel" @mousedown.prevent="handleMouseDown" @touchstart.prevent="handleTouchStart"
+                @touchmove.prevent="handleTouchMove" @touchend.prevent="handleTouchEnd" @gesturestart.prevent
+                @gesturechange.prevent @gestureend.prevent>
+                
+                <!-- Previous/Fallback Image (stays visible during transitions) -->
+                <img v-if="lastLoadedImage"
+                  :src="getImageUrl(lastLoadedImage)"
+                  :alt="lastLoadedImage.filename"
+                  class="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-200 ease-out select-none"
+                  :style="imageTransformStyle"
+                  @dragstart.prevent />
+                
+                <!-- Current Image (fades in when loaded) -->
+                <img ref="zoomableImage"
+                  v-if="currentImage"
+                  :src="getImageUrl(currentImage)"
+                  :alt="currentImage.filename"
+                  class="absolute inset-0 w-full h-full object-cover object-top transition-all duration-200 ease-out select-none"
+                  :class="{ 'opacity-0': isCurrentImageLoading, 'opacity-100': !isCurrentImageLoading }"
+                  :style="imageTransformStyle"
+                  :key="currentImage.uuid"
+                  @load="onImageLoad"
+                  @error="onImageError"
+                  @dragstart.prevent />
+                 
+                 <!-- Loading overlay when switching images -->
+                 <div v-if="isCurrentImageLoading"
+                   class="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
+                   <div class="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">Loading...</div>
+                 </div>
               </div>
-            </div>
-            
-            <!-- Delete Button -->
-            <div class="absolute top-2 right-2">
-              <UButton
-                color="red"
-                variant="solid"
-                size="sm"
-                icon="i-heroicons-trash"
-                :loading="isDeletingImage"
-                @click="deleteCurrentImage"
-                class="opacity-80 hover:opacity-100 transition-opacity"
-              />
-            </div>
-          </div>
-          
-          <!-- Image Placeholder (when images are hidden) -->
-          <div v-else class="text-center py-8">
-            <UIcon name="i-heroicons-photo" class="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p class="text-gray-600 dark:text-gray-400 mb-2">Image display is disabled</p>
-            <p class="text-sm text-gray-500 dark:text-gray-500">{{ currentImage.filename }}</p>
-            <div v-if="sourceImages.length > 1" class="mt-4 flex justify-center gap-4">
-              <UButton
-                variant="outline"
-                size="sm"
-                icon="i-heroicons-chevron-left"
-                @click="previousImage"
-                :disabled="sourceImages.length <= 1"
-              >
-                Previous
-              </UButton>
-              <span class="flex items-center text-sm text-gray-500">
-                {{ currentImageIndex + 1 }} of {{ sourceImages.length }}
-              </span>
-              <UButton
-                variant="outline"
-                size="sm"
-                icon="i-heroicons-chevron-right"
-                @click="nextImage"
-                :disabled="sourceImages.length <= 1"
-              >
-                Next
-              </UButton>
-            </div>
-          </div>
-          
-          <!-- Image Details Accordion -->
-          <div class="mt-4">
-            <UAccordion :items="imageDetailsItems">
-              <template #details>
-                <div class="space-y-3 text-left">
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Filename</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400 break-all">{{ currentImage.filename }}</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
-                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ currentImage.uuid }}</span>
-                  </div>
-                  <div v-if="currentImage.width && currentImage.height" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ currentImage.width }} × {{ currentImage.height }}</span>
-                  </div>
-                  <div v-if="currentImage.file_size" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Size</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(currentImage.file_size) }}</span>
-                  </div>
-                  
-                </div>
-              </template>
-            </UAccordion>
-          </div>
-        </div>
 
-          <!-- Subject Images Thumbnail Strip (only show when displayImages is true) -->
-          <div v-if="settingsStore.displayImages && (sourceImages.length > 0 || isLoadingSourceImages)" class="mt-4">
-            <div v-if="isLoadingSourceImages && sourceImages.length === 0" class="flex gap-2 py-2">
-              <!-- Thumbnail Skeletons -->
-              <div v-for="i in 5" :key="i" class="shrink-0 w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+              <!-- Left Arrow Overlay -->
+              <div v-if="sourceImages.length > 1"
+                class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                @click="goToPreviousImage">
+                <UIcon name="i-heroicons-chevron-left"
+                  class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
+              </div>
+
+              <!-- Right Arrow Overlay -->
+              <div v-if="sourceImages.length > 1"
+                class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                @click="goToNextImage">
+                <UIcon name="i-heroicons-chevron-right"
+                  class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
+              </div>
+
+              <!-- Image Counter -->
+              <div v-if="sourceImages.length > 1" class="absolute top-2 left-2">
+                <div class="bg-black bg-opacity-70 text-white text-sm font-medium px-2 py-1 rounded">
+                  {{ currentImageIndex + 1 }}/{{ sourceImages.length }}
+                </div>
+              </div>
+
+              <!-- Delete Button -->
+              <div class="absolute top-2 right-2">
+                <UButton color="red" variant="solid" size="sm" icon="i-heroicons-trash" :loading="isDeletingImage"
+                  @click="deleteCurrentImage" class="opacity-80 hover:opacity-100 transition-opacity" />
+              </div>
+
+
             </div>
-            <div v-else ref="thumbnailStrip" class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
-              <div
-                v-for="(sourceImage, index) in sourceImages"
-                :key="sourceImage.uuid"
-                :ref="el => { if (el) thumbnailRefs[index] = el }"
-                class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
-                :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
-                @click="currentImageIndex = index"
-              >
-                <img
-                  :src="getThumbnailUrl(sourceImage)"
-                  :alt="sourceImage.filename"
-                  class="w-full h-full object-cover rounded"
-                />
+
+            <!-- Image Placeholder (when images are hidden) -->
+            <div v-else class="text-center py-8">
+              <UIcon name="i-heroicons-photo" class="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p class="text-gray-600 dark:text-gray-400 mb-2">Image display is disabled</p>
+              <p class="text-sm text-gray-500 dark:text-gray-500">{{ currentImage.filename }}</p>
+              <div v-if="sourceImages.length > 1" class="mt-4 flex justify-center gap-4">
+                <UButton variant="outline" size="sm" icon="i-heroicons-chevron-left" @click="goToPreviousImage"
+                  :disabled="sourceImages.length <= 1">
+                  Previous
+                </UButton>
+                <span class="flex items-center text-sm text-gray-500">
+                  {{ currentImageIndex + 1 }} of {{ sourceImages.length }}
+                </span>
+                <UButton variant="outline" size="sm" icon="i-heroicons-chevron-right" @click="goToNextImage"
+                  :disabled="sourceImages.length <= 1">
+                  Next
+                </UButton>
               </div>
             </div>
+
+            <!-- Subject Images Thumbnail Strip (only show when displayImages is true) -->
+            <div v-if="settingsStore.displayImages && (sourceImages.length > 0 || isLoadingSourceImages)" class="mt-4">
+              <div v-if="isLoadingSourceImages" class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
+                <!-- Thumbnail Skeletons -->
+                <div v-for="i in 5" :key="i"
+                  class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 border-gray-200 dark:border-gray-700">
+                  <div class="w-full h-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                </div>
+              </div>
+              <div v-else-if="sourceImages.length > 0" ref="thumbnailStrip"
+                class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
+                <div v-for="(sourceImage, index) in sourceImages" :key="sourceImage.uuid"
+                  :ref="el => { if (el) thumbnailRefs[index] = el }"
+                  class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
+                  :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
+                  @click="currentImageIndex = index">
+                  <img :src="getThumbnailUrl(sourceImage)" :alt="sourceImage.filename"
+                    class="w-full h-full object-cover rounded" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Debug Information Section -->
+            <div class="mt-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+              <div class="text-xs font-mono space-y-2">
+                <div class="text-yellow-600 dark:text-yellow-400 font-semibold mb-2">DEBUG INFO:</div>
+                <div class="grid grid-cols-1 gap-2">
+                  <div>
+                    <span class="text-red-600 dark:text-red-400 font-medium">Main Image UUID:</span>
+                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.uuid || 'N/A' }}</div>
+                  </div>
+                  <div>
+                    <span class="text-red-600 dark:text-red-400 font-medium">Main Image Purpose:</span>
+                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.purpose || 'N/A' }}</div>
+                  </div>
+                  <div>
+                    <span class="text-blue-600 dark:text-blue-400 font-medium">Main Img Source Ref:</span>
+                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.source_media_uuid_ref || 'N/A' }}</div>
+                  </div>
+                  <div>
+                    <span class="text-green-600 dark:text-green-400 font-medium">Selected Thumb UUID:</span>
+                    <div class="break-all text-gray-700 dark:text-gray-300">{{ sourceImages[currentImageIndex]?.uuid || 'N/A' }}</div>
+                  </div>
+                  <div>
+                    <span class="text-green-600 dark:text-green-400 font-medium">Selected Thumb Purpose:</span>
+                    <div class="break-all text-gray-700 dark:text-gray-300">{{ sourceImages[currentImageIndex]?.purpose || 'N/A' }}</div>
+                  </div>
+                  <div class="flex gap-4">
+                    <div>
+                      <span class="text-purple-600 dark:text-purple-400 font-medium">Index:</span>
+                      <span class="text-gray-700 dark:text-gray-300">{{ currentImageIndex }}</span>
+                    </div>
+                    <div>
+                      <span class="text-orange-600 dark:text-orange-400 font-medium">Should Match:</span>
+                      <span :class="currentImage?.source_media_uuid_ref === sourceImages[currentImageIndex]?.uuid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                        {{ currentImage?.source_media_uuid_ref === sourceImages[currentImageIndex]?.uuid ? 'YES' : 'NO' }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex gap-4">
+                    <div>
+                      <span class="text-cyan-600 dark:text-cyan-400 font-medium">Output Count:</span>
+                      <span class="text-gray-700 dark:text-gray-300">{{ outputImages.length }}</span>
+                    </div>
+                    <div>
+                      <span class="text-cyan-600 dark:text-cyan-400 font-medium">Source Count:</span>
+                      <span class="text-gray-700 dark:text-gray-300">{{ sourceImages.length }}</span>
+                    </div>
+                    <div>
+                      <span class="text-indigo-600 dark:text-indigo-400 font-medium">Preloaded:</span>
+                      <span class="text-gray-700 dark:text-gray-300">{{ preloadedImages.size }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Image Details Accordion -->
+            <div class="mt-4">
+              <UAccordion :items="imageDetailsItems">
+                <template #details>
+                  <div class="space-y-3 text-left">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Filename</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400 break-all">{{ currentImage.filename
+                        }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ currentImage.uuid
+                        }}</span>
+                    </div>
+                    <div v-if="currentImage.width && currentImage.height" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ currentImage.width }} × {{
+                        currentImage.height }}</span>
+                    </div>
+                    <div v-if="currentImage.file_size" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Size</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(currentImage.file_size)
+                        }}</span>
+                    </div>
+
+                  </div>
+                </template>
+              </UAccordion>
+            </div>
+
+            <!-- Job Details Accordion -->
+            <div class="mt-4">
+              <UAccordion :items="jobDetailsItems">
+                <template #job-info>
+                  <div class="space-y-3 text-left">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Job ID</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job?.id }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Image Count</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ sourceImages.length }} subject images
+                        available</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Current Selection</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">Image {{ currentImageIndex + 1 }} of {{
+                        sourceImages.length }}</span>
+                    </div>
+                  </div>
+                </template>
+              </UAccordion>
             </div>
           </div>
         </div>
+      </div>
     </template>
 
     <template #footer>
       <div class="flex justify-between">
-        <UButton
-          variant="outline"
-          @click="closeModal"
-          :disabled="isSubmittingSource || isDeletingJob"
-        >
-          Cancel
-        </UButton>
+        <div class="flex gap-2">
+          <UButton variant="outline" @click="closeModal" :disabled="isSubmittingSource || isDeletingJob">
+            Cancel
+          </UButton>
+          <!-- Job Navigation Buttons -->
+          <div v-if="hasMultipleJobs" class="flex gap-2">
+            <UButton
+              variant="outline"
+              size="lg"
+              :disabled="!canGoToPrevJob || isSubmittingSource || isDeletingJob"
+              @click="goToPreviousJob"
+              square
+              class="w-12 h-12 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-chevron-left" class="w-6 h-6" />
+            </UButton>
+            <UButton
+              variant="outline"
+              size="lg"
+              :disabled="!canGoToNextJob || isSubmittingSource || isDeletingJob"
+              @click="goToNextJob"
+              square
+              class="w-12 h-12 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-chevron-right" class="w-6 h-6" />
+            </UButton>
+          </div>
+        </div>
         <div v-if="currentImage" class="flex gap-2">
-          <UButton
-            color="red"
-            variant="outline"
-            icon="i-heroicons-trash"
-            :loading="isDeletingJob"
-            @click="handleDeleteJob"
-            :disabled="isSubmittingSource"
-          >
+          <UButton color="red" variant="outline" icon="i-heroicons-trash" :loading="isDeletingJob"
+            @click="handleDeleteJob" :disabled="isSubmittingSource">
             Delete Job
           </UButton>
-          <UButton
-            color="primary"
-            :loading="isSubmittingSource"
-            @click="selectCurrentImage"
-            :disabled="isDeletingJob"
-          >
-            Select This Image
+          <UButton color="primary" :loading="isSubmittingSource" @click="selectCurrentImage" :disabled="isDeletingJob">
+            {{ canGoToNextJob ? 'Select & Next' : 'Select This Image' }}
           </UButton>
         </div>
       </div>
@@ -251,11 +339,15 @@ const props = defineProps({
   job: {
     type: Object,
     default: null
+  },
+  needInputJobs: {
+    type: Array,
+    default: () => []
   }
 })
 
 // Emits
-const emit = defineEmits(['update:modelValue', 'imageSelected', 'jobDeleted'])
+const emit = defineEmits(['update:modelValue', 'imageSelected', 'jobDeleted', 'jobChanged'])
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
@@ -270,6 +362,18 @@ const isSubmittingSource = ref(false)
 const isDeletingImage = ref(false)
 const thumbnailStrip = ref(null)
 const thumbnailRefs = ref({})
+
+// Image persistence for smooth transitions
+const lastLoadedImage = ref(null) // Keep previous image while new one loads
+const isCurrentImageLoading = ref(false) // Track individual image loading state
+
+// Image preloading system
+const preloadedImages = ref(new Map()) // Map of UUID -> Image object for preloaded images
+const preloadQueue = ref([]) // Queue of images to preload
+const isPreloading = ref(false) // Track if preloading is active
+
+// Job navigation state
+const currentJobIndex = ref(0)
 
 // Zoom functionality reactive data
 const imageContainer = ref(null)
@@ -297,27 +401,52 @@ const isOpen = computed({
 const currentImage = computed(() => {
   // Get the currently selected source image
   const selectedSourceImage = sourceImages.value[currentImageIndex.value]
-  if (!selectedSourceImage) return null
-  
-  // Find the output image that corresponds to this source image
-  const correspondingOutputImage = outputImages.value.find(outputImg =>
+  if (!selectedSourceImage) {
+    console.log('🚨 [currentImage] No selected source image at index:', currentImageIndex.value)
+    return null
+  }
+
+  // Find ALL output images that correspond to this source image
+  const allCorrespondingOutputs = outputImages.value.filter(outputImg =>
     outputImg.source_media_uuid_ref === selectedSourceImage.uuid
   )
-  
-  console.log('🖼️ Current image computed:', {
+
+  // For now, take the first one, but log if there are multiple
+  const correspondingOutputImage = allCorrespondingOutputs[0]
+
+  console.log('🖼️ [currentImage] COMPUTED RESULT:', {
     currentImageIndex: currentImageIndex.value,
-    selectedSourceImageUuid: selectedSourceImage.uuid,
-    correspondingOutputImage: correspondingOutputImage,
-    outputImagesLength: outputImages.value.length,
-    sourceImagesLength: sourceImages.value.length
+    selectedSourceImage: {
+      uuid: selectedSourceImage.uuid,
+      filename: selectedSourceImage.filename,
+      created_at: selectedSourceImage.created_at
+    },
+    allCorrespondingOutputs: allCorrespondingOutputs.map(img => ({
+      uuid: img.uuid,
+      filename: img.filename,
+      source_media_uuid_ref: img.source_media_uuid_ref
+    })),
+    selectedOutput: correspondingOutputImage ? {
+      uuid: correspondingOutputImage.uuid,
+      filename: correspondingOutputImage.filename,
+      source_media_uuid_ref: correspondingOutputImage.source_media_uuid_ref,
+      created_at: correspondingOutputImage.created_at
+    } : null,
+    multipleOutputsForSameSource: allCorrespondingOutputs.length > 1,
+    outputCount: allCorrespondingOutputs.length
   })
-  
+
+  if (!correspondingOutputImage) {
+    console.log('🚨 [currentImage] No corresponding output image found for source:', selectedSourceImage.uuid)
+  }
+
   return correspondingOutputImage || null
 })
 
+
 const imageDetailsItems = computed(() => {
   if (!currentImage.value) return []
-  
+
   return [{
     label: 'Image Details',
     slot: 'details'
@@ -339,21 +468,50 @@ const imageTransformStyle = computed(() => {
   }
 })
 
+// Job navigation computed properties
+const hasMultipleJobs = computed(() => props.needInputJobs.length > 1)
+const canGoToPrevJob = computed(() => currentJobIndex.value > 0)
+const canGoToNextJob = computed(() => currentJobIndex.value < props.needInputJobs.length - 1)
+const currentJobInfo = computed(() => {
+  if (props.needInputJobs.length === 0) return null
+  return {
+    current: currentJobIndex.value + 1,
+    total: props.needInputJobs.length
+  }
+})
+
 // Methods
+// Job navigation methods
+const goToPreviousJob = () => {
+  if (canGoToPrevJob.value) {
+    currentJobIndex.value--
+    const newJob = props.needInputJobs[currentJobIndex.value]
+    emit('jobChanged', newJob)
+  }
+}
+
+const goToNextJob = () => {
+  if (canGoToNextJob.value) {
+    currentJobIndex.value++
+    const newJob = props.needInputJobs[currentJobIndex.value]
+    emit('jobChanged', newJob)
+  }
+}
+
 const scrollToCurrentThumbnail = () => {
   nextTick(() => {
     if (thumbnailStrip.value && thumbnailRefs.value[currentImageIndex.value]) {
       const selectedThumbnail = thumbnailRefs.value[currentImageIndex.value]
       const stripContainer = thumbnailStrip.value
-      
+
       // Calculate the position to center the selected thumbnail
       const thumbnailLeft = selectedThumbnail.offsetLeft
       const thumbnailWidth = selectedThumbnail.offsetWidth
       const stripWidth = stripContainer.clientWidth
-      
+
       // Center the thumbnail in the strip
       const scrollPosition = thumbnailLeft - (stripWidth / 2) + (thumbnailWidth / 2)
-      
+
       stripContainer.scrollTo({
         left: scrollPosition,
         behavior: 'smooth'
@@ -364,14 +522,14 @@ const scrollToCurrentThumbnail = () => {
 
 const loadImagesForJob = async (job) => {
   if (!job || !job.id) return
-  
+
   const startTime = performance.now()
   console.log(`⏱️ [SourceImageModal] Starting loadImagesForJob for job: ${job.id}`)
-  
+
   isLoadingImages.value = true
-  
+
   try {
-    // Get output images for this job that have source_media_uuid_ref
+    // First, get just the metadata for output images (no thumbnails to avoid large response)
     const searchParams = {
       media_type: 'image',
       purpose: 'output',
@@ -379,31 +537,28 @@ const loadImagesForJob = async (job) => {
       limit: 100,
       include_thumbnails: false,
       sort_by: 'created_at',
-      sort_order: 'desc',
-      tag_match_mode: 'partial'
+      sort_order: 'desc'
     }
-    
-    // Include dest_media_uuid_ref if available
-    if (job.dest_media_uuid) {
-      searchParams.dest_media_uuid_ref = job.dest_media_uuid
-    }
-    
+
+    // Don't filter by dest_media_uuid_ref as it may not match the actual stored values
+    // The job_id filter is sufficient and more reliable
+
     const searchStartTime = performance.now()
-    console.log(`⏱️ [SourceImageModal] Starting output images search...`)
-    
+    console.log(`⏱️ [SourceImageModal] Starting output images metadata search...`)
+
     const response = await useApiFetch('media/search', {
       query: searchParams
     })
-    
+
     const searchEndTime = performance.now()
-    console.log(`⏱️ [SourceImageModal] ✅ Output search completed in ${(searchEndTime - searchStartTime).toFixed(2)}ms`)
+    console.log(`⏱️ [SourceImageModal] ✅ Output metadata search completed in ${(searchEndTime - searchStartTime).toFixed(2)}ms`)
     console.log('🔍 Output search response:', response)
-    
+
     if (response.results && Array.isArray(response.results)) {
       // Filter output images to only include those with source_media_uuid_ref
       const outputImagesWithSource = response.results.filter(img => img.source_media_uuid_ref)
       console.log('📸 Found output images with source references:', outputImagesWithSource.length, 'out of', response.results.length, 'total')
-      
+
       outputImages.value = outputImagesWithSource
     } else {
       console.log('❌ No output images found in response')
@@ -417,17 +572,20 @@ const loadImagesForJob = async (job) => {
     const endTime = performance.now()
     console.log(`⏱️ [SourceImageModal] ✅ loadImagesForJob TOTAL TIME: ${(endTime - startTime).toFixed(2)}ms`)
   }
-  
+
   // Load source images in the background (lazy loading)
   loadSourceImagesForJob(job)
+  
+  // Setup image preloading after output images are loaded
+  setupPreloading()
 }
 
 const loadSourceImagesForJob = async (job) => {
   if (!job || !job.subject_uuid) return
-  
+
   const startTime = performance.now()
   console.log(`⏱️ [SourceImageModal] Starting loadSourceImagesForJob for subject: ${job.subject_uuid}`)
-  
+
   isLoadingSourceImages.value = true
   try {
     // Get all unique source_media_uuid_ref values from output images
@@ -436,17 +594,29 @@ const loadSourceImagesForJob = async (job) => {
         .map(outputImg => outputImg.source_media_uuid_ref)
         .filter(Boolean)
     )]
+
+    // Check for duplicate source references
+    const sourceRefCounts = {}
+    outputImages.value.forEach(img => {
+      if (img.source_media_uuid_ref) {
+        sourceRefCounts[img.source_media_uuid_ref] = (sourceRefCounts[img.source_media_uuid_ref] || 0) + 1
+      }
+    })
     
-    console.log('🎯 Found unique source UUIDs from outputs:', sourceUuidsFromOutputs.length, sourceUuidsFromOutputs)
-    
+    console.log('🔍 Source reference analysis:', {
+      uniqueSourceUuids: sourceUuidsFromOutputs.length,
+      sourceUuidsFromOutputs,
+      duplicateSourceRefs: Object.entries(sourceRefCounts).filter(([_uuid, count]) => count > 1),
+      allSourceRefCounts: sourceRefCounts
+    })
+
     if (sourceUuidsFromOutputs.length === 0) {
       console.log('❌ No source UUIDs found in output images')
       sourceImages.value = []
       return
     }
-    
-    // Since the API doesn't support searching by multiple UUIDs directly,
-    // we'll get all source images for the subject and then filter them
+
+    // Get all source images for the subject (metadata only, no thumbnails)
     const subjectSourceParams = {
       media_type: 'image',
       purpose: 'source',
@@ -456,47 +626,82 @@ const loadSourceImagesForJob = async (job) => {
       sort_by: 'created_at',
       sort_order: 'desc'
     }
-    
+
     const searchStartTime = performance.now()
-    console.log(`⏱️ [SourceImageModal] Starting source images search for subject...`)
-    
+    console.log(`⏱️ [SourceImageModal] Starting source images metadata search for subject...`)
+
     const subjectSourceResponse = await useApiFetch('media/search', {
       query: subjectSourceParams
     })
-    
+
     const searchEndTime = performance.now()
-    console.log(`⏱️ [SourceImageModal] ✅ Source search completed in ${(searchEndTime - searchStartTime).toFixed(2)}ms`)
-    console.log('🔍 Source search response:', subjectSourceResponse)
-    
-    if (subjectSourceResponse.results && Array.isArray(subjectSourceResponse.results)) {
-      // Filter to only include source images that have corresponding outputs
-      const sourceImagesWithOutputs = subjectSourceResponse.results.filter(sourceImg =>
-        sourceUuidsFromOutputs.includes(sourceImg.uuid)
-      )
-      
-      // Sort source images to maintain consistent order based on when outputs were created
-      const sortedSourceImages = sourceImagesWithOutputs.sort((a, b) => {
-        // Find the earliest output for each source image to determine order
-        const aOutputs = outputImages.value.filter(output => output.source_media_uuid_ref === a.uuid)
-        const bOutputs = outputImages.value.filter(output => output.source_media_uuid_ref === b.uuid)
-        
-        const aEarliestOutput = aOutputs.reduce((earliest, current) =>
-          new Date(current.created_at) < new Date(earliest.created_at) ? current : earliest
-        )
-        const bEarliestOutput = bOutputs.reduce((earliest, current) =>
-          new Date(current.created_at) < new Date(earliest.created_at) ? current : earliest
-        )
-        
-        return new Date(aEarliestOutput.created_at) - new Date(bEarliestOutput.created_at)
-      })
-      
-      console.log('👤 Found source images with outputs:', sortedSourceImages.length, 'out of', subjectSourceResponse.results.length, 'total source images')
-      console.log('🎯 Source UUIDs that have outputs:', sortedSourceImages.map(img => img.uuid))
-      sourceImages.value = sortedSourceImages
-    } else {
+    console.log(`⏱️ [SourceImageModal] ✅ Source metadata search completed in ${(searchEndTime - searchStartTime).toFixed(2)}ms`)
+
+    if (!subjectSourceResponse.results || !Array.isArray(subjectSourceResponse.results)) {
       console.log('❌ No source images found in response')
       sourceImages.value = []
+      return
     }
+
+    // Filter to only include source images that have corresponding outputs
+    const validSourceImages = subjectSourceResponse.results.filter(sourceImg =>
+      sourceUuidsFromOutputs.includes(sourceImg.uuid)
+    )
+
+    // Sort source images to maintain consistent order based on numbered filename processing order
+    const sortedSourceImages = validSourceImages.sort((a, b) => {
+      // Find the output for each source image to extract the numbered index
+      const aOutput = outputImages.value.find(output => output.source_media_uuid_ref === a.uuid)
+      const bOutput = outputImages.value.find(output => output.source_media_uuid_ref === b.uuid)
+
+      console.log('🔍 SORTING DEBUG - Finding outputs for source images:', {
+        aSourceUuid: a.uuid,
+        bSourceUuid: b.uuid,
+        aOutput: aOutput ? { uuid: aOutput.uuid, filename: aOutput.filename, source_ref: aOutput.source_media_uuid_ref } : null,
+        bOutput: bOutput ? { uuid: bOutput.uuid, filename: bOutput.filename, source_ref: bOutput.source_media_uuid_ref } : null
+      })
+
+      if (!aOutput || !bOutput) {
+        console.log('⚠️ SORTING FALLBACK - Missing output for source image, using creation time')
+        // Fallback to creation time if no output found
+        return new Date(a.created_at) - new Date(b.created_at)
+      }
+
+      // Extract numbered index from output filename patterns like "output_00026_.png"
+      const extractNumberedIndex = (filename) => {
+        // NEW SIMPLIFIED PATTERN: Extract number from "output_00026_.png" format
+        const simplifiedPattern = /^output_(\d+)_?\.png$/
+        const match = filename.match(simplifiedPattern)
+        const result = match ? parseInt(match[1]) : 999999 // Put unmatched at end
+        console.log('🔢 SIMPLIFIED FILENAME PATTERN EXTRACTION:', {
+          filename,
+          pattern: simplifiedPattern.toString(),
+          match: match ? match[0] : null,
+          extractedNumber: result
+        })
+        return result
+      }
+
+      const aIndex = extractNumberedIndex(aOutput.filename)
+      const bIndex = extractNumberedIndex(bOutput.filename)
+
+      console.log('🔢 SORTING COMPARISON:', {
+        aUuid: a.uuid,
+        bUuid: b.uuid,
+        aFilename: aOutput.filename,
+        bFilename: bOutput.filename,
+        aIndex,
+        bIndex,
+        sortResult: aIndex - bIndex
+      })
+
+      return aIndex - bIndex
+    })
+
+    console.log('👤 Loaded source images:', sortedSourceImages.length, 'out of', sourceUuidsFromOutputs.length, 'requested')
+    console.log('🎯 Source UUIDs loaded:', sortedSourceImages.map(img => img.uuid))
+    sourceImages.value = sortedSourceImages
+
   } catch (error) {
     console.error('Failed to load subject source images:', error)
     sourceImages.value = []
@@ -513,14 +718,99 @@ const closeModal = () => {
   outputImages.value = []
   sourceImages.value = []
   currentImageIndex.value = 0
+  currentJobIndex.value = 0
   isLoadingImages.value = false
   isLoadingSourceImages.value = false
   isSubmittingSource.value = false
   isDeletingImage.value = false
+  
+  // Clear preloading data
+  preloadedImages.value.clear()
+  preloadQueue.value = []
+  isPreloading.value = false
 }
 
-const previousImage = () => {
+// Image loading event handlers
+const onImageLoad = () => {
+  console.log('🖼️ Image loaded successfully')
+  isCurrentImageLoading.value = false
+  // Update last loaded image to current image once it's loaded
+  if (currentImage.value) {
+    lastLoadedImage.value = currentImage.value
+  }
+}
+
+const onImageError = () => {
+  console.error('❌ Image failed to load')
+  isCurrentImageLoading.value = false
+}
+
+// Image preloading system
+const preloadImage = (imageData) => {
+  return new Promise((resolve, reject) => {
+    if (preloadedImages.value.has(imageData.uuid)) {
+      console.log('🚀 Image already preloaded:', imageData.uuid)
+      resolve(imageData)
+      return
+    }
+
+    const img = new Image()
+    img.onload = () => {
+      preloadedImages.value.set(imageData.uuid, img)
+      console.log('✅ Preloaded image:', imageData.filename)
+      resolve(imageData)
+    }
+    img.onerror = () => {
+      console.error('❌ Failed to preload image:', imageData.filename)
+      reject(new Error(`Failed to preload ${imageData.filename}`))
+    }
+    img.src = getImageUrl(imageData)
+  })
+}
+
+const startPreloading = async () => {
+  if (isPreloading.value || preloadQueue.value.length === 0) return
+  
+  isPreloading.value = true
+  console.log('🚀 Starting progressive image preloading for', preloadQueue.value.length, 'images')
+  
+  // Preload images one by one to avoid overwhelming the browser
+  for (const imageData of preloadQueue.value) {
+    try {
+      await preloadImage(imageData)
+      // Small delay between preloads to keep UI responsive
+      await new Promise(resolve => setTimeout(resolve, 50))
+    } catch (error) {
+      console.error('Preload error:', error)
+    }
+  }
+  
+  isPreloading.value = false
+  console.log('🎉 Image preloading completed')
+}
+
+const setupPreloading = () => {
+  // Clear previous preload data
+  preloadedImages.value.clear()
+  preloadQueue.value = []
+  
+  // Add all output images to preload queue
+  if (outputImages.value.length > 0) {
+    preloadQueue.value = [...outputImages.value]
+    console.log('📋 Set up preload queue with', preloadQueue.value.length, 'images')
+    
+    // Start preloading in background
+    nextTick(() => {
+      startPreloading()
+    })
+  }
+}
+
+const goToPreviousImage = () => {
   if (sourceImages.value.length > 1) {
+    // Set loading state before changing index
+    isCurrentImageLoading.value = true
+    
     if (currentImageIndex.value > 0) {
       currentImageIndex.value--
     } else {
@@ -531,8 +821,11 @@ const previousImage = () => {
   }
 }
 
-const nextImage = () => {
+const goToNextImage = () => {
   if (sourceImages.value.length > 1) {
+    // Set loading state before changing index
+    isCurrentImageLoading.value = true
+    
     if (currentImageIndex.value < sourceImages.value.length - 1) {
       currentImageIndex.value++
     } else {
@@ -544,17 +837,39 @@ const nextImage = () => {
 }
 
 const handleKeydown = (event) => {
-  // Only handle arrow keys when modal is open and has images
-  if (!isOpen.value || sourceImages.value.length === 0) return
-  
+  // Only handle keys when modal is open
+  if (!isOpen.value) return
+
   switch (event.key) {
     case 'ArrowLeft':
       event.preventDefault()
-      previousImage()
+      if (event.ctrlKey || event.metaKey) {
+        // Ctrl/Cmd + Left Arrow: Previous job
+        if (hasMultipleJobs.value) {
+          goToPreviousJob()
+        }
+      } else if (sourceImages.value.length > 0) {
+        // Left Arrow: Previous image
+        goToPreviousImage()
+      }
       break
     case 'ArrowRight':
       event.preventDefault()
-      nextImage()
+      if (event.ctrlKey || event.metaKey) {
+        // Ctrl/Cmd + Right Arrow: Next job
+        if (hasMultipleJobs.value) {
+          goToNextJob()
+        }
+      } else if (sourceImages.value.length > 0) {
+        // Right Arrow: Next image
+        goToNextImage()
+      }
+      break
+    case 'Enter':
+      event.preventDefault()
+      if (currentImage.value && !isSubmittingSource.value && !isDeletingJob.value) {
+        selectCurrentImage()
+      }
       break
     case 'Escape':
       event.preventDefault()
@@ -627,11 +942,11 @@ watch(() => props.modelValue, (isOpen) => {
 
 const selectCurrentImage = async () => {
   if (!props.job || !currentImage.value) return
-  
+
   // Get the corresponding source image for the selected output
   const selectedSourceImage = sourceImages.value[currentImageIndex.value]
   if (!selectedSourceImage) return
-  
+
   isSubmittingSource.value = true
   try {
     await useApiFetch(`jobs/${props.job.id}/add-source`, {
@@ -640,16 +955,22 @@ const selectCurrentImage = async () => {
         source_media_uuid: selectedSourceImage.uuid
       }
     })
-    
+
     // Emit success event with the source image
     emit('imageSelected', {
       job: props.job,
       selectedImage: selectedSourceImage
     })
-    
-    // Close the modal
-    closeModal()
-    
+
+    // Check if there are more jobs that need input
+    if (canGoToNextJob.value) {
+      // Move to the next job that needs input
+      goToNextJob()
+    } else {
+      // No more jobs, close the modal
+      closeModal()
+    }
+
   } catch (error) {
     console.error('Failed to add source image:', error)
     // You might want to show an error toast here
@@ -660,19 +981,19 @@ const selectCurrentImage = async () => {
 
 const deleteCurrentImage = async () => {
   if (!currentImage.value) return
-  
+
   isDeletingImage.value = true
   try {
     await useApiFetch(`media/${currentImage.value.uuid}/delete`, {
       method: 'DELETE'
     })
-    
+
     // Remove the deleted output image from the outputImages array
     const outputImageIndex = outputImages.value.findIndex(img => img.uuid === currentImage.value.uuid)
     if (outputImageIndex !== -1) {
       outputImages.value.splice(outputImageIndex, 1)
     }
-    
+
     // Remove the corresponding source image from the sourceImages array
     const currentSourceImage = sourceImages.value[currentImageIndex.value]
     if (currentSourceImage) {
@@ -681,7 +1002,7 @@ const deleteCurrentImage = async () => {
         sourceImages.value.splice(sourceImageIndex, 1)
       }
     }
-    
+
     // Adjust current index if necessary
     if (sourceImages.value.length === 0) {
       // No images left, close modal
@@ -692,7 +1013,7 @@ const deleteCurrentImage = async () => {
     }
     // If we deleted an image in the middle, currentImageIndex stays the same
     // which will show the next image in the array
-    
+
   } catch (error) {
     console.error('Failed to delete image:', error)
     // You might want to show an error toast here
@@ -703,15 +1024,21 @@ const deleteCurrentImage = async () => {
 
 const handleDeleteJob = async () => {
   if (!props.job) return
-  
+
   await deleteJob(props.job, () => {
     // Emit job deleted event
     emit('jobDeleted', props.job)
-    
-    // Close the modal
-    closeModal()
+
+    // Check if there are more jobs that need input
+    if (canGoToNextJob.value) {
+      // Move to the next job that needs input
+      goToNextJob()
+    } else {
+      // No more jobs, close the modal
+      closeModal()
+    }
   })
-  
+
   // The composable handles all the confirmation and deletion logic
   // We just need to handle the success callback above
 }
@@ -729,15 +1056,26 @@ const getImageUrl = (image, size = 'md') => {
     console.log('⚠️ getImageUrl: Invalid image:', image)
     return ''
   }
-  
+
+  // Remove cache-busting for smoother transitions
   const url = `/api/media/${image.uuid}/image?size=${size}`
-  console.log('🔗 [SourceImageModal] Generated image URL:', url, 'for image:', image.uuid)
+  
+  // Check if image is preloaded for faster access
+  const isPreloaded = preloadedImages.value.has(image.uuid)
+  console.log('🔗 [SourceImageModal] Generated image URL:', url, 'for image:', {
+    uuid: image.uuid,
+    filename: image.filename,
+    purpose: image.purpose,
+    source_media_uuid_ref: image.source_media_uuid_ref,
+    currentImageIndex: currentImageIndex.value,
+    preloaded: isPreloaded
+  })
   return url
 }
 
 const getThumbnailUrl = (image) => {
   if (!image || !image.uuid) return ''
-  
+
   // Always use the main image UUID with thumbnail size for consistent performance
   const url = `/api/media/${image.uuid}/image?size=thumbnail`
   console.log('🔗 [SourceImageModal] Generated thumbnail URL:', url, 'for image:', image.uuid)
@@ -755,18 +1093,18 @@ const resetZoom = () => {
 
 const constrainTranslation = (scale, translateX, translateY) => {
   if (!imageContainer.value || !zoomableImage.value) return { translateX, translateY }
-  
+
   const containerRect = imageContainer.value.getBoundingClientRect()
   const imageRect = zoomableImage.value.getBoundingClientRect()
-  
+
   // Calculate the scaled image dimensions
   const scaledWidth = imageRect.width * scale
   const scaledHeight = imageRect.height * scale
-  
+
   // Calculate max translation to keep image within container
   const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2 / scale)
   const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2 / scale)
-  
+
   return {
     translateX: Math.max(-maxTranslateX, Math.min(maxTranslateX, translateX)),
     translateY: Math.max(-maxTranslateY, Math.min(maxTranslateY, translateY))
@@ -775,13 +1113,13 @@ const constrainTranslation = (scale, translateX, translateY) => {
 
 const handleWheel = (event) => {
   if (!currentImage.value) return
-  
+
   event.preventDefault()
-  
+
   const delta = event.deltaY > 0 ? -0.1 : 0.1
   const currentState = sharedZoomState.value
   const newScale = Math.max(0.5, Math.min(5, currentState.scale + delta))
-  
+
   if (newScale !== currentState.scale) {
     updateSharedZoom({ scale: newScale })
   }
@@ -789,28 +1127,28 @@ const handleWheel = (event) => {
 
 const handleMouseDown = (event) => {
   if (!currentImage.value || sharedZoomState.value.scale <= 1) return
-  
+
   event.preventDefault()
   isDragging.value = true
   lastMousePos.value = { x: event.clientX, y: event.clientY }
-  
+
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 }
 
 const handleMouseMove = (event) => {
   if (!isDragging.value || !currentImage.value) return
-  
+
   const deltaX = event.clientX - lastMousePos.value.x
   const deltaY = event.clientY - lastMousePos.value.y
-  
+
   const currentState = sharedZoomState.value
   const newTranslateX = currentState.translateX + deltaX / currentState.scale
   const newTranslateY = currentState.translateY + deltaY / currentState.scale
-  
+
   const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
   updateSharedZoom(constrained)
-  
+
   lastMousePos.value = { x: event.clientX, y: event.clientY }
 }
 
@@ -822,10 +1160,10 @@ const handleMouseUp = () => {
 
 const getTouchDistance = (touches) => {
   if (touches.length < 2) return 0
-  
+
   const touch1 = touches[0]
   const touch2 = touches[1]
-  
+
   return Math.sqrt(
     Math.pow(touch2.clientX - touch1.clientX, 2) +
     Math.pow(touch2.clientY - touch1.clientY, 2)
@@ -834,11 +1172,11 @@ const getTouchDistance = (touches) => {
 
 const handleTouchStart = (event) => {
   if (!currentImage.value) return
-  
+
   // Aggressively prevent default behavior
   event.preventDefault()
   event.stopPropagation()
-  
+
   if (event.touches.length === 1) {
     // Single touch - start dragging if zoomed
     if (sharedZoomState.value.scale > 1) {
@@ -856,33 +1194,33 @@ const handleTouchStart = (event) => {
 
 const handleTouchMove = (event) => {
   if (!currentImage.value) return
-  
+
   // Aggressively prevent default behavior
   event.preventDefault()
   event.stopPropagation()
-  
+
   if (event.touches.length === 1 && isDragging.value) {
     // Single touch drag
     const touch = event.touches[0]
     const deltaX = touch.clientX - dragStart.value.x
     const deltaY = touch.clientY - dragStart.value.y
-    
+
     const currentState = sharedZoomState.value
     const newTranslateX = currentState.translateX + deltaX / currentState.scale
     const newTranslateY = currentState.translateY + deltaY / currentState.scale
-    
+
     const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
     updateSharedZoom(constrained)
-    
+
     dragStart.value = { x: touch.clientX, y: touch.clientY }
   } else if (event.touches.length === 2 && isZooming.value) {
     // Two touch zoom
     const currentDistance = getTouchDistance(event.touches)
     const distanceRatio = currentDistance / lastTouchDistance.value
-    
+
     const currentState = sharedZoomState.value
     const newScale = Math.max(0.5, Math.min(5, currentState.scale * distanceRatio))
-    
+
     updateSharedZoom({ scale: newScale })
     lastTouchDistance.value = currentDistance
   }
@@ -892,7 +1230,7 @@ const handleTouchEnd = (event) => {
   // Prevent default behavior
   event.preventDefault()
   event.stopPropagation()
-  
+
   if (event.touches.length === 0) {
     isDragging.value = false
     isZooming.value = false
@@ -911,8 +1249,27 @@ const handleTouchEnd = (event) => {
 watch(() => props.job, (newJob) => {
   if (newJob && props.modelValue) {
     console.log('⏱️ [SourceImageModal] Job changed, loading images for job:', newJob.id)
+    
+    // CRITICAL FIX: Clear all previous state before loading new job
+    outputImages.value = []
+    sourceImages.value = []
     currentImageIndex.value = 0
+    isLoadingImages.value = false
+    isLoadingSourceImages.value = false
+    
+    // Clear preloading data
+    preloadedImages.value.clear()
+    preloadQueue.value = []
+    isPreloading.value = false
+    
+    // Now load the new job
     loadImagesForJob(newJob)
+    
+    // Update current job index based on the new job
+    const jobIndex = props.needInputJobs.findIndex(job => job.id === newJob.id)
+    if (jobIndex !== -1) {
+      currentJobIndex.value = jobIndex
+    }
   }
 }, { immediate: true })
 
@@ -931,6 +1288,7 @@ watch(() => props.modelValue, (isOpen) => {
     outputImages.value = []
     sourceImages.value = []
     currentImageIndex.value = 0
+    currentJobIndex.value = 0
     isLoadingImages.value = false
     isLoadingSourceImages.value = false
     isSubmittingSource.value = false
@@ -942,4 +1300,23 @@ watch(() => props.modelValue, (isOpen) => {
 watch(() => currentImageIndex.value, () => {
   scrollToCurrentThumbnail()
 })
+
+// Watch for currentImage changes to update lastLoadedImage
+watch(() => currentImage.value, (newImage) => {
+  if (newImage && !isCurrentImageLoading.value) {
+    // If we have a new image and we're not currently loading, update immediately
+    lastLoadedImage.value = newImage
+  }
+}, { immediate: true })
 </script>
+
+<style scoped>
+.custom-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+</style>

@@ -6,15 +6,16 @@ export default defineNuxtConfig({
   
   // Dev server configuration for security
   devServer: {
-    host: '0.0.0.0',
-    port: 3000
+    host: process.env.NUXT_HOST || '0.0.0.0',
+    port: parseInt(process.env.NUXT_PORT || '3000')
   },
   
   // Nitro configuration for production
   nitro: {
     experimental: {
       wasm: true,
-      openAPI: true
+      openAPI: true,
+      websocket: true
     }
   },
   modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt'],

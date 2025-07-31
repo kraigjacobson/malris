@@ -129,6 +129,7 @@ const handleSearch = () => {
 
 // Sort options
 const sortOptionsItems = [
+  { label: 'Random', value: 'random' },
   { label: 'Created Date (Newest)', value: 'created_at_desc' },
   { label: 'Created Date (Oldest)', value: 'created_at_asc' },
   { label: 'Updated Date (Newest)', value: 'updated_at_desc' },

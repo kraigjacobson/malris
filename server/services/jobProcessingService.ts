@@ -1,11 +1,20 @@
 /**
- * Job Processing Service - Internal service for job processing logic
- * This service contains the actual business logic that can be used by both API endpoints and internal functions
+ * Unified Job Processing Service
+ * Handles single job processing, continuous processing, and queue management
+ * Prevents duplicate job submissions and manages processing state
  */
 
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq, desc, sql, and, ne } from 'drizzle-orm'
+import { updateAutoProcessingStatus, getCurrentStatus } from './systemStatusManager'
+
+// Processing states
+type ProcessingMode = 'idle' | 'single' | 'continuous'
+let currentMode: ProcessingMode = 'idle'
+let processingInterval: NodeJS.Timeout | null = null
+let isCurrentlyProcessing = false // Global lock to prevent concurrent processing
+const PROCESSING_INTERVAL = 10000 // 10 seconds between jobs in continuous mode
 
 export interface ProcessNextJobResult {
   success: boolean
@@ -17,25 +26,99 @@ export interface ProcessNextJobResult {
   skip?: boolean
 }
 
+// Function to get current processing status
+export function getProcessingStatus() {
+  return {
+    mode: currentMode,
+    isActive: currentMode !== 'idle',
+    isContinuous: currentMode === 'continuous',
+    // Legacy compatibility
+    processing_enabled: currentMode !== 'idle'
+  }
+}
+
+// Function to get cached worker health (for backward compatibility)
+export function getCachedWorkerHealth() {
+  const systemStatus = getCurrentStatus()
+  return {
+    healthy: systemStatus.runpodWorker.status === 'healthy' && systemStatus.comfyui.status === 'healthy',
+    available: systemStatus.comfyuiProcessing.status === 'idle',
+    status: systemStatus.systemHealth === 'healthy' ? 'healthy' : 'unhealthy',
+    message: systemStatus.systemHealth === 'healthy' ? 'All systems operational' : 'System issues detected',
+    timestamp: systemStatus.timestamp,
+    queue_remaining: systemStatus.comfyuiProcessing.queuedJobs,
+    running_jobs_count: systemStatus.comfyuiProcessing.runningJobs
+  }
+}
+
+// Function to check ComfyUI worker health and availability
+async function checkWorkerHealth() {
+  try {
+    const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+    const response = await fetch(`${workerUrl}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    })
+    
+    if (!response.ok) {
+      return { healthy: false, available: false }
+    }
+    
+    const healthData = await response.json()
+    const isHealthy = healthData.status === 'healthy'
+    
+    // Use the correct fields from active_jobs
+    const actualRunningCount = healthData.active_jobs?.running_count || 0
+    const actualPendingCount = healthData.active_jobs?.pending_count || 0
+    const isAvailable = actualRunningCount === 0 && actualPendingCount === 0
+    
+    return {
+      healthy: isHealthy,
+      available: isAvailable,
+      healthData
+    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (error: any) {
+    return { healthy: false, available: false }
+  }
+}
+
 export async function processNextJob(): Promise<ProcessNextJobResult> {
+  // CRITICAL FIX: Global processing lock prevents concurrent job processing from ANY source
+  // (auto-processing, manual endpoint, etc.)
+  if (isCurrentlyProcessing) {
+    return {
+      success: false,
+      message: "Another job is already being processed - preventing duplicate submission",
+      skip: true
+    }
+  }
+  
+  isCurrentlyProcessing = true
+  
   try {
     const db = getDb()
     
-    // First, check if there are any active jobs
-    const activeJobs = await db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(eq(jobs.status, 'active'))
-      .limit(1)
-    
-    if (activeJobs.length > 0) {
+    // Real-time health check instead of relying on cached status
+    // This prevents race conditions where multiple calls see stale "idle" status
+    const realTimeHealth = await checkWorkerHealth()
+    if (!realTimeHealth.healthy) {
       return {
         success: false,
-        message: "Cannot process new job: another job is already active",
-        active_job_id: activeJobs[0].id,
+        message: "ComfyUI worker is not healthy",
         skip: true
       }
     }
+    
+    if (!realTimeHealth.available) {
+      return {
+        success: false,
+        message: "ComfyUI worker queue is busy",
+        skip: true
+      }
+    }
+    
+    console.log('✅ ComfyUI worker is healthy and queue is empty - proceeding with job processing')
     
     // Find queued jobs, prioritizing those without a source media uuid (null values first)
     const queuedJobs = await db
@@ -67,40 +150,8 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
     }
     
-    // Check ComfyUI worker health and queue status using existing health check
-    try {
-      // Import the health check function from the toggle module
-      const { getCachedWorkerHealth } = await import('~/server/api/jobs/processing/toggle.post')
-      const workerHealth = getCachedWorkerHealth()
-      
-      // Only proceed if worker is healthy and completely available (queue = 0)
-      if (!workerHealth.healthy) {
-        return {
-          success: false,
-          message: `ComfyUI worker is not healthy: ${workerHealth.message}`,
-          skip: true
-        }
-      }
-      
-      if (!workerHealth.available) {
-        return {
-          success: false,
-          message: `ComfyUI worker queue is busy: ${workerHealth.running_jobs_count} running, ${workerHealth.queue_remaining} pending`,
-          skip: true
-        }
-      }
-      
-      console.log('✅ ComfyUI worker is healthy and queue is empty - proceeding with job processing')
-      
-    } catch (healthError: any) {
-      return {
-        success: false,
-        message: `Failed to check ComfyUI worker health: ${healthError.message}`,
-        skip: true
-      }
-    }
-    
     const job = queuedJobs[0]
+    console.log(`🚀 Processing job ${job.id} in ${currentMode} mode`)
     
     // Get subject and media data for the job
     const [subjectData, destMediaData, sourceMediaData] = await Promise.all([
@@ -175,6 +226,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             eq(mediaRecords.purpose, 'source'),
             eq(mediaRecords.type, 'image')
           ))
+          .orderBy(mediaRecords.createdAt)
         
         if (subjectSourceImages.length === 0) {
           throw new Error(`No source images found for subject ${job.subjectUuid}`)
@@ -234,6 +286,19 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         })
         .where(eq(jobs.id, job.id))
       
+      // Update job counts for WebSocket clients after status changes
+      try {
+        const { updateJobCounts } = await import('./systemStatusManager')
+        await updateJobCounts()
+      } catch (error) {
+        console.error('Failed to update job counts after job status changes:', error)
+      }
+      
+      // Force an immediate health check after sending a job
+      setTimeout(async () => {
+        await checkWorkerHealth()
+      }, 100)
+      
       return {
         success: true,
         job_id: job.id,
@@ -256,11 +321,127 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         })
         .where(eq(jobs.id, job.id))
       
+      // Update job counts for WebSocket clients after status change
+      try {
+        const { updateJobCounts } = await import('./systemStatusManager')
+        await updateJobCounts()
+      } catch (error) {
+        console.error('Failed to update job counts after job failure:', error)
+      }
+      
       throw new Error(`Failed to send job to worker: ${workerError.message}`)
     }
     
   } catch (error: any) {
     console.error('❌ Failed to process next job:', error)
     throw new Error(`Failed to process next job: ${error.message || 'Unknown error'}`)
+  } finally {
+    // Always reset the processing flag
+    isCurrentlyProcessing = false
+  }
+}
+
+// Function to start single job processing
+export async function startSingleJob() {
+  if (currentMode !== 'idle') {
+    return { success: false, message: "Processing is already active" }
+  }
+  
+  currentMode = 'single'
+  console.log('▶️ Starting single job processing...')
+  
+  // Update status manager
+  updateAutoProcessingStatus('enabled', 'Single job processing started', false)
+  
+  try {
+    const result = await processNextJob()
+    
+    // After single job completes, return to idle
+    currentMode = 'idle'
+    updateAutoProcessingStatus('disabled', 'Single job processing completed', false)
+    
+    return result
+  } catch (error: any) {
+    currentMode = 'idle'
+    updateAutoProcessingStatus('disabled', 'Single job processing failed', false)
+    throw error
+  }
+}
+
+// Function to start continuous processing
+export function startContinuousProcessing() {
+  if (currentMode !== 'idle') {
+    return { success: false, message: "Processing is already active" }
+  }
+  
+  if (processingInterval) {
+    clearInterval(processingInterval)
+  }
+  
+  currentMode = 'continuous'
+  console.log('🔄 Starting continuous job processing...')
+  
+  // Update status manager
+  updateAutoProcessingStatus('enabled', 'Continuous processing is running', true)
+  
+  // Set up interval for continuous processing
+  processingInterval = setInterval(async () => {
+    if (currentMode === 'continuous') {
+      const result = await processNextJob()
+      // Only log when something interesting happens (not when skipping)
+      if (result.success || !('skip' in result && result.skip)) {
+        console.log('🔄 Processing result:', ('message' in result ? result.message : 'Unknown'))
+      }
+    }
+  }, PROCESSING_INTERVAL)
+  
+  return { success: true, message: "Continuous processing started" }
+}
+
+// Function to stop all processing and interrupt running jobs
+export async function stopAllProcessing() {
+  const wasActive = currentMode !== 'idle'
+  
+  // Stop any processing
+  currentMode = 'idle'
+  isCurrentlyProcessing = false
+  
+  if (processingInterval) {
+    clearInterval(processingInterval)
+    processingInterval = null
+  }
+  
+  console.log('⏹️ Stopping all job processing and interrupting running jobs...')
+  
+  // Update status manager
+  updateAutoProcessingStatus('disabled', 'All processing stopped by user', false)
+  
+  // Send interrupt to ComfyUI to kill running jobs
+  try {
+    const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+    console.log('🛑 Sending interrupt request to ComfyUI worker...')
+    
+    const interruptResponse = await fetch(`${workerUrl}/interrupt`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    })
+    
+    if (!interruptResponse.ok) {
+      throw new Error(`ComfyUI interrupt request failed: ${interruptResponse.status}`)
+    }
+    
+    console.log('✅ Successfully stopped all processing and interrupted running jobs')
+    return {
+      success: true,
+      message: 'All processing stopped and running jobs interrupted',
+      wasActive
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to interrupt ComfyUI jobs:', error)
+    return {
+      success: true, // Still consider it success since we stopped our processing
+      message: `Processing stopped but failed to interrupt ComfyUI: ${error.message}`,
+      wasActive
+    }
   }
 }

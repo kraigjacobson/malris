@@ -43,6 +43,14 @@ export default defineEventHandler(async (event) => {
     const deleted = deletedJob[0]
     console.log(`✅ Successfully deleted job ${jobId} from database:`, deleted)
 
+    // Update job counts for WebSocket clients
+    try {
+      const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+      await updateJobCounts()
+    } catch (error) {
+      console.error('Failed to update job counts after job deletion:', error)
+    }
+
     return {
       success: true,
       message: `Job ${jobId} deleted successfully`,
