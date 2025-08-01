@@ -19,7 +19,7 @@
               <!-- Single Job Processing Button (▶️) -->
               <UButton
                 type="button"
-                size="xs"
+                size="lg"
                 variant="outline"
                 color="primary"
                 @click.prevent="startSingleProcessing()"
@@ -35,9 +35,9 @@
               <!-- Continuous Processing Button (🔄) -->
               <UButton
                 type="button"
-                size="xs"
+                size="lg"
                 variant="outline"
-                color="blue"
+                color="primary"
                 @click.prevent="startContinuousProcessing()"
                 :loading="isStartingContinuous"
               >
@@ -53,9 +53,9 @@
             <template v-else>
               <UButton
                 type="button"
-                size="xs"
+                size="lg"
                 variant="outline"
-                color="red"
+                color="error"
                 @click.prevent="stopAllProcessing()"
                 :loading="isStopping"
               >
@@ -282,9 +282,6 @@
             <span :class="getProcessingStatusColor(jobsStore.systemStatus.comfyuiProcessing.status)">
               {{ jobsStore.systemStatus.comfyuiProcessing.status.toUpperCase() }}
             </span>
-            <span v-if="jobsStore.systemStatus.comfyuiProcessing.runningJobs > 0" class="text-blue-600 dark:text-blue-400">
-              ({{ jobsStore.systemStatus.comfyuiProcessing.runningJobs }} running)
-            </span>
           </div>
         </div>
       </div>
@@ -371,7 +368,7 @@
             </UButton>
             <UButton
               size="xs"
-              color="red"
+              color="error"
               variant="outline"
               @click="bulkCancel"
             >
@@ -379,7 +376,7 @@
             </UButton>
             <UButton
               size="xs"
-              color="red"
+              color="error"
               variant="outline"
               @click="bulkDelete"
             >
@@ -442,7 +439,7 @@
               <!-- Mobile: Show single letter badges -->
               <UBadge
                 v-if="job.source_media_uuid"
-                color="blue"
+                color="primary"
                 variant="soft"
                 size="xs"
                 class="sm:hidden"
@@ -532,6 +529,7 @@
       :need-input-jobs="needInputJobs"
       @image-selected="handleImageSelected"
       @job-changed="handleJobChanged"
+      @job-deleted="handleJobDeleted"
     />
   </div>
 </template>
@@ -969,11 +967,20 @@ const openImageSelectionModal = async (job) => {
 // Image selection methods (keeping handleImageSelected for potential future use)
 const handleImageSelected = async () => {
   await refreshJobsWithCurrentState()
+  // Refresh the need_input jobs list for the modal
+  await fetchAllNeedInputJobs()
 }
 
 // Handle job navigation in the modal
 const handleJobChanged = (newJob) => {
   selectedJobForImage.value = newJob
+}
+
+// Handle job deletion from the modal
+const handleJobDeleted = async () => {
+  await refreshJobsWithCurrentState()
+  // Refresh the need_input jobs list for the modal
+  await fetchAllNeedInputJobs()
 }
 
 const openImageFullscreen = (image) => {
@@ -1349,7 +1356,11 @@ onMounted(async () => {
   // Reset processing mode on page load
   processingMode.value = 'idle'
   
+  // Fetch initial data (queue status, system status, etc.)
   await jobsStore.fetchInitialData()
+  
+  // Set default filter to need_input after initial data is loaded
+  await filterByStatus('need_input')
   
   // Listen for page visibility changes
   document.addEventListener('visibilitychange', handleVisibilityChange)

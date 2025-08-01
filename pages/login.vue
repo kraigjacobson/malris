@@ -42,7 +42,7 @@
 
           <UAlert
             v-if="error"
-            color="red"
+            color="error"
             variant="soft"
             icon="i-heroicons-exclamation-triangle"
             :title="error"

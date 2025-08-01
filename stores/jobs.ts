@@ -301,8 +301,24 @@ export const useJobsStore = defineStore('jobs', () => {
         break
         
       case 'job_counts_update':
-        // Job counts changed - refresh job list
+        // Job counts changed - update queue status and refresh job list
         if (data.jobCounts) {
+          // Update queue status with new counts
+          queueStatus.value = {
+            queue: {
+              total: data.jobCounts.total,
+              queued: data.jobCounts.queued,
+              active: data.jobCounts.active,
+              completed: data.jobCounts.completed,
+              failed: data.jobCounts.failed,
+              canceled: data.jobCounts.canceled,
+              need_input: data.jobCounts.needInput,
+              is_paused: systemStatus.value?.autoProcessing?.status !== 'enabled',
+              is_processing: systemStatus.value?.autoProcessing?.status === 'enabled'
+            }
+          }
+          
+          // Also refresh job list to show updated jobs
           fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value, currentSourceTypeFilter.value)
         }
         break

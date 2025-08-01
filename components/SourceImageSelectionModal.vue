@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
+  <UModal v-model:open="isOpen" :fullscreen="isMobile">
     <template #header>
       <div class="flex items-center justify-between w-full">
         <h3 class="text-lg font-semibold">Select Source Image</h3>
@@ -59,7 +59,7 @@
           <div v-if="currentImage" class="text-center">
             <!-- Image Display (only show when displayImages is true) -->
             <div v-if="settingsStore.displayImages" class="relative w-full group">
-              <!-- Zoomable Image Container with Fixed Height -->
+              <!-- Image/Video Container with Fixed Height -->
               <div ref="imageContainer"
                 class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800"
                 style="height: 384px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
@@ -67,32 +67,47 @@
                 @touchmove.prevent="handleTouchMove" @touchend.prevent="handleTouchEnd" @gesturestart.prevent
                 @gesturechange.prevent @gestureend.prevent>
                 
-                <!-- Previous/Fallback Image (stays visible during transitions) -->
-                <img v-if="lastLoadedImage"
-                  :src="getImageUrl(lastLoadedImage)"
-                  :alt="lastLoadedImage.filename"
-                  class="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-200 ease-out select-none"
-                  :style="imageTransformStyle"
-                  @dragstart.prevent />
+                <!-- Video Player (when showing video) -->
+                <video v-if="showingVideo && job?.dest_media_uuid"
+                  class="absolute inset-0 w-full h-full object-cover object-top"
+                  controls
+                  autoplay
+                  muted
+                  loop
+                  :key="job.dest_media_uuid">
+                  <source :src="`/api/stream/${job.dest_media_uuid}`" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
                 
-                <!-- Current Image (fades in when loaded) -->
-                <img ref="zoomableImage"
-                  v-if="currentImage"
-                  :src="getImageUrl(currentImage)"
-                  :alt="currentImage.filename"
-                  class="absolute inset-0 w-full h-full object-cover object-top transition-all duration-200 ease-out select-none"
-                  :class="{ 'opacity-0': isCurrentImageLoading, 'opacity-100': !isCurrentImageLoading }"
-                  :style="imageTransformStyle"
-                  :key="currentImage.uuid"
-                  @load="onImageLoad"
-                  @error="onImageError"
-                  @dragstart.prevent />
-                 
-                 <!-- Loading overlay when switching images -->
-                 <div v-if="isCurrentImageLoading"
-                   class="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
-                   <div class="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">Loading...</div>
-                 </div>
+                <!-- Image Display (when not showing video) -->
+                <template v-else>
+                  <!-- Previous/Fallback Image (stays visible during transitions) -->
+                  <img v-if="lastLoadedImage"
+                    :src="getImageUrl(lastLoadedImage)"
+                    :alt="lastLoadedImage.filename"
+                    class="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-200 ease-out select-none"
+                    :style="imageTransformStyle"
+                    @dragstart.prevent />
+                  
+                  <!-- Current Image (fades in when loaded) -->
+                  <img ref="zoomableImage"
+                    v-if="currentImage"
+                    :src="getImageUrl(currentImage)"
+                    :alt="currentImage.filename"
+                    class="absolute inset-0 w-full h-full object-cover object-top transition-all duration-200 ease-out select-none"
+                    :class="{ 'opacity-0': isCurrentImageLoading, 'opacity-100': !isCurrentImageLoading }"
+                    :style="imageTransformStyle"
+                    :key="currentImage.uuid"
+                    @load="onImageLoad"
+                    @error="onImageError"
+                    @dragstart.prevent />
+                   
+                   <!-- Loading overlay when switching images -->
+                   <div v-if="isCurrentImageLoading"
+                     class="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
+                     <div class="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">Loading...</div>
+                   </div>
+                </template>
               </div>
 
               <!-- Left Arrow Overlay -->
@@ -118,10 +133,26 @@
                 </div>
               </div>
 
-              <!-- Delete Button -->
+              <!-- Video/Image Toggle Button -->
               <div class="absolute top-2 right-2">
-                <UButton color="red" variant="solid" size="sm" icon="i-heroicons-trash" :loading="isDeletingImage"
-                  @click="deleteCurrentImage" class="opacity-80 hover:opacity-100 transition-opacity" />
+                <UButton
+                  v-if="job?.dest_media_uuid"
+                  :color="showingVideo ? 'primary' : 'gray'"
+                  variant="solid"
+                  size="sm"
+                  :icon="showingVideo ? 'i-heroicons-photo' : 'i-heroicons-film'"
+                  @click="toggleVideoView"
+                  class="opacity-80 hover:opacity-100 transition-opacity"
+                  :title="showingVideo ? 'Show Output Image' : 'Show Destination Video'" />
+                <UButton
+                  v-else
+                  color="error"
+                  variant="solid"
+                  size="sm"
+                  icon="i-heroicons-trash"
+                  :loading="isDeletingImage"
+                  @click="deleteCurrentImage"
+                  class="opacity-80 hover:opacity-100 transition-opacity" />
               </div>
 
 
@@ -169,114 +200,115 @@
               </div>
             </div>
 
-            <!-- Debug Information Section -->
-            <div class="mt-4 bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-              <div class="text-xs font-mono space-y-2">
-                <div class="text-yellow-600 dark:text-yellow-400 font-semibold mb-2">DEBUG INFO:</div>
-                <div class="grid grid-cols-1 gap-2">
-                  <div>
-                    <span class="text-red-600 dark:text-red-400 font-medium">Main Image UUID:</span>
-                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.uuid || 'N/A' }}</div>
-                  </div>
-                  <div>
-                    <span class="text-red-600 dark:text-red-400 font-medium">Main Image Purpose:</span>
-                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.purpose || 'N/A' }}</div>
-                  </div>
-                  <div>
-                    <span class="text-blue-600 dark:text-blue-400 font-medium">Main Img Source Ref:</span>
-                    <div class="break-all text-gray-700 dark:text-gray-300">{{ currentImage?.source_media_uuid_ref || 'N/A' }}</div>
-                  </div>
-                  <div>
-                    <span class="text-green-600 dark:text-green-400 font-medium">Selected Thumb UUID:</span>
-                    <div class="break-all text-gray-700 dark:text-gray-300">{{ sourceImages[currentImageIndex]?.uuid || 'N/A' }}</div>
-                  </div>
-                  <div>
-                    <span class="text-green-600 dark:text-green-400 font-medium">Selected Thumb Purpose:</span>
-                    <div class="break-all text-gray-700 dark:text-gray-300">{{ sourceImages[currentImageIndex]?.purpose || 'N/A' }}</div>
-                  </div>
-                  <div class="flex gap-4">
+            <!-- Consolidated Information Panel -->
+            <div class="mt-4 bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+              <div class="space-y-4 text-left">
+                
+                <!-- Job Information -->
+                <div>
+                  <h4 class="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">Job Information</h4>
+                  <div class="space-y-1 text-sm">
                     <div>
-                      <span class="text-purple-600 dark:text-purple-400 font-medium">Index:</span>
-                      <span class="text-gray-700 dark:text-gray-300">{{ currentImageIndex }}</span>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Job ID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.id || 'N/A' }}</div>
                     </div>
                     <div>
-                      <span class="text-orange-600 dark:text-orange-400 font-medium">Should Match:</span>
-                      <span :class="currentImage?.source_media_uuid_ref === sourceImages[currentImageIndex]?.uuid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                        {{ currentImage?.source_media_uuid_ref === sourceImages[currentImageIndex]?.uuid ? 'YES' : 'NO' }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="flex gap-4">
-                    <div>
-                      <span class="text-cyan-600 dark:text-cyan-400 font-medium">Output Count:</span>
-                      <span class="text-gray-700 dark:text-gray-300">{{ outputImages.length }}</span>
-                    </div>
-                    <div>
-                      <span class="text-cyan-600 dark:text-cyan-400 font-medium">Source Count:</span>
-                      <span class="text-gray-700 dark:text-gray-300">{{ sourceImages.length }}</span>
-                    </div>
-                    <div>
-                      <span class="text-indigo-600 dark:text-indigo-400 font-medium">Preloaded:</span>
-                      <span class="text-gray-700 dark:text-gray-300">{{ preloadedImages.size }}</span>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.subject_uuid || 'N/A' }}</div>
                     </div>
                   </div>
                 </div>
+
+                <!-- Output Image Information -->
+                <div v-if="currentImage">
+                  <h4 class="text-sm font-semibold text-green-700 dark:text-green-400 mb-2">Output Image Details</h4>
+                  <div class="space-y-1 text-sm">
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.uuid }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Source Reference:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.source_media_uuid_ref || 'N/A' }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ currentImage.filename }}</div>
+                    </div>
+                    <div v-if="currentImage.width && currentImage.height">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ currentImage.width }} × {{ currentImage.height }}</div>
+                    </div>
+                    <div v-if="currentImage.file_size">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(currentImage.file_size) }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ currentImage.purpose || 'N/A' }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Source Image Information -->
+                <div v-if="sourceImages[currentImageIndex]">
+                  <h4 class="text-sm font-semibold text-purple-700 dark:text-purple-400 mb-2">Source Image Details</h4>
+                  <div class="space-y-1 text-sm">
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].uuid }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].subject_uuid || 'N/A' }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ sourceImages[currentImageIndex].filename }}</div>
+                    </div>
+                    <div v-if="sourceImages[currentImageIndex].width && sourceImages[currentImageIndex].height">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].width }} × {{ sourceImages[currentImageIndex].height }}</div>
+                    </div>
+                    <div v-if="sourceImages[currentImageIndex].file_size">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(sourceImages[currentImageIndex].file_size) }}</div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].purpose || 'N/A' }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Video Information (if available) -->
+                <div v-if="destVideo">
+                  <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2">Destination Video</h4>
+                  <div class="space-y-1 text-sm">
+                    <div>
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Video UUID:</span>
+                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ destVideo.uuid }}</div>
+                    </div>
+                    <div v-if="destVideo.duration">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Duration:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ destVideo.duration }}s</div>
+                    </div>
+                    <div v-if="destVideo.file_size">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(destVideo.file_size) }}</div>
+                    </div>
+                    <div v-if="destVideo.metadata?.codec">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Codec:</span>
+                      <div class="text-gray-800 dark:text-gray-200">{{ destVideo.metadata.codec }}</div>
+                    </div>
+                    <div v-if="destVideo.filename">
+                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ destVideo.filename }}</div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
-            </div>
-
-            <!-- Image Details Accordion -->
-            <div class="mt-4">
-              <UAccordion :items="imageDetailsItems">
-                <template #details>
-                  <div class="space-y-3 text-left">
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Filename</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400 break-all">{{ currentImage.filename
-                        }}</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
-                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ currentImage.uuid
-                        }}</span>
-                    </div>
-                    <div v-if="currentImage.width && currentImage.height" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ currentImage.width }} × {{
-                        currentImage.height }}</span>
-                    </div>
-                    <div v-if="currentImage.file_size" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Size</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(currentImage.file_size)
-                        }}</span>
-                    </div>
-
-                  </div>
-                </template>
-              </UAccordion>
-            </div>
-
-            <!-- Job Details Accordion -->
-            <div class="mt-4">
-              <UAccordion :items="jobDetailsItems">
-                <template #job-info>
-                  <div class="space-y-3 text-left">
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Job ID</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job?.id }}</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Image Count</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ sourceImages.length }} subject images
-                        available</span>
-                    </div>
-                    <div class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Current Selection</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">Image {{ currentImageIndex + 1 }} of {{
-                        sourceImages.length }}</span>
-                    </div>
-                  </div>
-                </template>
-              </UAccordion>
             </div>
           </div>
         </div>
@@ -284,17 +316,17 @@
     </template>
 
     <template #footer>
-      <div class="flex justify-between">
+      <div class="flex justify-between items-center w-full">
         <div class="flex gap-2">
           <UButton variant="outline" @click="closeModal" :disabled="isSubmittingSource || isDeletingJob">
-            Cancel
+            Close
           </UButton>
           <!-- Job Navigation Buttons -->
           <div v-if="hasMultipleJobs" class="flex gap-2">
             <UButton
               variant="outline"
               size="lg"
-              :disabled="!canGoToPrevJob || isSubmittingSource || isDeletingJob"
+              :disabled="isSubmittingSource || isDeletingJob"
               @click="goToPreviousJob"
               square
               class="w-12 h-12 flex items-center justify-center"
@@ -304,7 +336,7 @@
             <UButton
               variant="outline"
               size="lg"
-              :disabled="!canGoToNextJob || isSubmittingSource || isDeletingJob"
+              :disabled="isSubmittingSource || isDeletingJob"
               @click="goToNextJob"
               square
               class="w-12 h-12 flex items-center justify-center"
@@ -314,12 +346,12 @@
           </div>
         </div>
         <div v-if="currentImage" class="flex gap-2">
-          <UButton color="red" variant="outline" icon="i-heroicons-trash" :loading="isDeletingJob"
-            @click="handleDeleteJob" :disabled="isSubmittingSource">
-            Delete Job
+          <UButton color="error" variant="outline" size="lg" :loading="isDeletingJob"
+            @click="handleDeleteJob" class="h-12" :disabled="isSubmittingSource">
+            Delete
           </UButton>
-          <UButton color="primary" :loading="isSubmittingSource" @click="selectCurrentImage" :disabled="isDeletingJob">
-            {{ canGoToNextJob ? 'Select & Next' : 'Select This Image' }}
+          <UButton color="primary" class="h-12" size="lg" :loading="isSubmittingSource" @click="selectCurrentImage" :disabled="isDeletingJob">
+            Select
           </UButton>
         </div>
       </div>
@@ -329,6 +361,9 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+
+// Use Nuxt's device detection
+const { isMobile } = useDevice()
 
 // Props
 const props = defineProps({
@@ -355,6 +390,8 @@ const settingsStore = useSettingsStore()
 // Reactive data
 const outputImages = ref([]) // Output images for main display
 const sourceImages = ref([]) // Subject images for thumbnail strip
+const destVideo = ref(null) // Destination video record
+const showingVideo = ref(false) // Toggle between image and video view
 const currentImageIndex = ref(0)
 const isLoadingImages = ref(false)
 const isLoadingSourceImages = ref(false)
@@ -444,22 +481,6 @@ const currentImage = computed(() => {
 })
 
 
-const imageDetailsItems = computed(() => {
-  if (!currentImage.value) return []
-
-  return [{
-    label: 'Image Details',
-    slot: 'details'
-  }]
-})
-
-const jobDetailsItems = computed(() => {
-  return [{
-    label: 'Job Details',
-    slot: 'job-info'
-  }]
-})
-
 const imageTransformStyle = computed(() => {
   const state = sharedZoomState.value
   return {
@@ -470,8 +491,6 @@ const imageTransformStyle = computed(() => {
 
 // Job navigation computed properties
 const hasMultipleJobs = computed(() => props.needInputJobs.length > 1)
-const canGoToPrevJob = computed(() => currentJobIndex.value > 0)
-const canGoToNextJob = computed(() => currentJobIndex.value < props.needInputJobs.length - 1)
 const currentJobInfo = computed(() => {
   if (props.needInputJobs.length === 0) return null
   return {
@@ -480,19 +499,38 @@ const currentJobInfo = computed(() => {
   }
 })
 
+// Check if we can go to the next job that needs input
+const canGoToNextJob = computed(() => {
+  if (props.needInputJobs.length <= 1) return false
+  
+  // Check if there are any other jobs besides the current one that need input
+  const otherJobs = props.needInputJobs.filter(job => job.id !== props.job?.id)
+  return otherJobs.length > 0
+})
+
 // Methods
 // Job navigation methods
 const goToPreviousJob = () => {
-  if (canGoToPrevJob.value) {
-    currentJobIndex.value--
+  if (props.needInputJobs.length > 1) {
+    if (currentJobIndex.value > 0) {
+      currentJobIndex.value--
+    } else {
+      // Wrap to last job
+      currentJobIndex.value = props.needInputJobs.length - 1
+    }
     const newJob = props.needInputJobs[currentJobIndex.value]
     emit('jobChanged', newJob)
   }
 }
 
 const goToNextJob = () => {
-  if (canGoToNextJob.value) {
-    currentJobIndex.value++
+  if (props.needInputJobs.length > 1) {
+    if (currentJobIndex.value < props.needInputJobs.length - 1) {
+      currentJobIndex.value++
+    } else {
+      // Wrap to first job
+      currentJobIndex.value = 0
+    }
     const newJob = props.needInputJobs[currentJobIndex.value]
     emit('jobChanged', newJob)
   }
@@ -712,11 +750,42 @@ const loadSourceImagesForJob = async (job) => {
   }
 }
 
+const loadDestinationVideo = async (destMediaUuid) => {
+  if (!destMediaUuid) {
+    destVideo.value = null
+    return
+  }
+
+  try {
+    console.log('🎬 Loading destination video:', destMediaUuid)
+    const response = await useApiFetch(`media/${destMediaUuid}`)
+    destVideo.value = response
+    console.log('🎬 Destination video loaded:', response)
+  } catch (error) {
+    console.error('Failed to load destination video:', error)
+    destVideo.value = null
+  }
+}
+
+const toggleVideoView = () => {
+  if (!props.job?.dest_media_uuid) {
+    console.warn('🎬 Cannot toggle to video view - no dest_media_uuid on job')
+    return
+  }
+  
+  showingVideo.value = !showingVideo.value
+  console.log('🎬 Toggled video view:', showingVideo.value ? 'showing video' : 'showing image', {
+    videoUuid: props.job.dest_media_uuid
+  })
+}
+
 const closeModal = () => {
   isOpen.value = false
   // Clear all image data to prevent continued loading
   outputImages.value = []
   sourceImages.value = []
+  destVideo.value = null
+  showingVideo.value = false
   currentImageIndex.value = 0
   currentJobIndex.value = 0
   isLoadingImages.value = false
@@ -808,9 +877,6 @@ const setupPreloading = () => {
 
 const goToPreviousImage = () => {
   if (sourceImages.value.length > 1) {
-    // Set loading state before changing index
-    isCurrentImageLoading.value = true
-    
     if (currentImageIndex.value > 0) {
       currentImageIndex.value--
     } else {
@@ -823,9 +889,6 @@ const goToPreviousImage = () => {
 
 const goToNextImage = () => {
   if (sourceImages.value.length > 1) {
-    // Set loading state before changing index
-    isCurrentImageLoading.value = true
-    
     if (currentImageIndex.value < sourceImages.value.length - 1) {
       currentImageIndex.value++
     } else {
@@ -1250,6 +1313,15 @@ watch(() => props.job, (newJob) => {
   if (newJob && props.modelValue) {
     console.log('⏱️ [SourceImageModal] Job changed, loading images for job:', newJob.id)
     
+    // Debug: Log job data to see what video references are available
+    console.log('🔍 [DEBUG] Job data:', {
+      id: newJob.id,
+      dest_media_uuid: newJob.dest_media_uuid,
+      output_uuid: newJob.output_uuid,
+      source_media_uuid: newJob.source_media_uuid,
+      allFields: Object.keys(newJob)
+    })
+    
     // CRITICAL FIX: Clear all previous state before loading new job
     outputImages.value = []
     sourceImages.value = []
@@ -1301,12 +1373,35 @@ watch(() => currentImageIndex.value, () => {
   scrollToCurrentThumbnail()
 })
 
-// Watch for currentImage changes to update lastLoadedImage
+// Watch for currentImage changes to update lastLoadedImage and load destination video
 watch(() => currentImage.value, (newImage) => {
   if (newImage && !isCurrentImageLoading.value) {
     // If we have a new image and we're not currently loading, update immediately
     lastLoadedImage.value = newImage
   }
+  
+  // Debug: Log all available fields on the current image
+  console.log('🔍 [DEBUG] Current image data:', {
+    uuid: newImage?.uuid,
+    filename: newImage?.filename,
+    purpose: newImage?.purpose,
+    dest_media_uuid_ref: newImage?.dest_media_uuid_ref,
+    video_uuid: newImage?.video_uuid,
+    job_id: newImage?.job_id,
+    allFields: newImage ? Object.keys(newImage) : 'no image'
+  })
+  
+  // Load destination video from job's dest_media_uuid (this is where the video UUID is stored)
+  if (props.job?.dest_media_uuid) {
+    console.log('🎬 Found dest_media_uuid on job:', props.job.dest_media_uuid)
+    loadDestinationVideo(props.job.dest_media_uuid)
+  } else {
+    console.log('🎬 No dest_media_uuid found on job')
+    destVideo.value = null
+  }
+  
+  // Reset video view when changing images
+  showingVideo.value = false
 }, { immediate: true })
 </script>
 

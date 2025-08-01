@@ -208,7 +208,7 @@
         <div class="flex flex-wrap gap-2">
           <UButton
             v-if="job && ['queued', 'active', 'need_input'].includes(job.status)"
-            color="red"
+            color="error"
             variant="outline"
             icon="i-heroicons-x-mark"
             size="sm"
@@ -228,7 +228,7 @@
           </UButton>
           <UButton
             v-if="job"
-            color="red"
+            color="error"
             variant="outline"
             icon="i-heroicons-trash"
             size="sm"

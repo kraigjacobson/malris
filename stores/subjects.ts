@@ -60,7 +60,7 @@ export const useSubjectsStore = defineStore('subjects', () => {
         const mappedItems = response.subjects.map((subject: Subject) => ({
           value: subject.id, // Use id instead of uuid for consistency
           label: subject.name
-        }))
+        })).sort((a, b) => a.label.localeCompare(b.label))
         
         // Cache the results
         searchCache.value.set(cacheKey, mappedItems)
