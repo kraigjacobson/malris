@@ -25,7 +25,7 @@ export const useTags = () => {
            lowerTag.includes('orange_hair') ||
            lowerTag.includes('red_hair') ||
            lowerTag.includes('braid') ||
-           lowerTag.includes('bangs')
+           lowerTag === 'bangs'  // Only exact match for bangs, not blunt_bangs etc.
   }
 
   /**

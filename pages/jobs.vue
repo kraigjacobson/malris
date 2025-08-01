@@ -14,6 +14,21 @@
             Queue Status
           </h2>
           <div class="flex items-center gap-1 sm:gap-2">
+            <!-- Submit Job Button -->
+            <UButton
+              type="button"
+              size="lg"
+              variant="solid"
+              color="primary"
+              @click="showSubmitJobModal = true"
+            >
+              <UIcon
+                name="i-heroicons-plus"
+                class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
+              />
+              <span class="hidden sm:inline">Submit Job</span>
+            </UButton>
+            
             <!-- Processing Control Buttons -->
             <template v-if="!isAnyProcessingActive">
               <!-- Single Job Processing Button (▶️) -->
@@ -531,11 +546,18 @@
       @job-changed="handleJobChanged"
       @job-deleted="handleJobDeleted"
     />
+
+    <!-- Submit Job Modal -->
+    <SubmitJobModal
+      v-model="showSubmitJobModal"
+      @jobs-created="handleJobsCreated"
+    />
   </div>
 </template>
 
 <script setup>
 import JobDetailsModal from '~/components/JobDetailsModal.vue'
+import SubmitJobModal from '~/components/SubmitJobModal.vue'
 
 // Page metadata
 definePageMeta({
@@ -555,6 +577,9 @@ const jobOutputImages = ref([])
 // Image selection modal data (keeping for potential future use)
 const showImageModal = ref(false)
 const selectedJobForImage = ref(null)
+
+// Submit job modal state
+const showSubmitJobModal = ref(false)
 
 // Pagination
 const pageNumber = ref(1)
@@ -981,6 +1006,20 @@ const handleJobDeleted = async () => {
   await refreshJobsWithCurrentState()
   // Refresh the need_input jobs list for the modal
   await fetchAllNeedInputJobs()
+}
+
+// Handle jobs created from submit job modal
+const handleJobsCreated = async (result) => {
+  const toast = useToast()
+  toast.add({
+    title: 'Jobs Created Successfully',
+    description: `${result.successCount} job${result.successCount !== 1 ? 's' : ''} created successfully!`,
+    color: 'green',
+    duration: 3000
+  })
+  
+  // Refresh the jobs list to show new jobs
+  await refreshJobsWithCurrentState()
 }
 
 const openImageFullscreen = (image) => {

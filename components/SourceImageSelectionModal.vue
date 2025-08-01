@@ -195,7 +195,7 @@
                   :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
                   @click="currentImageIndex = index">
                   <img :src="getThumbnailUrl(sourceImage)" :alt="sourceImage.filename"
-                    class="w-full h-full object-cover rounded" />
+                    class="w-full h-full object-cover object-top rounded" />
                 </div>
               </div>
             </div>

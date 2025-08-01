@@ -107,12 +107,6 @@ const navigationItems = ref<NavigationMenuItem[]>([
     icon: 'i-heroicons-cog-6-tooth',
     children: [
       {
-        label: 'Submit Job',
-        description: 'Submit video processing jobs to the media server.',
-        icon: 'i-heroicons-play',
-        to: '/submit-job'
-      },
-      {
         label: 'Job Queue',
         description: 'Monitor and manage processing jobs with search and filter.',
         icon: 'i-heroicons-queue-list',

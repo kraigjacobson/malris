@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div ref="containerRef">
     <!-- Loading State -->
     <div v-if="loading" class="text-center py-12">
       <UIcon name="i-heroicons-arrow-path-20-solid" class="w-8 h-8 animate-spin text-gray-400 mx-auto mb-4" />
@@ -56,7 +56,7 @@
             v-if="subject.has_thumbnail && subject.thumbnail_data"
             :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
             :alt="subject.name"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-cover object-top"
             loading="lazy"
             @error="handleImageError"
           />
@@ -74,17 +74,14 @@
       </div>
     </div>
 
-    <!-- Load More Button -->
-    <div v-if="hasMore && subjects.length > 0" class="text-center mt-6">
-      <UButton
-        variant="outline"
-        :loading="loadingMore"
-        @click="$emit('load-more')"
-        class="w-full"
-      >
-        {{ loadingMore ? 'Loading...' : 'Load More' }}
-      </UButton>
+    <!-- Loading More Indicator -->
+    <div v-if="loadingMore && subjects.length > 0" class="text-center py-6">
+      <UIcon name="i-heroicons-arrow-path-20-solid" class="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
+      <p class="text-sm text-gray-500 dark:text-gray-400">Loading more subjects...</p>
     </div>
+
+    <!-- Scroll Trigger Element -->
+    <div ref="scrollTriggerRef" class="h-1"></div>
   </div>
 </template>
 
@@ -136,7 +133,14 @@ const props = defineProps({
   }
 })
 
-defineEmits(['subject-click', 'load-more'])
+const emit = defineEmits(['subject-click', 'load-more'])
+
+// Template refs
+const containerRef = ref(null)
+const scrollTriggerRef = ref(null)
+
+// Intersection Observer for infinite scroll
+let observer = null
 
 // Check if subject is selected (for multi-select mode)
 const isSelected = (subject) => {
@@ -157,6 +161,56 @@ const handleImageError = (event) => {
     container.appendChild(placeholder)
   }
 }
+
+// Setup intersection observer for infinite scroll
+const setupIntersectionObserver = () => {
+  if (!scrollTriggerRef.value) return
+
+  observer = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0]
+      if (entry.isIntersecting && props.hasMore && !props.loadingMore && !props.loading) {
+        emit('load-more')
+      }
+    },
+    {
+      root: null, // Use viewport as root
+      rootMargin: '100px', // Trigger 100px before the element comes into view
+      threshold: 0.1
+    }
+  )
+
+  observer.observe(scrollTriggerRef.value)
+}
+
+// Cleanup observer
+const cleanupObserver = () => {
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
+}
+
+// Setup observer when component mounts
+onMounted(() => {
+  nextTick(() => {
+    setupIntersectionObserver()
+  })
+})
+
+// Cleanup when component unmounts
+onUnmounted(() => {
+  cleanupObserver()
+})
+
+// Re-setup observer when subjects change (in case the trigger element gets recreated)
+watch(() => props.subjects.length, () => {
+  nextTick(() => {
+    if (scrollTriggerRef.value && !observer) {
+      setupIntersectionObserver()
+    }
+  })
+})
 
 </script>
 

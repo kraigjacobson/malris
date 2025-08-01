@@ -116,7 +116,7 @@
                   v-if="image.thumbnail"
                   :src="image.thumbnail"
                   :alt="image.filename"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover object-top"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
                   <UIcon name="i-heroicons-photo" class="w-8 h-8 text-gray-400" />

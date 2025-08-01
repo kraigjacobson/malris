@@ -169,7 +169,7 @@
                 v-if="subject.has_thumbnail && subject.thumbnail_data && settingsStore.displayImages"
                 :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
                 :alt="subject.name"
-                class="w-full h-full object-cover rounded"
+                class="w-full h-full object-cover object-top rounded"
                 loading="lazy"
                 @error="handleImageError"
               />
