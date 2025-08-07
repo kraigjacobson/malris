@@ -33,11 +33,11 @@ export default defineEventHandler(async (event) => {
 
     const job = existingJob[0]
     
-    // Check if job can be canceled (only queued, active, or need_input jobs can be canceled)
-    if (!['queued', 'active', 'need_input'].includes(job.status)) {
+    // Check if job can be canceled (queued, active, need_input, or failed jobs can be canceled)
+    if (!['queued', 'active', 'need_input', 'failed'].includes(job.status)) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Cannot cancel job with status: ${job.status}. Only queued, active, or need_input jobs can be canceled.`
+        statusMessage: `Cannot cancel job with status: ${job.status}. Only queued, active, need_input, or failed jobs can be canceled.`
       })
     }
 
@@ -93,11 +93,14 @@ export default defineEventHandler(async (event) => {
       console.log(`ℹ️ No output media records found for job ${jobId}`)
     }
 
-    // Update job status to canceled
+    // Update job status to canceled and clear sourceMediaUuid to convert back to test workflow
     const canceledJob = await db.update(jobs)
       .set({
         status: 'canceled',
         errorMessage: 'Job canceled by user',
+        sourceMediaUuid: null, // FIXED: Clear sourceMediaUuid to convert vid workflows back to test workflows
+        progress: 0, // Reset progress
+        startedAt: null, // Clear start time
         completedAt: new Date(),
         updatedAt: new Date()
       })
@@ -119,30 +122,8 @@ export default defineEventHandler(async (event) => {
       console.error('Failed to update job counts after job cancellation:', error)
     }
 
-    // FIXED: After canceling a job, check if processing is enabled before trying to start the next job
-    // This ensures we respect the paused state and only process when the user wants it
-    try {
-      const { getProcessingStatus } = await import('~/server/api/jobs/processing/toggle.post')
-      const isProcessingEnabled = getProcessingStatus()
-      
-      if (isProcessingEnabled) {
-        console.log('🔄 Processing is enabled - attempting to start next job after cancellation')
-        const { processNextJob } = await import('~/server/services/jobProcessingService')
-        const nextJobResult = await processNextJob()
-        
-        if (nextJobResult.success) {
-          console.log(`🚀 Successfully started next job after cancellation: ${nextJobResult.job_id}`)
-        } else if (!nextJobResult.skip) {
-          console.log(`⚠️ Failed to start next job after cancellation: ${nextJobResult.message}`)
-        }
-        // If skip=true, it means no jobs in queue or worker busy, which is fine
-      } else {
-        console.log('⏸️ Processing is paused - not starting next job after cancellation')
-      }
-    } catch (nextJobError: any) {
-      console.log(`⚠️ Error trying to process next job after cancellation: ${nextJobError.message}`)
-      // Don't fail the cancellation if next job processing fails
-    }
+    // Job cancellation complete - no auto-processing of next job
+    console.log(`✅ Job ${jobId} canceled successfully - manual job control enabled`)
 
     return {
       success: true,

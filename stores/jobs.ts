@@ -171,9 +171,11 @@ export const useJobsStore = defineStore('jobs', () => {
       await fetchQueueStatus() // This now also updates processing status
       await fetchJobs()
       
-      // Always connect WebSocket for real-time updates
-      connectWebSocket()
-      startAutoRefresh() // Fallback polling
+      // WebSocket connection is now handled by the websocket plugin on app startup
+      // Only start fallback polling if WebSocket is not connected
+      if (!wsConnected.value) {
+        startAutoRefresh() // Fallback polling
+      }
     } finally {
       isLoading.value = false
     }
@@ -201,6 +203,12 @@ export const useJobsStore = defineStore('jobs', () => {
     if (wsConnection.value?.readyState === WebSocket.OPEN) {
       console.log('🔌 WebSocket already connected')
       return
+    }
+    
+    // Close any existing connection that's not open
+    if (wsConnection.value && wsConnection.value.readyState !== WebSocket.OPEN) {
+      wsConnection.value.close()
+      wsConnection.value = null
     }
     
     try {
@@ -237,19 +245,26 @@ export const useJobsStore = defineStore('jobs', () => {
         // Start polling as fallback
         startAutoRefresh()
         
-        // Attempt to reconnect
+        // More aggressive reconnection - don't give up easily
         if (wsReconnectAttempts.value < maxReconnectAttempts) {
           wsReconnectAttempts.value++
-          console.log(`🔄 Attempting WebSocket reconnect ${wsReconnectAttempts.value}/${maxReconnectAttempts} in ${reconnectDelay.value}ms`)
+          // Faster initial reconnection attempts
+          const delay = wsReconnectAttempts.value === 1 ? 500 : reconnectDelay.value
+          console.log(`🔄 Attempting WebSocket reconnect ${wsReconnectAttempts.value}/${maxReconnectAttempts} in ${delay}ms`)
           
           setTimeout(() => {
             connectWebSocket()
-          }, reconnectDelay.value)
+          }, delay)
           
-          // Exponential backoff
-          reconnectDelay.value = Math.min(reconnectDelay.value * 2, 30000)
+          // Exponential backoff but cap at 10 seconds instead of 30
+          reconnectDelay.value = Math.min(reconnectDelay.value * 1.5, 10000)
         } else {
           console.log('❌ Max WebSocket reconnect attempts reached, falling back to polling')
+          // Reset attempts after 30 seconds to allow future reconnection attempts
+          setTimeout(() => {
+            wsReconnectAttempts.value = 0
+            reconnectDelay.value = 1000
+          }, 30000)
         }
       }
       

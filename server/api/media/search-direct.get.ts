@@ -157,11 +157,14 @@ export default defineEventHandler(async (event) => {
       }
       
       // Add sorting
-      const sortBy = (query.sort_by as string) || 'created_at'
+      const sortBy = (query.sort_by as string) || 'random'
       const sortOrder = (query.sort_order as string) || 'desc'
-      const validSortFields = ['filename', 'type', 'purpose', 'status', 'file_size', 'original_size', 'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count']
+      const validSortFields = ['filename', 'type', 'purpose', 'status', 'file_size', 'original_size', 'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random']
       
-      if (validSortFields.includes(sortBy)) {
+      if (sortBy === 'random') {
+        // Use PostgreSQL's RANDOM() function for true database-level random sorting
+        baseQuery += ` ORDER BY RANDOM()`
+      } else if (validSortFields.includes(sortBy)) {
         baseQuery += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`
       } else {
         baseQuery += ` ORDER BY created_at DESC`

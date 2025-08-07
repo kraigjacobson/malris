@@ -89,12 +89,15 @@ export default defineEventHandler(async (event) => {
           // Get video metadata using ffmpeg
           const metadata = await getVideoMetadata(tempVideoPath)
           
-          // Check for duplicates based on dimensions and filename
+          // Strip path from filename for storage and comparison
+          const baseFilename = path.basename(file.filename!)
+          
+          // Check for duplicates based on dimensions and filename (basename only)
           const existingVideo = await db
             .select()
             .from(mediaRecords)
             .where(and(
-              eq(mediaRecords.filename, file.filename!),
+              eq(mediaRecords.filename, baseFilename),
               eq(mediaRecords.width, metadata.width),
               eq(mediaRecords.height, metadata.height),
               eq(mediaRecords.purpose, 'dest'),
@@ -103,9 +106,9 @@ export default defineEventHandler(async (event) => {
             .limit(1)
 
           if (existingVideo.length > 0) {
-            console.log(`⚠️ Duplicate video skipped: ${file.filename} (${metadata.width}x${metadata.height})`)
+            console.log(`⚠️ Duplicate video skipped: ${baseFilename} (${metadata.width}x${metadata.height})`)
             results.push({
-              filename: file.filename,
+              filename: baseFilename,
               success: true,
               message: 'Duplicate video skipped',
               uuid: existingVideo[0].uuid
@@ -129,7 +132,7 @@ export default defineEventHandler(async (event) => {
           const thumbnailRecord = await db
             .insert(mediaRecords)
             .values({
-              filename: `${path.parse(file.filename!).name}_thumb.jpg`,
+              filename: `${path.parse(baseFilename).name}_thumb.jpg`,
               type: 'image',
               purpose: 'thumbnail',
               fileSize: thumbnailBuffer.length,
@@ -137,7 +140,7 @@ export default defineEventHandler(async (event) => {
               width: 320, // Standard thumbnail width
               height: Math.round((320 * metadata.height) / metadata.width),
               metadata: {
-                generated_from: file.filename,
+                generated_from: baseFilename,
                 thumbnail_type: 'video_frame'
               },
               encryptedData: encryptedThumbnailData,
@@ -152,7 +155,7 @@ export default defineEventHandler(async (event) => {
           const videoRecord = await db
             .insert(mediaRecords)
             .values({
-              filename: file.filename!,
+              filename: baseFilename,
               type: 'video',
               purpose: 'dest',
               fileSize: file.data.length,
@@ -175,13 +178,13 @@ export default defineEventHandler(async (event) => {
             .returning({ uuid: mediaRecords.uuid })
 
           results.push({
-            filename: file.filename,
+            filename: baseFilename,
             video_uuid: videoRecord[0].uuid,
             thumbnail_uuid: thumbnailUuid,
             metadata: metadata
           })
 
-          console.log(`✅ Successfully processed: ${file.filename}`)
+          console.log(`✅ Successfully processed: ${baseFilename}`)
 
           // Clean up temp file
           await unlink(tempVideoPath)
@@ -189,7 +192,7 @@ export default defineEventHandler(async (event) => {
         } catch (error) {
           console.error(`❌ Error processing ${file.filename}:`, error)
           errors.push({
-            filename: file.filename,
+            filename: path.basename(file.filename!),
             error: error instanceof Error ? error.message : 'Unknown error'
           })
         }

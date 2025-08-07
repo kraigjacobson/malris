@@ -347,7 +347,6 @@ async function sendToComfyUIForTagging(base64Image: string, videoUuid: string): 
     // Prepare the request data for ComfyUI tagging workflow
     const formData = new FormData()
     formData.append('job_type', 'tagging')
-    formData.append('workflow_type', 'tagging')
     formData.append('job_id', tagJobId)
     formData.append('base64_image', base64Image)
     formData.append('threshold', '0.35')
@@ -357,7 +356,6 @@ async function sendToComfyUIForTagging(base64Image: string, videoUuid: string): 
     
     console.log(`🔥 [COMFYUI-SUBMIT] FormData fields:`)
     console.log(`🔥 [COMFYUI-SUBMIT] - job_type: tagging`)
-    console.log(`🔥 [COMFYUI-SUBMIT] - workflow_type: tagging`)
     console.log(`🔥 [COMFYUI-SUBMIT] - job_id: ${tagJobId}`)
     console.log(`🔥 [COMFYUI-SUBMIT] - base64_image length: ${base64Image.length} chars`)
     console.log(`🔥 [COMFYUI-SUBMIT] - threshold: 0.35`)

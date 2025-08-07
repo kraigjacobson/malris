@@ -69,6 +69,14 @@ export default defineEventHandler(async (event) => {
     const updated = updatedJob[0]
     console.log(`✅ [API] Source added to job ${jobId} successfully:`, updated)
 
+    // Update job counts to refresh frontend queue status
+    try {
+      const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+      await updateJobCounts()
+    } catch (error) {
+      console.error('❌ Failed to update job counts after adding source:', error)
+    }
+
     return {
       success: true,
       message: `Source added to job ${jobId} successfully`,

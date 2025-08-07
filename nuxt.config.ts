@@ -4,6 +4,9 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   ssr: false,
   
+  // SPA loading template configuration
+  spaLoadingTemplate: './app.html',
+  
   // Dev server configuration for security
   devServer: {
     host: process.env.NUXT_HOST || '0.0.0.0',

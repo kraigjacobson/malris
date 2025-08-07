@@ -20,6 +20,33 @@
     <template #body>
       <div class="space-y-4 h-[600px] overflow-y-auto custom-scrollbar">
 
+        <!-- Result Limit Controls -->
+        <div class="grid grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Output Images Limit
+            </label>
+            <USelectMenu
+              v-model="outputImageLimit"
+              :items="limitOptions"
+              class="w-full"
+              size="sm"
+              @change="reloadImagesForCurrentJob"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Source Images Limit
+            </label>
+            <USelectMenu
+              v-model="sourceImageLimit"
+              :items="limitOptions"
+              class="w-full"
+              size="sm"
+              @change="reloadImagesForCurrentJob"
+            />
+          </div>
+        </div>
 
         <!-- Loading State - show skeletons while loading or when no images are available yet -->
         <div v-if="isLoadingImages || isLoadingSourceImages" class="text-center h-full flex flex-col">
@@ -400,6 +427,10 @@ const isDeletingImage = ref(false)
 const thumbnailStrip = ref(null)
 const thumbnailRefs = ref({})
 
+// Result limit controls
+const outputImageLimit = ref(50)
+const sourceImageLimit = ref(100)
+
 // Image persistence for smooth transitions
 const lastLoadedImage = ref(null) // Keep previous image while new one loads
 const isCurrentImageLoading = ref(false) // Track individual image loading state
@@ -428,6 +459,15 @@ const lastTouchDistance = ref(0)
 
 // Composables
 const { isDeletingJob, deleteJob } = useJobActions()
+
+// Limit options for dropdowns
+const limitOptions = [
+  { label: '25 results', value: 25 },
+  { label: '50 results', value: 50 },
+  { label: '100 results', value: 100 },
+  { label: '200 results', value: 200 },
+  { label: '500 results', value: 500 }
+]
 
 // Computed
 const isOpen = computed({
@@ -572,7 +612,7 @@ const loadImagesForJob = async (job) => {
       media_type: 'image',
       purpose: 'output',
       job_id: job.id,
-      limit: 100,
+      limit: outputImageLimit.value,
       include_thumbnails: false,
       sort_by: 'created_at',
       sort_order: 'desc'
@@ -659,10 +699,10 @@ const loadSourceImagesForJob = async (job) => {
       media_type: 'image',
       purpose: 'source',
       subject_uuid: job.subject_uuid,
-      limit: 100,
+      limit: 10000, // Load all available source images
       include_thumbnails: false,
       sort_by: 'created_at',
-      sort_order: 'desc'
+      sort_order: 'asc'
     }
 
     const searchStartTime = performance.now()
@@ -686,59 +726,10 @@ const loadSourceImagesForJob = async (job) => {
       sourceUuidsFromOutputs.includes(sourceImg.uuid)
     )
 
-    // Sort source images to maintain consistent order based on numbered filename processing order
-    const sortedSourceImages = validSourceImages.sort((a, b) => {
-      // Find the output for each source image to extract the numbered index
-      const aOutput = outputImages.value.find(output => output.source_media_uuid_ref === a.uuid)
-      const bOutput = outputImages.value.find(output => output.source_media_uuid_ref === b.uuid)
-
-      console.log('🔍 SORTING DEBUG - Finding outputs for source images:', {
-        aSourceUuid: a.uuid,
-        bSourceUuid: b.uuid,
-        aOutput: aOutput ? { uuid: aOutput.uuid, filename: aOutput.filename, source_ref: aOutput.source_media_uuid_ref } : null,
-        bOutput: bOutput ? { uuid: bOutput.uuid, filename: bOutput.filename, source_ref: bOutput.source_media_uuid_ref } : null
-      })
-
-      if (!aOutput || !bOutput) {
-        console.log('⚠️ SORTING FALLBACK - Missing output for source image, using creation time')
-        // Fallback to creation time if no output found
-        return new Date(a.created_at) - new Date(b.created_at)
-      }
-
-      // Extract numbered index from output filename patterns like "output_00026_.png"
-      const extractNumberedIndex = (filename) => {
-        // NEW SIMPLIFIED PATTERN: Extract number from "output_00026_.png" format
-        const simplifiedPattern = /^output_(\d+)_?\.png$/
-        const match = filename.match(simplifiedPattern)
-        const result = match ? parseInt(match[1]) : 999999 // Put unmatched at end
-        console.log('🔢 SIMPLIFIED FILENAME PATTERN EXTRACTION:', {
-          filename,
-          pattern: simplifiedPattern.toString(),
-          match: match ? match[0] : null,
-          extractedNumber: result
-        })
-        return result
-      }
-
-      const aIndex = extractNumberedIndex(aOutput.filename)
-      const bIndex = extractNumberedIndex(bOutput.filename)
-
-      console.log('🔢 SORTING COMPARISON:', {
-        aUuid: a.uuid,
-        bUuid: b.uuid,
-        aFilename: aOutput.filename,
-        bFilename: bOutput.filename,
-        aIndex,
-        bIndex,
-        sortResult: aIndex - bIndex
-      })
-
-      return aIndex - bIndex
-    })
-
-    console.log('👤 Loaded source images:', sortedSourceImages.length, 'out of', sourceUuidsFromOutputs.length, 'requested')
-    console.log('🎯 Source UUIDs loaded:', sortedSourceImages.map(img => img.uuid))
-    sourceImages.value = sortedSourceImages
+    // Since we're using database-level random sorting, no need for client-side sorting
+    console.log('👤 Loaded source images with random order:', validSourceImages.length, 'out of', sourceUuidsFromOutputs.length, 'requested')
+    console.log('🎯 Source UUIDs loaded (random order):', validSourceImages.map(img => img.uuid))
+    sourceImages.value = validSourceImages
 
   } catch (error) {
     console.error('Failed to load subject source images:', error)
@@ -1403,6 +1394,14 @@ watch(() => currentImage.value, (newImage) => {
   // Reset video view when changing images
   showingVideo.value = false
 }, { immediate: true })
+
+// Method to reload images when limits change
+const reloadImagesForCurrentJob = () => {
+  if (props.job && props.modelValue) {
+    console.log('🔄 Reloading images due to limit change')
+    loadImagesForJob(props.job)
+  }
+}
 </script>
 
 <style scoped>

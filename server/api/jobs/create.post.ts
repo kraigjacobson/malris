@@ -136,7 +136,6 @@ export default defineEventHandler(async (event) => {
       job_id: createdJob.id,
       job_type: createdJob.jobType,
       status: createdJob.status,
-      workflow_type: source_media_uuid ? "vid" : "test",
       created_at: createdJob.createdAt,
       message: "Job created successfully"
     }

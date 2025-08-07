@@ -5,7 +5,6 @@ export default defineAppConfig({
         base: 'cursor-pointer'
       }
     },
-    // Add locale configuration to fix injection issues
     locale: {
       fallback: 'en'
     }

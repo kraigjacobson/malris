@@ -17,6 +17,9 @@ import { count, eq } from 'drizzle-orm'
 // WebSocket clients management
 const wsClients = new Set<any>()
 
+// Timeout for resetting active jobs after ComfyUI becomes idle
+let resetActiveJobsTimeout: NodeJS.Timeout | null = null
+
 // Current system status - this is our single source of truth
 let currentStatus: SystemStatus = {
   timestamp: new Date().toISOString(),
@@ -271,10 +274,30 @@ async function checkComfyUIHealth() {
       }
     }, 'comfyui_status_change')
     
-    // If ComfyUI is idle but we have active jobs in database, reset them to queued
-    if (processingStatus === 'idle' && currentStatus.jobCounts.active > 0) {
-      console.log(`🔄 ComfyUI is idle but ${currentStatus.jobCounts.active} jobs are marked as active - resetting to queued`)
-      await resetActiveJobsToQueued()
+    // DISABLED: Don't reset active jobs to queued when ComfyUI is idle
+    // This was causing completed jobs to be reset to queued status
+    // if (processingStatus === 'idle' && currentStatus.jobCounts.active > 0) {
+    //   if (!resetActiveJobsTimeout) {
+    //     console.log(`🔄 ComfyUI is idle but ${currentStatus.jobCounts.active} jobs are marked as active - will reset to queued in 60 seconds`)
+    //     resetActiveJobsTimeout = setTimeout(async () => {
+    //       console.log(`⏰ 60 seconds elapsed since ComfyUI became idle - resetting active jobs to queued`)
+    //       await resetActiveJobsToQueued()
+    //       resetActiveJobsTimeout = null
+    //     }, 60000) // 60 seconds
+    //   }
+    // } else {
+    //   // Clear timeout if ComfyUI is no longer idle or no active jobs
+    //   if (resetActiveJobsTimeout) {
+    //     console.log(`✅ ComfyUI is no longer idle or no active jobs - canceling reset timeout`)
+    //     clearTimeout(resetActiveJobsTimeout)
+    //     resetActiveJobsTimeout = null
+    //   }
+    // }
+    
+    // Clear any existing timeout since we're disabling this functionality
+    if (resetActiveJobsTimeout) {
+      clearTimeout(resetActiveJobsTimeout)
+      resetActiveJobsTimeout = null
     }
     
   } catch (error: any) {
@@ -336,33 +359,34 @@ export async function updateJobCounts() {
   }
 }
 
-// Reset active jobs to queued when ComfyUI is idle but jobs are stuck as active
-async function resetActiveJobsToQueued() {
-  try {
-    const db = getDb()
-    
-    // Update all active jobs to queued status
-    const resetJobs = await db
-      .update(jobs)
-      .set({
-        status: 'queued',
-        startedAt: null,
-        updatedAt: new Date()
-      })
-      .where(eq(jobs.status, 'active'))
-      .returning({ id: jobs.id })
-    
-    if (resetJobs.length > 0) {
-      console.log(`✅ Reset ${resetJobs.length} stuck active jobs to queued status`)
-      
-      // Update job counts after resetting jobs
-      await updateJobCounts()
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Failed to reset active jobs to queued:', error)
-  }
-}
+// DISABLED: Reset active jobs to queued when ComfyUI is idle but jobs are stuck as active
+// This function is no longer used since we disabled the watchdog functionality
+// async function resetActiveJobsToQueued() {
+//   try {
+//     const db = getDb()
+//
+//     // Update all active jobs to queued status
+//     const resetJobs = await db
+//       .update(jobs)
+//       .set({
+//         status: 'queued',
+//         startedAt: null,
+//         updatedAt: new Date()
+//       })
+//       .where(eq(jobs.status, 'active'))
+//       .returning({ id: jobs.id })
+//
+//     if (resetJobs.length > 0) {
+//       console.log(`✅ Reset ${resetJobs.length} stuck active jobs to queued status`)
+//
+//       // Update job counts after resetting jobs
+//       await updateJobCounts()
+//     }
+//
+//   } catch (error: any) {
+//     console.error('❌ Failed to reset active jobs to queued:', error)
+//   }
+// }
 
 // Update auto processing status
 export function updateAutoProcessingStatus(
@@ -422,6 +446,47 @@ export function getCurrentStatus(): SystemStatus {
 // Get connected clients count
 export function getConnectedClientsCount(): number {
   return wsClients.size
+}
+
+// Worker health check function for job processing service
+// Returns specific data needed for job processing
+export async function checkWorkerHealth() {
+  try {
+    const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+    const response = await fetch(`${workerUrl}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    })
+    
+    if (!response.ok) {
+      return { healthy: false, available: false, runningJobIds: [] }
+    }
+    
+    const healthData = await response.json()
+    const isHealthy = healthData.status === 'healthy'
+    
+    // Use the correct fields from active_jobs
+    const actualRunningCount = healthData.active_jobs?.running_count || 0
+    const actualPendingCount = healthData.active_jobs?.pending_count || 0
+    const isAvailable = actualRunningCount === 0 && actualPendingCount === 0
+    
+    // Get the actual running job IDs from the worker
+    const runningJobIds = healthData.running_jobs || []
+    
+    // No longer doing zombie cleanup here - we handle this by marking all other active jobs
+    // as failed when a new job is sent to the worker
+    
+    return {
+      healthy: isHealthy,
+      available: isAvailable,
+      runningJobIds,
+      actualRunningCount,
+      healthData
+    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (_error: any) {
+    return { healthy: false, available: false, runningJobIds: [] }
+  }
 }
 
 // Initialize monitoring on module load

@@ -6,15 +6,15 @@
 
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
-import { eq, desc, sql, and, ne } from 'drizzle-orm'
-import { updateAutoProcessingStatus, getCurrentStatus } from './systemStatusManager'
+import { eq, desc, sql, and } from 'drizzle-orm'
+import { updateAutoProcessingStatus, getCurrentStatus, checkWorkerHealth } from './systemStatusManager'
 
 // Processing states
 type ProcessingMode = 'idle' | 'single' | 'continuous'
 let currentMode: ProcessingMode = 'idle'
 let processingInterval: NodeJS.Timeout | null = null
 let isCurrentlyProcessing = false // Global lock to prevent concurrent processing
-const PROCESSING_INTERVAL = 10000 // 10 seconds between jobs in continuous mode
+const PROCESSING_INTERVAL = 5000 // 5 seconds between checks in continuous mode
 
 export interface ProcessNextJobResult {
   success: boolean
@@ -51,37 +51,9 @@ export function getCachedWorkerHealth() {
   }
 }
 
-// Function to check ComfyUI worker health and availability
-async function checkWorkerHealth() {
-  try {
-    const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
-    const response = await fetch(`${workerUrl}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000) // 5 second timeout
-    })
-    
-    if (!response.ok) {
-      return { healthy: false, available: false }
-    }
-    
-    const healthData = await response.json()
-    const isHealthy = healthData.status === 'healthy'
-    
-    // Use the correct fields from active_jobs
-    const actualRunningCount = healthData.active_jobs?.running_count || 0
-    const actualPendingCount = healthData.active_jobs?.pending_count || 0
-    const isAvailable = actualRunningCount === 0 && actualPendingCount === 0
-    
-    return {
-      healthy: isHealthy,
-      available: isAvailable,
-      healthData
-    }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (error: any) {
-    return { healthy: false, available: false }
-  }
-}
+
+// We're now importing checkWorkerHealth from systemStatusManager.ts
+// The zombie cleanup is handled by marking all other active jobs as failed
 
 export async function processNextJob(): Promise<ProcessNextJobResult> {
   // CRITICAL FIX: Global processing lock prevents concurrent job processing from ANY source
@@ -99,8 +71,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
   try {
     const db = getDb()
     
-    // Real-time health check instead of relying on cached status
-    // This prevents race conditions where multiple calls see stale "idle" status
+    // Real-time health check
     const realTimeHealth = await checkWorkerHealth()
     if (!realTimeHealth.healthy) {
       return {
@@ -118,34 +89,74 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
     }
     
-    console.log('✅ ComfyUI worker is healthy and queue is empty - proceeding with job processing')
+    console.log('✅ ComfyUI worker is healthy and idle - proceeding with job processing')
     
-    // Find queued jobs, prioritizing those without a source media uuid (null values first)
-    const queuedJobs = await db
-      .select({
-        id: jobs.id,
-        jobType: jobs.jobType,
-        subjectUuid: jobs.subjectUuid,
-        destMediaUuid: jobs.destMediaUuid,
-        sourceMediaUuid: jobs.sourceMediaUuid,
-        parameters: jobs.parameters,
-        createdAt: jobs.createdAt,
-        updatedAt: jobs.updatedAt
-      })
-      .from(jobs)
-      .where(eq(jobs.status, 'queued'))
-      .orderBy(
-        // First priority: jobs without source media uuid (null values first)
-        sql`CASE WHEN ${jobs.sourceMediaUuid} IS NULL THEN 0 ELSE 1 END`,
-        // Second priority: latest updated jobs first
-        desc(jobs.updatedAt)
-      )
-      .limit(1)
+    // Check counts of queued jobs with and without source media uuid
+    const [testJobCount, videoJobCount] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), sql`${jobs.sourceMediaUuid} IS NULL`)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+    ])
     
-    if (queuedJobs.length === 0) {
+    const testCount = testJobCount[0]?.count || 0
+    const videoCount = videoJobCount[0]?.count || 0
+    
+    if (testCount === 0 && videoCount === 0) {
       return {
         success: false,
         message: "No queued jobs found",
+        skip: true
+      }
+    }
+    
+    let queuedJobs
+    
+    if (testCount > 0) {
+      // Prioritize test jobs (without source media uuid) - use original logic
+      queuedJobs = await db
+        .select({
+          id: jobs.id,
+          jobType: jobs.jobType,
+          subjectUuid: jobs.subjectUuid,
+          destMediaUuid: jobs.destMediaUuid,
+          sourceMediaUuid: jobs.sourceMediaUuid,
+          parameters: jobs.parameters,
+          createdAt: jobs.createdAt,
+          updatedAt: jobs.updatedAt
+        })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), sql`${jobs.sourceMediaUuid} IS NULL`))
+        .orderBy(desc(jobs.updatedAt))
+        .limit(1)
+    } else if (videoCount > 0) {
+      // No test jobs available, get the most recent updated_at queued vid job
+      console.log(`📅 No test jobs available, selecting most recent updated_at video job from ${videoCount} available`)
+      const orderBy = sql`RANDOM()`
+      // const orderBy = desc(jobs.updatedAt)
+      queuedJobs = await db
+        .select({
+          id: jobs.id,
+          jobType: jobs.jobType,
+          subjectUuid: jobs.subjectUuid,
+          destMediaUuid: jobs.destMediaUuid,
+          sourceMediaUuid: jobs.sourceMediaUuid,
+          parameters: jobs.parameters,
+          createdAt: jobs.createdAt,
+          updatedAt: jobs.updatedAt
+        })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+        .orderBy(orderBy)
+        .limit(1)
+    }
+    
+    if (!queuedJobs || queuedJobs.length === 0) {
+      return {
+        success: false,
+        message: "No suitable jobs found",
         skip: true
       }
     }
@@ -175,7 +186,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     
     // Basic job information
     formData.append('job_id', job.id)
-    formData.append('job_type', job.jobType)
+    formData.append('job_type', 'vid_faceswap')
     formData.append('workflow_type', job.sourceMediaUuid ? 'vid' : 'test')
     formData.append('workflow_file', 'vid_faceswap_api.json')
     
@@ -206,6 +217,14 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         }
         const destVideoBlob = new Blob([destVideoData.buffer])
         formData.append('dest_video', destVideoBlob, `dest_${job.destMediaUuid}.mp4`)
+        
+        // Extract video duration from destination video metadata for progress tracking
+        if (destMediaData.length > 0 && destMediaData[0].duration) {
+          formData.append('video_duration', destMediaData[0].duration.toString())
+          console.log(`📊 Added video duration to form data: ${destMediaData[0].duration}s`)
+        } else {
+          console.log(`⚠️ No duration found in destination video metadata for ${job.destMediaUuid}`)
+        }
       }
       
       // Download and attach source image if available
@@ -241,8 +260,9 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           }
           const sourceImageBlob = new Blob([sourceImageData.buffer])
           formData.append(`subject_image_${i}`, sourceImageBlob, `subject_${sourceImage.uuid}.jpg`)
-          // Also pass the UUID for output linking
+          // Also pass the UUID and created_at timestamp for output linking
           formData.append(`subject_image_uuid_${i}`, sourceImage.uuid)
+          formData.append(`subject_image_created_at_${i}`, sourceImage.createdAt.toISOString())
         }
         formData.append('subject_image_count', subjectSourceImages.length.toString())
       }
@@ -266,17 +286,64 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       const workerResult = await workerResponse.json()
       console.log('✅ Worker response:', workerResult)
       
-      // Now that we got success from worker, reset any other active jobs back to queued
-      await db
-        .update(jobs)
-        .set({
-          status: 'queued',
-          startedAt: null,
-          updatedAt: new Date()
-        })
-        .where(and(eq(jobs.status, 'active'), ne(jobs.id, job.id)))
+      // STRICT SOLUTION: Only allow 1 active job at a time
+      // Mark all other active jobs as failed before starting the new one
       
-      // Update our job status to active
+      // First, get all currently active jobs to mark them as failed
+      const currentActiveJobs = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(eq(jobs.status, 'active'))
+      
+      // Get the job IDs that will be marked as failed for cleanup
+      const jobsToFail = currentActiveJobs
+      
+      // Delete output media records for jobs that will be marked as failed
+      if (jobsToFail.length > 0) {
+        const { mediaRecords } = await import('~/server/utils/schema')
+        const jobIdsToClean = jobsToFail.map(j => j.id)
+        
+        for (const jobId of jobIdsToClean) {
+          try {
+            const deletedMedia = await db.delete(mediaRecords)
+              .where(and(
+                eq(mediaRecords.jobId, jobId),
+                eq(mediaRecords.purpose, 'output')
+              ))
+              .returning({
+                uuid: mediaRecords.uuid,
+                filename: mediaRecords.filename
+              })
+            
+            if (deletedMedia.length > 0) {
+              console.log(`🗑️ Cleaned up ${deletedMedia.length} output media records for failed job ${jobId}`)
+            }
+          } catch (cleanupError) {
+            console.error(`⚠️ Failed to clean up media records for job ${jobId}:`, cleanupError)
+          }
+        }
+      }
+      
+      // Mark ALL currently active jobs as failed since we only allow 1 active job
+      let affectedRows = 0
+      if (jobsToFail.length > 0) {
+        const result = await db
+          .update(jobs)
+          .set({
+            status: 'failed',
+            sourceMediaUuid: null, // Clear sourceMediaUuid so failed jobs become test workflows when requeued
+            updatedAt: new Date(),
+            errorMessage: 'Job marked as failed - only 1 active job allowed at a time'
+          })
+          .where(eq(jobs.status, 'active'))
+        
+        affectedRows = result.rowCount || 0
+        console.log(`🧹 Marked ${affectedRows} active jobs as failed to enforce single active job limit`)
+      } else {
+        console.log(`✅ No active jobs found - proceeding with new job`)
+      }
+      
+      // Now update the current job to active status
       await db
         .update(jobs)
         .set({
@@ -294,10 +361,9 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         console.error('Failed to update job counts after job status changes:', error)
       }
       
-      // Force an immediate health check after sending a job
-      setTimeout(async () => {
-        await checkWorkerHealth()
-      }, 100)
+      // Job status is already set to active in our cleanup code above
+      
+      // We no longer need the immediate health check since we've proactively handled potential zombies
       
       return {
         success: true,
@@ -329,7 +395,14 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         console.error('Failed to update job counts after job failure:', error)
       }
       
-      throw new Error(`Failed to send job to worker: ${workerError.message}`)
+      // CRITICAL FIX: Return failure result instead of throwing error
+      // This allows continuous processing to continue without crashing
+      return {
+        success: false,
+        job_id: job.id,
+        status: 'failed',
+        message: `Job ${job.id} failed to send to worker: ${workerError.message}`
+      }
     }
     
   } catch (error: any) {
@@ -341,19 +414,24 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
   }
 }
 
-// Function to start single job processing
+// Function to start single job processing with 10-second wait
 export async function startSingleJob() {
   if (currentMode !== 'idle') {
     return { success: false, message: "Processing is already active" }
   }
   
   currentMode = 'single'
-  console.log('▶️ Starting single job processing...')
+  console.log('▶️ Starting single job processing - waiting 10 seconds before checking if idle...')
   
   // Update status manager
-  updateAutoProcessingStatus('enabled', 'Single job processing started', false)
+  updateAutoProcessingStatus('enabled', 'Single job processing started - waiting 10 seconds', false)
   
   try {
+    // Wait 10 seconds first
+    await new Promise(resolve => setTimeout(resolve, 10000))
+    console.log('⏰ 10 seconds elapsed, now checking if ComfyUI is idle...')
+    
+    // Now check if we can process
     const result = await processNextJob()
     
     // After single job completes, return to idle
@@ -384,13 +462,42 @@ export function startContinuousProcessing() {
   // Update status manager
   updateAutoProcessingStatus('enabled', 'Continuous processing is running', true)
   
-  // Set up interval for continuous processing
+  // Set up interval for continuous processing with better logging
   processingInterval = setInterval(async () => {
     if (currentMode === 'continuous') {
-      const result = await processNextJob()
-      // Only log when something interesting happens (not when skipping)
-      if (result.success || !('skip' in result && result.skip)) {
-        console.log('🔄 Processing result:', ('message' in result ? result.message : 'Unknown'))
+      try {
+        // CRITICAL FIX: Check for active jobs BEFORE calling processNextJob
+        // This prevents the race condition where we mark active jobs as failed
+        const db = getDb()
+        const activeJobCount = await db.select({ count: sql<number>`count(*)` })
+          .from(jobs)
+          .where(eq(jobs.status, 'active'))
+        
+        const activeCount = activeJobCount[0]?.count || 0
+        
+        if (activeCount > 0) {
+          // Skip this cycle - there are still active jobs running
+          // Log occasionally to show we're still monitoring
+          if (Math.random() < 0.05) { // 5% chance to log waiting messages
+            console.log(`🕐 Continuous processing: Waiting for ${activeCount} active job(s) to complete`)
+          }
+          return
+        }
+        
+        const result = await processNextJob()
+        // Only log when something interesting happens (not when skipping for idle wait)
+        if (result.success) {
+          console.log('🔄 Continuous processing: Job started successfully -', result.message)
+        } else if (!('skip' in result && result.skip)) {
+          console.log('🔄 Continuous processing: Failed -', result.message)
+        } else if (result.message.includes('waiting') || result.message.includes('busy')) {
+          // Log idle waiting less frequently to avoid spam
+          if (Math.random() < 0.1) { // 10% chance to log waiting messages
+            console.log('🕐 Continuous processing:', result.message)
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ Continuous processing error:', error.message)
       }
     }
   }, PROCESSING_INTERVAL)

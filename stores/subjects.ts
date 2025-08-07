@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia'
 
 interface Subject {
-  uuid: string
+  uuid?: string
   id: string
   name: string
   has_thumbnail?: boolean
-  thumbnail_data?: string
-  tags?: string[]
+  thumbnail_data?: string | null
+  tags?: any
+  created_at?: Date
+  updated_at?: Date
+  thumbnail?: string | null
 }
 
 interface SubjectItem {
@@ -22,6 +25,7 @@ interface ApiSubjectsResponse {
   total_pages?: number
 }
 
+
 export const useSubjectsStore = defineStore('subjects', () => {
   // State
   const subjects = ref<Subject[]>([])
@@ -32,6 +36,11 @@ export const useSubjectsStore = defineStore('subjects', () => {
   
   // Cache for different search queries
   const searchCache = ref<Map<string, SubjectItem[]>>(new Map())
+  
+  // Cache for full subject data with thumbnails (for SubjectGrid)
+  const fullSubjectsCache = ref<Map<string, Subject[]>>(new Map())
+  const fullSubjectsLoading = ref(false)
+  const fullSubjectsInitialized = ref(false)
   
   // Actions
   const loadSubjects = async (searchQuery = '', forceRefresh = false) => {
@@ -129,6 +138,79 @@ export const useSubjectsStore = defineStore('subjects', () => {
     return searchCache.value.get(cacheKey) || []
   }
 
+  // Load full subjects with thumbnails for SubjectGrid (with caching)
+  const loadFullSubjects = async (tags: string[] = [], forceRefresh = false): Promise<Subject[]> => {
+    // Create cache key based on tags
+    const cacheKey = tags.sort().join(',').toLowerCase()
+    
+    // Return cached data if available and not forcing refresh
+    if (!forceRefresh && fullSubjectsCache.value.has(cacheKey)) {
+      return fullSubjectsCache.value.get(cacheKey) || []
+    }
+    
+    fullSubjectsLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      params.append('limit', '10000')
+      params.append('page', '1')
+      params.append('include_images', 'true')
+      params.append('image_size', 'thumb')
+      params.append('sort_by', 'name')
+      params.append('sort_order', 'asc')
+      
+      // Add tags if provided
+      if (tags.length > 0) {
+        params.append('tags', tags.join(','))
+        params.append('tag_match_mode', 'partial')
+      }
+
+      const response = await $fetch(`/api/subjects/search?${params.toString()}`)
+      const subjects = (response.subjects || []).map((subject: any) => ({
+        ...subject,
+        uuid: subject.uuid || subject.id // Ensure uuid is available
+      }))
+      
+      // Cache the results
+      fullSubjectsCache.value.set(cacheKey, subjects)
+      
+      // If this is the base load (no tags), mark as initialized
+      if (tags.length === 0) {
+        fullSubjectsInitialized.value = true
+      }
+      
+      return subjects
+    } catch (error) {
+      console.error('Failed to load full subjects:', error)
+      const emptyResult: Subject[] = []
+      fullSubjectsCache.value.set(cacheKey, emptyResult)
+      return emptyResult
+    } finally {
+      fullSubjectsLoading.value = false
+    }
+  }
+
+  // Get cached full subjects
+  const getCachedFullSubjects = (tags: string[] = []): Subject[] | null => {
+    const cacheKey = tags.sort().join(',').toLowerCase()
+    return fullSubjectsCache.value.get(cacheKey) || null
+  }
+
+  // Initialize full subjects cache
+  const initializeFullSubjects = async (): Promise<Subject[]> => {
+    if (!fullSubjectsInitialized.value) {
+      return await loadFullSubjects()
+    }
+    return getCachedFullSubjects() || []
+  }
+
+  // Clear all caches
+  const clearAllCaches = () => {
+    searchCache.value.clear()
+    fullSubjectsCache.value.clear()
+    isInitialized.value = false
+    fullSubjectsInitialized.value = false
+  }
+
   return {
     // State
     subjects: readonly(subjects),
@@ -136,6 +218,8 @@ export const useSubjectsStore = defineStore('subjects', () => {
     isLoading: readonly(isLoading),
     isInitialized: readonly(isInitialized),
     lastSearchQuery: readonly(lastSearchQuery),
+    fullSubjectsLoading: readonly(fullSubjectsLoading),
+    fullSubjectsInitialized: readonly(fullSubjectsInitialized),
     
     // Actions
     loadSubjects,
@@ -145,6 +229,10 @@ export const useSubjectsStore = defineStore('subjects', () => {
     refreshSubjects,
     getSubjectById,
     fetchSubjectWithTags,
-    getSubjectItems
+    getSubjectItems,
+    loadFullSubjects,
+    getCachedFullSubjects,
+    initializeFullSubjects,
+    clearAllCaches
   }
 })

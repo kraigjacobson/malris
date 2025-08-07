@@ -9,7 +9,8 @@ export const useSearchStore = defineStore('search', () => {
       min_duration: 0,
       max_duration: null as number | null
     },
-    sortOptions: { label: 'Random', value: 'random' }
+    sortOptions: { label: 'Random', value: 'random' },
+    limitOptions: { label: '50', value: 50 }
   })
 
   // Subject search filters state
@@ -67,7 +68,8 @@ export const useSearchStore = defineStore('search', () => {
         min_duration: 0,
         max_duration: null
       },
-      sortOptions: { label: 'Random', value: 'random' }
+      sortOptions: { label: 'Random', value: 'random' },
+      limitOptions: { label: '50', value: 50 }
     }
     await saveVideoSearch()
   }

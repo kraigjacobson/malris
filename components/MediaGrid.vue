@@ -101,39 +101,9 @@
               />
             </div>
           </div>
-
-          <!-- Media Info (always show, but expand when images are hidden) -->
-          <div class="p-3" :class="{ 'pb-6': !settingsStore.displayImages }">
-            <h3 class="font-medium text-sm text-gray-900 dark:text-white truncate">
-              {{ media.filename }}
-            </h3>
-            <p class="text-xs text-gray-500 mt-1">
-              {{ media.type }} • {{ media.purpose }}
-            </p>
-            <div v-if="media.tags && media.tags.length > 0" class="flex flex-wrap gap-1 mt-2">
-              <span
-                v-for="tag in media.tags.slice(0, 3)"
-                :key="tag"
-                class="px-2 py-1 text-xs rounded"
-              >
-                {{ tag }}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 
-      <!-- Infinite Scroll Trigger -->
-      <div
-        v-if="hasMore && !loading"
-        ref="infiniteScrollTrigger"
-        class="h-16 flex items-center justify-center touch-none"
-      >
-        <div v-if="loadingMore" class="flex items-center gap-2">
-          <UIcon name="i-heroicons-arrow-path" class="animate-spin text-lg" />
-          <span class="text-sm text-gray-500">Loading more...</span>
-        </div>
-      </div>
     </div>
 
     <!-- No Results -->
@@ -171,15 +141,7 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  loadingMore: {
-    type: Boolean,
-    default: false
-  },
   hasSearched: {
-    type: Boolean,
-    default: false
-  },
-  hasMore: {
     type: Boolean,
     default: false
   },
@@ -197,7 +159,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['media-click', 'load-more', 'video-status-updated'])
+const emit = defineEmits(['media-click', 'video-status-updated'])
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
@@ -205,8 +167,6 @@ const settingsStore = useSettingsStore()
 // Video hover state
 const hoveredVideoId = ref(null)
 
-// Infinite scroll trigger ref
-const infiniteScrollTrigger = ref(null)
 
 // Status dialog state
 const showStatusDialog = ref(false)
@@ -250,55 +210,6 @@ const formatDuration = (seconds) => {
   }
 }
 
-// Intersection Observer for infinite scroll
-let observer = null
-
-onMounted(() => {
-  if (infiniteScrollTrigger.value) {
-    observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        if (entry.isIntersecting && props.hasMore && !props.loading && !props.loadingMore) {
-          emit('load-more')
-        }
-      },
-      {
-        threshold: 0.05,
-        rootMargin: '1000px'
-      }
-    )
-    observer.observe(infiniteScrollTrigger.value)
-  }
-})
-
-onUnmounted(() => {
-  if (observer) {
-    observer.disconnect()
-  }
-})
-
-// Watch for changes in the trigger element
-watch(() => infiniteScrollTrigger.value, (newTrigger) => {
-  if (observer) {
-    observer.disconnect()
-  }
-  
-  if (newTrigger) {
-    observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        if (entry.isIntersecting && props.hasMore && !props.loading && !props.loadingMore) {
-          emit('load-more')
-        }
-      },
-      {
-        threshold: 0.1,
-        rootMargin: '500px'
-      }
-    )
-    observer.observe(newTrigger)
-  }
-})
 
 // Video hover functionality
 const handleVideoHover = async (videoId, isHovering) => {
@@ -457,14 +368,35 @@ const getVideoPosterUrl = (media) => {
   // Use direct thumbnail if available
   if (media.thumbnail) return media.thumbnail
   
-  // Check for subject thumbnail UUID
-  if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
-    return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
+  // For destination videos, ONLY use video thumbnails - never subject thumbnails
+  if (media.purpose === 'dest') {
+    // Only check for video thumbnail UUID - no fallback to subject thumbnail
+    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
+    }
+    // Return undefined to show placeholder instead of subject thumbnail
+    return undefined
   }
   
-  // Check for thumbnail UUID
-  if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
-    return `/api/media/${media.thumbnail_uuid}/image?size=sm`
+  // For output videos, prioritize video thumbnail over subject thumbnail
+  if (media.purpose === 'output') {
+    // Check for video thumbnail UUID first
+    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
+    }
+    // Fallback to subject thumbnail for output videos
+    if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
+      return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
+    }
+  } else {
+    // For other videos (source, intermediate), prioritize subject thumbnail
+    if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
+      return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
+    }
+    // Fallback to video thumbnail
+    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
+    }
   }
   
   // No valid poster available

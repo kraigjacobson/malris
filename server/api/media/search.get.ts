@@ -454,8 +454,10 @@ export default defineEventHandler(async (event) => {
       access_count: result.access_count,
       completions: result.completions,
       tags_confirmed: result.tags_confirmed,
-      // Add thumbnail processing flags - prioritize subject thumbnail for videos
-      has_thumbnail: result.type === 'video' ? !!result.subject_thumbnail_uuid : !!result.thumbnail_uuid,
+      // Add thumbnail processing flags - prioritize output thumbnail for output videos, subject thumbnail for others
+      has_thumbnail: result.type === 'video' ?
+        (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) :
+        !!result.thumbnail_uuid,
       thumbnail: null as string | null,
       // Include raw thumbnail data for processing
       _video_thumbnail_data: result.video_thumbnail_data,
@@ -469,21 +471,44 @@ export default defineEventHandler(async (event) => {
       console.log('🖼️ Processing thumbnails and images for media results...')
       
       for (const result of transformedResults) {
-        // Handle video thumbnails - prioritize subject thumbnail over video thumbnail
+        // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
         if (result.type === 'video') {
           let encryptedData = null
           let filename = null
           let thumbnailType = 'none'
           
-          // Prioritize subject thumbnail for videos
-          if (result._subject_thumbnail_data) {
-            encryptedData = result._subject_thumbnail_data
-            filename = result._subject_thumbnail_filename
-            thumbnailType = 'subject'
-          } else if (result._video_thumbnail_data) {
-            encryptedData = result._video_thumbnail_data
-            filename = result._video_thumbnail_filename
-            thumbnailType = 'video'
+          // For destination videos, ONLY use video thumbnails - never subject thumbnails
+          if (result.purpose === 'dest') {
+            // Only check for video thumbnail - no fallback to subject thumbnail
+            if (result._video_thumbnail_data) {
+              encryptedData = result._video_thumbnail_data
+              filename = result._video_thumbnail_filename
+              thumbnailType = 'video'
+            }
+            // Don't set any thumbnail data for dest videos without video thumbnails
+          }
+          // For output videos, prioritize video thumbnail over subject thumbnail
+          else if (result.purpose === 'output') {
+            if (result._video_thumbnail_data) {
+              encryptedData = result._video_thumbnail_data
+              filename = result._video_thumbnail_filename
+              thumbnailType = 'video'
+            } else if (result._subject_thumbnail_data) {
+              encryptedData = result._subject_thumbnail_data
+              filename = result._subject_thumbnail_filename
+              thumbnailType = 'subject'
+            }
+          } else {
+            // For other videos (source, intermediate), prioritize subject thumbnail
+            if (result._subject_thumbnail_data) {
+              encryptedData = result._subject_thumbnail_data
+              filename = result._subject_thumbnail_filename
+              thumbnailType = 'subject'
+            } else if (result._video_thumbnail_data) {
+              encryptedData = result._video_thumbnail_data
+              filename = result._video_thumbnail_filename
+              thumbnailType = 'video'
+            }
           }
           
           if (encryptedData && filename && filename !== null) {

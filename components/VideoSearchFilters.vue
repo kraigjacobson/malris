@@ -12,90 +12,58 @@
       </div>
     </template>
     
-    <div v-show="!isCollapsed" class="space-y-3">
-    <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-        Search by Tags
-      </label>
-      <UInputTags
-        v-model="searchStore.videoSearch.selectedTags"
-        placeholder="Add tags (e.g., 1girl, long_hair, anime)"
-        class="w-full"
-        enterkeyhint="enter"
-        inputmode="text"
-      />
-    </div>
-    
-    <!-- Job Assignment Filter -->
-    <div>
-      <UCheckbox
-        v-model="searchStore.videoSearch.excludeAssignedVideos"
-        label="Hide Used"
-        class="text-sm"
-      />
-    </div>
-    
-    <!-- Duration Filters -->
-    <div class="grid grid-cols-2 gap-2">
-      <div>
-        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Min Duration (seconds)
-        </label>
+    <div v-show="!isCollapsed" class="space-y-2">
+      <!-- Tags and Hide Used in one row -->
+      <div class="grid grid-cols-1 gap-2">
+        <UInputTags
+          v-model="searchStore.videoSearch.selectedTags"
+          placeholder="Add tags (e.g., 1girl, long_hair, anime)"
+          class="w-full"
+          enterkeyhint="enter"
+          inputmode="text"
+          size="sm"
+        />
+        <UCheckbox
+          v-model="searchStore.videoSearch.excludeAssignedVideos"
+          label="Hide Used"
+          class="text-xs"
+        />
+      </div>
+      
+      <!-- Duration, Sort, and Limit in compact grid -->
+      <div class="grid grid-cols-4 gap-2 items-end">
         <UInput
           v-model.number="searchStore.videoSearch.durationFilters.min_duration"
           type="number"
-          placeholder="0"
+          placeholder="Min (sec)"
           min="0"
           class="w-full"
           size="sm"
         />
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Max Duration (seconds)
-        </label>
         <UInput
           v-model.number="searchStore.videoSearch.durationFilters.max_duration"
           type="number"
-          placeholder="No limit"
+          placeholder="Max (sec)"
           min="0"
           class="w-full"
           size="sm"
         />
+        <USelectMenu
+          v-model="searchStore.videoSearch.sortOptions"
+          :items="sortOptionsItems"
+          class="w-full"
+          size="sm"
+          placeholder="Sort"
+        />
+        <USelectMenu
+          v-model="searchStore.videoSearch.limitOptions"
+          :items="limitOptionsItems"
+          class="w-full"
+          size="sm"
+          placeholder="Limit"
+        />
       </div>
-    </div>
-    
-    <!-- Sort Options -->
-    <div>
-      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-        Sort By
-      </label>
-      <USelectMenu
-        v-model="searchStore.videoSearch.sortOptions"
-        :items="sortOptionsItems"
-        class="w-full"
-        size="sm"
-      />
-    </div>
-    
-    <!-- Search and Clear Buttons -->
-    <div class="mt-3 flex gap-2">
-      <UButton
-        color="primary"
-        size="sm"
-        @click="handleSearch"
-        :loading="loading"
-      >
-        Search Videos
-      </UButton>
-      <UButton
-        variant="outline"
-        size="sm"
-        @click="$emit('clear')"
-      >
-        Clear Filters
-      </UButton>
-    </div>
+      
     </div>
   </UCard>
 </template>
@@ -110,7 +78,6 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['search', 'clear'])
 
 const searchStore = useSearchStore()
 
@@ -121,11 +88,6 @@ const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
-// Auto-collapse when search is performed
-const handleSearch = () => {
-  emit('search')
-  isCollapsed.value = true
-}
 
 // Sort options
 const sortOptionsItems = [
@@ -140,5 +102,14 @@ const sortOptionsItems = [
   { label: 'File Size (Smallest)', value: 'file_size_asc' },
   { label: 'Filename (A-Z)', value: 'filename_asc' },
   { label: 'Filename (Z-A)', value: 'filename_desc' }
+]
+
+// Limit options
+const limitOptionsItems = [
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+  { label: '200', value: 200 },
+  { label: '500', value: 500 }
 ]
 </script>

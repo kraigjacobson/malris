@@ -371,8 +371,24 @@
             </h3>
           </div>
           
-          <!-- Bulk Actions -->
-          <div v-if="hasSelectedJobs" class="flex items-center gap-2">
+          <!-- Results Limit and Bulk Actions -->
+          <div class="flex items-center gap-2">
+            <!-- Results Limit Dropdown -->
+            <div v-if="!hasSelectedJobs" class="flex items-center gap-2">
+              <label class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                Results:
+              </label>
+              <USelectMenu
+                v-model="itemsPerPage"
+                :items="limitOptions"
+                class="w-24"
+                size="xs"
+                @change="handleLimitChange"
+              />
+            </div>
+            
+            <!-- Bulk Actions -->
+            <div v-if="hasSelectedJobs" class="flex items-center gap-2">
             <UButton
               size="xs"
               color="primary"
@@ -404,6 +420,7 @@
             >
               Clear
             </UButton>
+            </div>
           </div>
         </div>
       </template>
@@ -470,9 +487,9 @@
               >
                 S
               </UBadge>
-              <!-- Desktop: Show progress bar when available -->
-              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="hidden sm:flex items-center space-x-2">
-                <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+              <!-- Show progress bar when available (mobile and desktop) -->
+              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
+                <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
                   <div
                     class="bg-blue-600 h-1 rounded-full transition-all duration-300"
                     :style="{ width: `${job.progress}%` }"
@@ -583,7 +600,16 @@ const showSubmitJobModal = ref(false)
 
 // Pagination
 const pageNumber = ref(1)
-const itemsPerPage = 20
+const itemsPerPage = ref(25)
+
+// Limit options for dropdown
+const limitOptions = [
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+  { label: '200', value: 200 },
+  { label: '500', value: 500 }
+]
 
 // Local reactive filter state
 const currentFilter = ref('')
@@ -623,7 +649,12 @@ const handleSubjectFilterSelection = async (selected) => {
     pageNumber.value = 1
     const statusFilter = jobsStore.filters.status || ''
     const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-    await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, selected.value, sourceTypeFilter)
+    
+    // Fetch jobs and update queue status simultaneously
+    await Promise.all([
+      jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter),
+      jobsStore.fetchQueueStatus()
+    ])
   } else {
     await clearSubjectFilter()
   }
@@ -635,7 +666,12 @@ const clearSubjectFilter = async () => {
   pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, '', sourceTypeFilter)
+  
+  // Fetch jobs and update queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, '', sourceTypeFilter),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
 // Source type filter handlers
@@ -644,7 +680,12 @@ const handleSourceTypeFilterSelection = async (selected) => {
   pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, selected)
+  
+  // Fetch jobs and update queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
 const clearSourceTypeFilter = async () => {
@@ -652,11 +693,16 @@ const clearSourceTypeFilter = async () => {
   pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
-  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, 'all')
+  
+  // Fetch jobs and update queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all'),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
 // Computed properties
-const totalPages = computed(() => Math.ceil(jobsStore.totalJobs / itemsPerPage))
+const totalPages = computed(() => Math.ceil(jobsStore.totalJobs / itemsPerPage.value))
 
 // Check if any processing is currently active
 const isAnyProcessingActive = computed(() => {
@@ -745,10 +791,15 @@ const filterByStatus = async (status) => {
   jobsStore.filters.jobId = ''
   jobsStore.filters.jobType = ''
   
-  // Fetch jobs with new filter
+  // Fetch jobs with new filter and update queue status
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, status, subjectUuid, sourceTypeFilter)
+  
+  // Use Promise.all to fetch both jobs and queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
 const refreshJobsWithCurrentState = async () => {
@@ -756,7 +807,7 @@ const refreshJobsWithCurrentState = async () => {
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter),
+    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
     jobsStore.fetchQueueStatus()
   ])
 }
@@ -887,7 +938,26 @@ const handlePageChange = async (newPage) => {
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await jobsStore.fetchJobs(true, newPage, itemsPerPage, statusFilter, subjectUuid, sourceTypeFilter)
+  
+  // Fetch jobs and update queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, newPage, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
+    jobsStore.fetchQueueStatus()
+  ])
+}
+
+// Handle limit change
+const handleLimitChange = async () => {
+  pageNumber.value = 1 // Reset to first page when changing limit
+  const statusFilter = jobsStore.filters.status || ''
+  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  
+  // Fetch jobs and update queue status simultaneously
+  await Promise.all([
+    jobsStore.fetchJobs(true, 1, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
+    jobsStore.fetchQueueStatus()
+  ])
 }
 
 const viewJobDetails = async (jobId) => {
@@ -947,13 +1017,24 @@ const getStatusDisplayText = (status) => {
 const getJobActions = (job) => {
   const actions = []
   
-  // Add cancel option for queued/active/need_input jobs
-  if (['queued', 'active', 'need_input'].includes(job.status)) {
+  // Add cancel option for queued/active/need_input/failed jobs
+  if (['queued', 'active', 'need_input', 'failed'].includes(job.status)) {
     actions.push({
       label: 'Cancel Job',
       icon: 'i-heroicons-x-mark',
       onSelect: async () => {
         await cancelJob(job)
+      }
+    })
+  }
+  
+  // Add re-queue option specifically for failed jobs
+  if (job.status === 'failed') {
+    actions.push({
+      label: 'Re-queue Job',
+      icon: 'i-heroicons-arrow-path-rounded-square',
+      onSelect: async () => {
+        await requeueJob(job)
       }
     })
   }
@@ -1094,6 +1175,58 @@ const retryJob = async (job) => {
     console.error('Failed to retry job:', error)
     
     let errorMessage = 'Failed to retry job'
+    if (error.data?.statusMessage) {
+      errorMessage = error.data.statusMessage
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    // Use confirm dialog for error messages
+    const { confirm } = useConfirmDialog()
+    await confirm({
+      title: 'Error',
+      message: errorMessage,
+      confirmLabel: 'OK',
+      cancelLabel: '',
+      variant: 'error'
+    })
+  }
+}
+
+// Job re-queue method
+const requeueJob = async (job) => {
+  try {
+    const { confirm } = useConfirmDialog()
+    
+    const confirmed = await confirm({
+      title: 'Re-queue Failed Job',
+      message: `Are you sure you want to re-queue job ${job.id}? This will delete any output media and reset the job to queued status.`,
+      confirmLabel: 'Re-queue Job',
+      cancelLabel: 'Cancel',
+      variant: 'primary'
+    })
+    
+    if (!confirmed) return
+    
+    await useApiFetch(`jobs/${job.id}/requeue`, {
+      method: 'POST'
+    })
+    
+    // Show success toast
+    const toast = useToast()
+    toast.add({
+      title: 'Job Re-queued Successfully',
+      description: `Job ${job.id} has been re-queued and is ready for processing.`,
+      color: 'success',
+      duration: 2000
+    })
+    
+    // Refresh the jobs list after re-queue
+    await refreshJobsWithCurrentState()
+  } catch (error) {
+    console.error('Failed to re-queue job:', error)
+    
+    let errorMessage = 'Failed to re-queue job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
     } else if (error.message) {
@@ -1264,14 +1397,14 @@ const bulkQueue = async () => {
 const bulkCancel = async () => {
   const jobsToCancel = selectedJobsArray.value.filter(jobId => {
     const job = jobsStore.jobs.find(j => j.id === jobId)
-    return job && ['queued', 'active', 'need_input'].includes(job.status)
+    return job && ['queued', 'active', 'need_input', 'failed'].includes(job.status)
   })
   
   if (jobsToCancel.length === 0) {
     const { confirm } = useConfirmDialog()
     await confirm({
       title: 'No Jobs to Cancel',
-      message: 'Selected jobs cannot be canceled. Only queued, active, or need_input jobs can be canceled.',
+      message: 'Selected jobs cannot be canceled. Only queued, active, need_input, or failed jobs can be canceled.',
       confirmLabel: 'OK',
       cancelLabel: '',
       variant: 'warning'
@@ -1359,13 +1492,7 @@ const bulkDelete = async () => {
   }
 }
 
-// Handle page visibility changes (simplified since WebSocket handles real-time updates)
-const handleVisibilityChange = () => {
-  if (!document.hidden && !jobsStore.wsConnected) {
-    // Reconnect WebSocket if page becomes visible and connection is lost
-    jobsStore.connectWebSocket()
-  }
-}
+// Page visibility changes are now handled globally by the websocket plugin
 
 
 // Reset video states when modal is closed
@@ -1401,13 +1528,12 @@ onMounted(async () => {
   // Set default filter to need_input after initial data is loaded
   await filterByStatus('need_input')
   
-  // Listen for page visibility changes
-  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // Page visibility changes are now handled globally by the websocket plugin
 })
 
 onUnmounted(() => {
-  jobsStore.cleanup()
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  // WebSocket cleanup is now handled globally by the websocket plugin
+  // Just clear any page-specific state here if needed
 })
 
 // Page head

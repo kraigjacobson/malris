@@ -75,13 +75,13 @@
     </div>
 
     <!-- Loading More Indicator -->
-    <div v-if="loadingMore && subjects.length > 0" class="text-center py-6">
+    <div v-if="loadingMore && subjects.length > 0 && !disableInfiniteScroll" class="text-center py-6">
       <UIcon name="i-heroicons-arrow-path-20-solid" class="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
       <p class="text-sm text-gray-500 dark:text-gray-400">Loading more subjects...</p>
     </div>
 
     <!-- Scroll Trigger Element -->
-    <div ref="scrollTriggerRef" class="h-1"></div>
+    <div v-if="!disableInfiniteScroll" ref="scrollTriggerRef" class="h-1"></div>
   </div>
 </template>
 
@@ -130,6 +130,10 @@ const props = defineProps({
   displayImages: {
     type: Boolean,
     default: true
+  },
+  disableInfiniteScroll: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -164,7 +168,7 @@ const handleImageError = (event) => {
 
 // Setup intersection observer for infinite scroll
 const setupIntersectionObserver = () => {
-  if (!scrollTriggerRef.value) return
+  if (!scrollTriggerRef.value || props.disableInfiniteScroll) return
 
   observer = new IntersectionObserver(
     (entries) => {
@@ -193,9 +197,11 @@ const cleanupObserver = () => {
 
 // Setup observer when component mounts
 onMounted(() => {
-  nextTick(() => {
-    setupIntersectionObserver()
-  })
+  if (!props.disableInfiniteScroll) {
+    nextTick(() => {
+      setupIntersectionObserver()
+    })
+  }
 })
 
 // Cleanup when component unmounts
@@ -205,11 +211,13 @@ onUnmounted(() => {
 
 // Re-setup observer when subjects change (in case the trigger element gets recreated)
 watch(() => props.subjects.length, () => {
-  nextTick(() => {
-    if (scrollTriggerRef.value && !observer) {
-      setupIntersectionObserver()
-    }
-  })
+  if (!props.disableInfiniteScroll) {
+    nextTick(() => {
+      if (scrollTriggerRef.value && !observer) {
+        setupIntersectionObserver()
+      }
+    })
+  }
 })
 
 </script>

@@ -121,27 +121,54 @@
           </div>
         </div>
         
-        <!-- Placeholder for future utilities -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 opacity-50">
+        <!-- Thumbnail Regeneration Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
           <div class="flex items-center mb-4">
-            <UIcon name="i-heroicons-wrench-screwdriver" class="w-8 h-8 text-gray-400 mr-3" />
-            <h2 class="text-xl font-semibold text-gray-500">
-              More Utilities
+            <UIcon name="i-heroicons-photo" class="w-8 h-8 text-purple-500 mr-3" />
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+              Thumbnail Regeneration
             </h2>
           </div>
           
-          <p class="text-gray-400 mb-6">
-            Additional system utilities will be added here as needed.
+          <p class="text-gray-600 dark:text-gray-400 mb-6">
+            Regenerate thumbnails for destination videos and populate missing metadata using ffprobe analysis.
           </p>
           
-          <UButton
-            disabled
-            color="neutral"
-            size="lg"
-            block
-          >
-            Coming Soon
-          </UButton>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Batch Size (1-100)
+            </label>
+            <UInput
+              v-model.number="thumbnailBatchSize"
+              type="number"
+              :min="1"
+              :max="100"
+              placeholder="50"
+              class="w-full"
+            />
+          </div>
+          
+          <div class="flex justify-end">
+            <UButton
+              :loading="isRegeneratingThumbnails"
+              :disabled="isRegeneratingThumbnails"
+              color="primary"
+              size="lg"
+              @click="regenerateThumbnails"
+            >
+              <UIcon name="i-heroicons-photo" class="mr-2" />
+              {{ isRegeneratingThumbnails ? 'Processing...' : `Regenerate Next ${thumbnailBatchSize} Thumbnails` }}
+            </UButton>
+          </div>
+          
+          <div v-if="lastThumbnailResult" class="mt-4 p-3 rounded-md" :class="lastThumbnailResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+            <p class="text-sm">{{ lastThumbnailResult.message }}</p>
+            <div v-if="lastThumbnailResult.success && lastThumbnailResult.remainingWithoutMetadata !== undefined" class="mt-2 text-xs opacity-75">
+              <div>
+                Videos without metadata remaining: {{ lastThumbnailResult.remainingWithoutMetadata }}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -164,6 +191,11 @@ const queueStatus = ref<{
   isProcessing: boolean
   currentBatch: { processed: number; total: number; errors: number }
 } | null>(null)
+
+// Thumbnail regeneration state
+const isRegeneratingThumbnails = ref(false)
+const thumbnailBatchSize = ref(50) // Default to 50
+const lastThumbnailResult = ref<{ success: boolean; message: string; remainingWithoutMetadata?: number } | null>(null)
 
 // Auto-refresh management
 let refreshInterval: NodeJS.Timeout | null = null
@@ -284,6 +316,74 @@ const tagAllUntaggedVideos = async () => {
     console.error('Error tagging videos:', error)
   } finally {
     isTagging.value = false
+  }
+}
+
+// Function to regenerate thumbnails
+const regenerateThumbnails = async () => {
+  try {
+    isRegeneratingThumbnails.value = true
+    lastThumbnailResult.value = null
+    
+    const toast = useToast()
+    
+    // Show loading toast
+    toast.add({
+      title: 'Starting Thumbnail Regeneration',
+      description: `Processing next batch of ${thumbnailBatchSize.value} videos...`,
+      icon: 'i-heroicons-photo'
+    })
+    
+    // Call the API to regenerate thumbnails
+    const response = await $fetch<{
+      success: boolean;
+      processed: number;
+      remainingWithoutMetadata: number;
+      message: string
+    }>('/api/media/regenerate-thumbnails', {
+      method: 'POST',
+      body: {
+        batchSize: thumbnailBatchSize.value
+      }
+    })
+    
+    if (!response.success) {
+      throw new Error(response.message)
+    }
+    
+    // Store result for display
+    lastThumbnailResult.value = {
+      success: response.success,
+      message: response.message,
+      remainingWithoutMetadata: response.remainingWithoutMetadata
+    }
+    
+    // Show success toast
+    toast.add({
+      title: 'Thumbnails Regenerated',
+      description: `Processed ${response.processed} videos. ${response.remainingWithoutMetadata} videos without metadata remaining.`,
+      icon: 'i-heroicons-check-circle',
+      color: 'success'
+    })
+    
+  } catch (error: any) {
+    const toast = useToast()
+    
+    // Store error result
+    lastThumbnailResult.value = {
+      success: false,
+      message: error?.message || 'Failed to regenerate thumbnails'
+    }
+    
+    toast.add({
+      title: 'Thumbnail Regeneration Failed',
+      description: error?.message || 'Failed to regenerate thumbnails',
+      icon: 'i-heroicons-exclamation-triangle',
+      color: 'error'
+    })
+    console.error('Error regenerating thumbnails:', error)
+  } finally {
+    isRegeneratingThumbnails.value = false
   }
 }
 </script>

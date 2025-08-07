@@ -910,7 +910,7 @@ const isModalOpen = ref(false)
 const currentPage = ref(1)
 const pagination = ref({
   total: 0,
-  limit: 16,
+  limit: 25,
   offset: 0,
   has_more: false
 })
@@ -1008,9 +1008,11 @@ const sortOrderOptions = [
 ]
 
 const limitOptions = [
-  { label: '16 per page', value: 16 },
-  { label: '32 per page', value: 32 },
-  { label: '48 per page', value: 48 }
+  { label: '25 results', value: 25 },
+  { label: '50 results', value: 50 },
+  { label: '100 results', value: 100 },
+  { label: '200 results', value: 200 },
+  { label: '500 results', value: 500 }
 ]
 
 
@@ -1214,7 +1216,7 @@ const clearFilters = () => {
     sort_by: { label: 'Random', value: 'random' },
     sort_order: { label: 'Ascending', value: 'asc' }
   }
-  pagination.value.limit = 16
+  pagination.value.limit = 25
   currentPage.value = 1
   
   // Clear results and reset to initial state
@@ -1224,7 +1226,7 @@ const clearFilters = () => {
   // Reset pagination
   pagination.value = {
     total: 0,
-    limit: 16,
+    limit: 25,
     offset: 0,
     has_more: false
   }

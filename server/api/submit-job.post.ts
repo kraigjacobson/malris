@@ -75,7 +75,6 @@ export default defineEventHandler(async (event) => {
       job_id: jobId,
       status: 'queued',
       job_type: jobData.job_type,
-      workflow_type: 'standard',
       created_at: newJob.createdAt,
       message: `Job submitted successfully. Type: ${jobData.job_type}`
     }

@@ -94,6 +94,7 @@
           :error="error"
           :selection-mode="true"
           :display-images="displayImages"
+          :disable-infinite-scroll="true"
           @subject-click="selectSubject"
           @load-more="loadMore"
         />
@@ -105,6 +106,7 @@
 <script setup>
 import { nextTick } from 'vue'
 import { useSearchStore } from '~/stores/search'
+import { useSubjectsStore } from '~/stores/subjects'
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 
@@ -125,8 +127,9 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
-// Use the search store, tags composable, and settings
+// Use the search store, subjects store, tags composable, and settings
 const searchStore = useSearchStore()
+const subjectsStore = useSubjectsStore()
 const { filterHairTags } = useTags()
 const { displayImages } = useSettings()
 
@@ -157,7 +160,6 @@ const hasMore = ref(true)
 const currentPage = ref(1)
 const hasSearched = ref(false)
 const isClearing = ref(false)
-const limit = 48
 
 
 // Video hover functionality (similar to MediaGrid)
@@ -221,51 +223,31 @@ const handleVideoHover = () => {
 
 
 
-// Load subjects function
-const loadSubjects = async (reset = false) => {
-  if (reset) {
-    loading.value = true
-    subjects.value = []
-    currentPage.value = 1
-  } else {
-    loadingMore.value = true
-  }
+// Load subjects function - use cached subjects from store
+const loadSubjects = async () => {
+  loading.value = true
+  subjects.value = []
+  currentPage.value = 1
+  loadingMore.value = false
   
   error.value = null
   hasSearched.value = true
 
   try {
-    const params = new URLSearchParams()
+    // Check if we have cached subjects first
+    const cachedSubjects = subjectsStore.getCachedFullSubjects(searchStore.subjectSearch.selectedTags)
     
-    params.append('limit', limit.toString())
-    params.append('page', currentPage.value.toString())
-    params.append('include_images', 'true')
-    params.append('image_size', 'thumb')
-    params.append('sort_by', 'name')
-    params.append('sort_order', 'asc')
-    
-    // Add search query if provided
-    if (searchQuery.value.trim()) {
-      params.append('name_pattern', searchQuery.value.trim())
-    }
-    
-    // Add selected tags if provided
-    if (searchStore.subjectSearch.selectedTags.length > 0) {
-      params.append('tags', searchStore.subjectSearch.selectedTags.join(','))
-      // Always use partial match mode
-      params.append('tag_match_mode', 'partial')
-    }
-
-    const response = await useApiFetch(`subjects/search?${params.toString()}`)
-
-    if (reset) {
-      subjects.value = response.subjects || []
+    if (cachedSubjects) {
+      console.log('✅ Using cached subjects:', cachedSubjects.length)
+      subjects.value = filterSubjects(cachedSubjects)
     } else {
-      subjects.value.push(...(response.subjects || []))
+      console.log('🔄 Loading subjects from API...')
+      const loadedSubjects = await subjectsStore.loadFullSubjects(searchStore.subjectSearch.selectedTags)
+      subjects.value = filterSubjects(loadedSubjects)
     }
-
-    // Check if there are more results based on pagination
-    hasMore.value = response.pagination?.has_more || false
+    
+    // No more pagination needed since we load all at once
+    hasMore.value = false
 
   } catch (err) {
     console.error('Error loading subjects:', err)
@@ -276,12 +258,21 @@ const loadSubjects = async (reset = false) => {
   }
 }
 
-// Load more subjects
-const loadMore = () => {
-  if (hasMore.value && !loadingMore.value) {
-    currentPage.value++
-    loadSubjects(false)
+// Filter subjects based on search query
+const filterSubjects = (allSubjects) => {
+  if (!searchQuery.value.trim()) {
+    return allSubjects
   }
+  
+  const query = searchQuery.value.trim().toLowerCase()
+  return allSubjects.filter(subject =>
+    subject.name.toLowerCase().includes(query)
+  )
+}
+
+// Load more subjects - no longer needed but keeping for template compatibility
+const loadMore = () => {
+  // No-op since we load all subjects at once
 }
 
 // Select subject
@@ -308,7 +299,7 @@ const selectSubject = (subject) => {
 const performSearch = () => {
   currentPage.value = 1
   hasMore.value = true
-  loadSubjects(true)
+  loadSubjects()
   
   // Close mobile keyboard
   nextTick(() => {
@@ -400,7 +391,7 @@ watch(searchQuery, (newValue) => {
     // If search is cleared naturally (not via clear button), load all subjects
     currentPage.value = 1
     hasMore.value = true
-    loadSubjects(true)
+    loadSubjects()
   }
 })
 </script>
