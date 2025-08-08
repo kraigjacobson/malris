@@ -956,6 +956,7 @@ const hoveredVideoId = ref(null)
 // Slideshow state
 const isSlideshow = ref(false)
 const slideshowVideo = ref(null)
+const slideshowNextVideo = ref(null) // Preload next video for seamless transitions
 const slideshowVideos = ref([]) // Array of video UUIDs from database
 const slideshowCurrentIndex = ref(-1)
 const slideshowPaused = ref(false)
@@ -1687,6 +1688,61 @@ const startSlideshow = async () => {
   }
 }
 
+const addVideoEventListeners = (videoElement) => {
+  // Add error handling for incompatible videos
+  videoElement.addEventListener('error', (e) => {
+    const error = e.target?.error
+    
+    // Ignore errors when slideshow is not active (during cleanup)
+    if (!isSlideshow.value) {
+      return
+    }
+    
+    // Ignore empty src errors (happens during cleanup)
+    if (error?.code === 4 && error?.message?.includes('Empty src')) {
+      return
+    }
+    
+    console.error('Slideshow video error:', error)
+    
+    // Auto-advance on any video error
+    if (isSlideshow.value && !isLoadingVideo.value) {
+      setTimeout(() => {
+        if (isSlideshow.value) {
+          slideshowNext()
+        }
+      }, 500)
+    }
+  })
+  
+  // Add event listener for when video ends
+  videoElement.addEventListener('ended', () => {
+    console.log('Video ended, advancing to next...')
+    if (isSlideshow.value && !slideshowPaused.value) {
+      slideshowNext()
+    }
+  })
+  
+  // Check if we need to load next batch when getting close to the end
+  videoElement.addEventListener('timeupdate', () => {
+    if (!isSlideshow.value) return
+    
+    if (videoElement.currentTime > 0.5) {
+      checkAndLoadNextBatch()
+    }
+  })
+  
+  // Preload next video when current video is halfway through
+  videoElement.addEventListener('timeupdate', () => {
+    if (!isSlideshow.value) return
+    
+    if (videoElement.duration > 0 &&
+        videoElement.currentTime / videoElement.duration > 0.5) {
+      preloadNextVideo()
+    }
+  })
+}
+
 const createSlideshowVideo = () => {
   if (!slideshowVideo.value) {
     slideshowVideo.value = document.createElement('video')
@@ -1710,39 +1766,13 @@ const createSlideshowVideo = () => {
     slideshowVideo.value.loop = false  // Don't loop individual videos
     slideshowVideo.value.setAttribute('webkit-playsinline', 'true')
     slideshowVideo.value.setAttribute('playsinline', 'true')
-    slideshowVideo.value.setAttribute('preload', 'none')
+    slideshowVideo.value.setAttribute('preload', 'metadata')
     slideshowVideo.value.setAttribute('crossorigin', 'anonymous')
     slideshowVideo.value.setAttribute('x-webkit-airplay', 'allow')
     slideshowVideo.value.setAttribute('disablePictureInPicture', 'true')
     
-    // Add error handling for incompatible videos
-    slideshowVideo.value.addEventListener('error', (e) => {
-      const error = e.target?.error
-      console.error('Slideshow video error:', error)
-      
-      // Auto-advance on any video error
-      if (isSlideshow.value && !isLoadingVideo.value) {
-        setTimeout(() => {
-          if (isSlideshow.value) {
-            slideshowNext()
-          }
-        }, 500)
-      }
-    })
-    
-    // Add event listener for when video ends
-    slideshowVideo.value.addEventListener('ended', () => {
-      if (isSlideshow.value && !slideshowPaused.value) {
-        slideshowNext()
-      }
-    })
-    
-    // Check if we need to load next batch when getting close to the end
-    slideshowVideo.value.addEventListener('timeupdate', () => {
-      if (slideshowVideo.value.currentTime > 0.5 && isSlideshow.value) {
-        checkAndLoadNextBatch()
-      }
-    })
+    // Add event listeners
+    addVideoEventListeners(slideshowVideo.value)
     
     // Append to the slideshow container
     const container = document.getElementById('slideshow-video-container')
@@ -1750,9 +1780,45 @@ const createSlideshowVideo = () => {
       container.appendChild(slideshowVideo.value)
     }
   }
+  
+  // Create next video element for preloading
+  if (!slideshowNextVideo.value) {
+    slideshowNextVideo.value = document.createElement('video')
+    slideshowNextVideo.value.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      z-index: 5;
+      display: none;
+      background: transparent;
+    `
+    
+    // Same settings as main video
+    slideshowNextVideo.value.controls = false
+    slideshowNextVideo.value.muted = true
+    slideshowNextVideo.value.playsInline = true
+    slideshowNextVideo.value.loop = false
+    slideshowNextVideo.value.setAttribute('webkit-playsinline', 'true')
+    slideshowNextVideo.value.setAttribute('playsinline', 'true')
+    slideshowNextVideo.value.setAttribute('preload', 'auto')
+    slideshowNextVideo.value.setAttribute('crossorigin', 'anonymous')
+    
+    // Add event listeners to next video as well
+    addVideoEventListeners(slideshowNextVideo.value)
+    
+    // Append to the slideshow container
+    const container = document.getElementById('slideshow-video-container')
+    if (container) {
+      container.appendChild(slideshowNextVideo.value)
+    }
+  }
 }
 
 const stopSlideshow = () => {
+  // Set slideshow to false first to prevent event handlers from firing
   isSlideshow.value = false
   slideshowPaused.value = false
   
@@ -1762,6 +1828,14 @@ const stopSlideshow = () => {
     slideshowVideo.value.load()
     slideshowVideo.value.remove()
     slideshowVideo.value = null
+  }
+  
+  if (slideshowNextVideo.value) {
+    slideshowNextVideo.value.pause()
+    slideshowNextVideo.value.src = ''
+    slideshowNextVideo.value.load()
+    slideshowNextVideo.value.remove()
+    slideshowNextVideo.value = null
   }
   
   // Reset slideshow state
@@ -1840,22 +1914,72 @@ const playCurrentSlideshowVideo = async () => {
   
   console.log(`🎬 Playing video ${slideshowCurrentIndex.value + 1}/${slideshowVideos.value.length}: ${currentVideoUuid}`)
   
-  // Force clear video cache and reset element
-  slideshowVideo.value.pause()
-  slideshowVideo.value.removeAttribute('src')
-  slideshowVideo.value.innerHTML = ''
-  
-  // Set source and load
-  slideshowVideo.value.src = streamUrl
-  slideshowVideo.value.load()
-  
-  // Try to play if not paused
-  if (!slideshowPaused.value) {
-    try {
-      await slideshowVideo.value.play()
-    } catch (playError) {
-      console.error('Video play failed:', playError)
+  // Check if next video is already preloaded and ready
+  if (slideshowNextVideo.value && slideshowNextVideo.value.src.includes(currentVideoUuid)) {
+    // Swap the videos for seamless transition
+    const tempVideo = slideshowVideo.value
+    slideshowVideo.value = slideshowNextVideo.value
+    slideshowNextVideo.value = tempVideo
+    
+    // Update z-index to show the new current video
+    slideshowVideo.value.style.zIndex = '10'
+    slideshowVideo.value.style.display = 'block'
+    slideshowNextVideo.value.style.zIndex = '5'
+    slideshowNextVideo.value.style.display = 'none'
+    
+    // Play the swapped video
+    if (!slideshowPaused.value) {
+      try {
+        await slideshowVideo.value.play()
+      } catch (playError) {
+        console.error('Preloaded video play failed:', playError)
+      }
     }
+  } else {
+    // Fallback to normal loading if preload didn't work
+    slideshowVideo.value.pause()
+    slideshowVideo.value.src = streamUrl
+    slideshowVideo.value.load()
+    
+    // Try to play if not paused
+    if (!slideshowPaused.value) {
+      try {
+        await slideshowVideo.value.play()
+      } catch (playError) {
+        console.error('Video play failed:', playError)
+      }
+    }
+  }
+}
+
+const preloadNextVideo = () => {
+  if (!slideshowNextVideo.value || !isSlideshow.value) return
+  
+  const nextIndex = slideshowCurrentIndex.value + 1
+  if (nextIndex >= slideshowVideos.value.length) {
+    // Check if we should loop back to start
+    if (slideshowVideos.value.length > 0) {
+      const nextVideoUuid = slideshowVideos.value[0]
+      const nextStreamUrl = `/api/stream/${nextVideoUuid}`
+      
+      // Only preload if not already loaded
+      if (!slideshowNextVideo.value.src.includes(nextVideoUuid)) {
+        console.log(`🔄 Preloading first video for loop: ${nextVideoUuid}`)
+        slideshowNextVideo.value.src = nextStreamUrl
+        slideshowNextVideo.value.load()
+      }
+    }
+    return
+  }
+  
+  const nextVideoUuid = slideshowVideos.value[nextIndex]
+  const nextStreamUrl = `/api/stream/${nextVideoUuid}`
+  
+  // Only preload if not already loaded
+  if (!slideshowNextVideo.value.src.includes(nextVideoUuid)) {
+    console.log(`⏳ Preloading next video: ${nextVideoUuid}`)
+    slideshowNextVideo.value.src = nextStreamUrl
+    slideshowNextVideo.value.load()
   }
 }
 
