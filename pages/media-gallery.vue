@@ -962,6 +962,7 @@ const slideshowPaused = ref(false)
 const isLoadingNextBatch = ref(false) // Track if we're loading the next batch
 const slideshowOffset = ref(0) // Current offset for pagination
 const slideshowBatchSize = ref(10) // Number of videos to fetch per batch
+const slideshowTotalCount = ref(0) // Total number of videos available from API
 
 // Search filters collapse state
 const filtersCollapsed = ref(false)
@@ -1792,6 +1793,11 @@ const slideshowPrevious = () => {
   if (slideshowCurrentIndex.value > 0) {
     slideshowCurrentIndex.value--
     playCurrentSlideshowVideo()
+  } else if (slideshowVideos.value.length > 0) {
+    // Loop to the last video when going backwards from the first
+    console.log('🔄 At beginning, looping to last video')
+    slideshowCurrentIndex.value = slideshowVideos.value.length - 1
+    playCurrentSlideshowVideo()
   }
 }
 
@@ -1800,14 +1806,26 @@ const slideshowNext = () => {
     slideshowCurrentIndex.value++
     playCurrentSlideshowVideo()
   } else {
-    // We've reached the end, try to load more videos
-    if (!isLoadingNextBatch.value) {
+    // We've reached the end of loaded videos
+    const hasMoreVideos = slideshowVideos.value.length < slideshowTotalCount.value
+    if (!isLoadingNextBatch.value && hasMoreVideos) {
+      // Try to load more videos if available
       loadSlideshowBatch().then(() => {
         if (slideshowCurrentIndex.value < slideshowVideos.value.length - 1) {
           slideshowCurrentIndex.value++
           playCurrentSlideshowVideo()
+        } else {
+          // No more videos to load, loop back to beginning
+          console.log('🔄 Reached end of all videos, looping back to start')
+          slideshowCurrentIndex.value = 0
+          playCurrentSlideshowVideo()
         }
       })
+    } else {
+      // No more videos to load, loop back to beginning
+      console.log('🔄 Reached end of all videos, looping back to start')
+      slideshowCurrentIndex.value = 0
+      playCurrentSlideshowVideo()
     }
   }
 }
@@ -1905,6 +1923,9 @@ const loadSlideshowBatch = async () => {
     
     const newVideos = response.results || []
     
+    // Update total count from API response
+    slideshowTotalCount.value = response.total_count || 0
+    
     // Filter to only include videos and extract UUIDs
     const videoUuids = newVideos
       .filter(media => media.type === 'video')
@@ -1915,9 +1936,9 @@ const loadSlideshowBatch = async () => {
       slideshowVideos.value.push(...videoUuids)
       slideshowOffset.value += slideshowBatchSize.value
       
-      console.log(`✅ Loaded ${videoUuids.length} videos. Total: ${slideshowVideos.value.length}`)
+      console.log(`✅ Loaded ${videoUuids.length} videos. Total loaded: ${slideshowVideos.value.length}/${slideshowTotalCount.value}`)
     } else {
-      console.log('📭 No more videos found for slideshow')
+      console.log(`📭 No more videos found for slideshow. Total available: ${slideshowTotalCount.value}`)
     }
     
   } catch (error) {
@@ -1936,11 +1957,12 @@ const loadSlideshowBatch = async () => {
 }
 
 const checkAndLoadNextBatch = () => {
-  // Load next batch when we have 5 or fewer videos remaining
+  // Load next batch when we have 5 or fewer videos remaining and more are available
   const remainingVideos = slideshowVideos.value.length - slideshowCurrentIndex.value - 1
+  const hasMoreVideos = slideshowVideos.value.length < slideshowTotalCount.value
   
-  if (remainingVideos <= 5 && !isLoadingNextBatch.value) {
-    console.log(`🔄 ${remainingVideos} videos remaining, loading next batch...`)
+  if (remainingVideos <= 5 && !isLoadingNextBatch.value && hasMoreVideos) {
+    console.log(`🔄 ${remainingVideos} videos remaining (${slideshowVideos.value.length}/${slideshowTotalCount.value} loaded), loading next batch...`)
     loadSlideshowBatch()
   }
 }
