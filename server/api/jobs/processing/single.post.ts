@@ -4,6 +4,7 @@
  */
 
 import { startSingleJob } from '~/server/services/jobProcessingService'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (_event) => {
   try {
@@ -25,7 +26,7 @@ export default defineEventHandler(async (_event) => {
     }
     
   } catch (error: any) {
-    console.error('❌ Single job processing failed:', error)
+    logger.error('❌ Single job processing failed:', error)
     
     throw createError({
       statusCode: 500,

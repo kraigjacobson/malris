@@ -37,8 +37,8 @@
                 size="lg"
                 variant="outline"
                 color="primary"
-                @click.prevent="startSingleProcessing()"
                 :loading="isStartingSingle"
+                @click.prevent="startSingleProcessing()"
               >
                 <UIcon
                   name="i-heroicons-play"
@@ -53,8 +53,8 @@
                 size="lg"
                 variant="outline"
                 color="primary"
-                @click.prevent="startContinuousProcessing()"
                 :loading="isStartingContinuous"
+                @click.prevent="startContinuousProcessing()"
               >
                 <UIcon
                   name="i-heroicons-arrow-path"
@@ -71,8 +71,8 @@
                 size="lg"
                 variant="outline"
                 color="error"
-                @click.prevent="stopAllProcessing()"
                 :loading="isStopping"
+                @click.prevent="stopAllProcessing()"
               >
                 <UIcon
                   name="i-heroicons-stop"
@@ -335,8 +335,8 @@
             type="button"
             variant="outline"
             size="xs"
-            @click="clearSubjectFilter"
             :disabled="!selectedSubjectFilter"
+            @click="clearSubjectFilter"
           >
             <span class="inline">Clear Subject</span>
           </UButton>
@@ -344,8 +344,8 @@
             type="button"
             variant="outline"
             size="xs"
-            @click="clearSourceTypeFilter"
             :disabled="selectedSourceTypeFilter === 'all'"
+            @click="clearSourceTypeFilter"
           >
             <span class="inline">Clear Type</span>
           </UButton>
@@ -642,6 +642,9 @@ const sourceTypeOptions = [
 
 // Subject filter handlers
 const handleSubjectFilterSelection = async (selected) => {
+  const startTime = performance.now()
+  console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection started - selected:`, selected)
+  
   handleSubjectSelection(selected)
   if (selected && selected.value) {
     // Filter jobs by subject UUID
@@ -650,11 +653,16 @@ const handleSubjectFilterSelection = async (selected) => {
     const statusFilter = jobsStore.filters.status || ''
     const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
     
-    // Fetch jobs and update queue status simultaneously
-    await Promise.all([
-      jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter),
-      jobsStore.fetchQueueStatus()
-    ])
+    console.log(`👤 [SUBJECT DEBUG] Starting jobs API call for subject filter (skipping queue status for performance)...`)
+    const apiStartTime = performance.now()
+    
+    // Only fetch jobs - queue status shows totals and doesn't change when filtering by subject
+    await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter)
+    
+    const apiTime = performance.now() - apiStartTime
+    const totalTime = performance.now() - startTime
+    console.log(`👤 [SUBJECT DEBUG] Subject filter API calls completed in ${apiTime.toFixed(2)}ms`)
+    console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection completed in ${totalTime.toFixed(2)}ms`)
   } else {
     await clearSubjectFilter()
   }
@@ -667,25 +675,30 @@ const clearSubjectFilter = async () => {
   const statusFilter = jobsStore.filters.status || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   
-  // Fetch jobs and update queue status simultaneously
-  await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, '', sourceTypeFilter),
-    jobsStore.fetchQueueStatus()
-  ])
+  // Only fetch jobs - queue status shows totals and doesn't change when clearing subject filter
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, '', sourceTypeFilter)
 }
 
 // Source type filter handlers
 const handleSourceTypeFilterSelection = async (selected) => {
+  const startTime = performance.now()
+  console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection started - selected: "${selected}"`)
+  
   selectedSourceTypeFilter.value = selected
   pageNumber.value = 1
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   
-  // Fetch jobs and update queue status simultaneously
-  await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected),
-    jobsStore.fetchQueueStatus()
-  ])
+  console.log(`📁 [SOURCE TYPE DEBUG] Starting jobs API call for source type filter (skipping queue status for performance)...`)
+  const apiStartTime = performance.now()
+  
+  // Only fetch jobs - queue status shows totals and doesn't change when filtering by source type
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected)
+  
+  const apiTime = performance.now() - apiStartTime
+  const totalTime = performance.now() - startTime
+  console.log(`📁 [SOURCE TYPE DEBUG] Source type filter API calls completed in ${apiTime.toFixed(2)}ms`)
+  console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection completed in ${totalTime.toFixed(2)}ms`)
 }
 
 const clearSourceTypeFilter = async () => {
@@ -694,11 +707,8 @@ const clearSourceTypeFilter = async () => {
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   
-  // Fetch jobs and update queue status simultaneously
-  await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all'),
-    jobsStore.fetchQueueStatus()
-  ])
+  // Only fetch jobs - queue status shows totals and doesn't change when clearing source type filter
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all')
 }
 
 // Computed properties
@@ -782,7 +792,11 @@ const clearSelection = () => {
 
 // Methods
 const filterByStatus = async (status) => {
+  const startTime = performance.now()
+  console.log(`🎯 [FILTER DEBUG] filterByStatus clicked - status: "${status}"`)
+  
   // Update local filter immediately
+  const localUpdateStart = performance.now()
   currentFilter.value = status
   pageNumber.value = 1
   
@@ -790,26 +804,38 @@ const filterByStatus = async (status) => {
   jobsStore.filters.status = status
   jobsStore.filters.jobId = ''
   jobsStore.filters.jobType = ''
+  const localUpdateTime = performance.now() - localUpdateStart
+  console.log(`🎯 [FILTER DEBUG] Local state updated in ${localUpdateTime.toFixed(2)}ms`)
   
-  // Fetch jobs with new filter and update queue status
+  // Fetch jobs with new filter - queue status doesn't change when filtering
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   
-  // Use Promise.all to fetch both jobs and queue status simultaneously
-  await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter),
-    jobsStore.fetchQueueStatus()
-  ])
+  console.log(`🎯 [FILTER DEBUG] Starting jobs API call (skipping queue status for performance)...`)
+  const apiStartTime = performance.now()
+  
+  // Only fetch jobs - queue status shows totals and doesn't change when filtering
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter)
+  
+  const apiTime = performance.now() - apiStartTime
+  const totalTime = performance.now() - startTime
+  console.log(`🎯 [FILTER DEBUG] Parallel API calls completed in ${apiTime.toFixed(2)}ms`)
+  console.log(`🎯 [FILTER DEBUG] filterByStatus completed in ${totalTime.toFixed(2)}ms`)
 }
 
 const refreshJobsWithCurrentState = async () => {
+  const startTime = performance.now()
+  console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState started`)
+  
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  await Promise.all([
-    jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
-    jobsStore.fetchQueueStatus()
-  ])
+  
+  // Only fetch jobs for refresh - queue status is updated via WebSocket
+  await jobsStore.fetchJobs(true, pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
+  
+  const totalTime = performance.now() - startTime
+  console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState completed in ${totalTime.toFixed(2)}ms`)
 }
 
 // New processing methods for the updated UI
@@ -934,30 +960,49 @@ const stopAllProcessing = async () => {
 
 // Handle pagination page changes
 const handlePageChange = async (newPage) => {
+  const startTime = performance.now()
+  console.log(`📄 [PAGE DEBUG] handlePageChange started - newPage: ${newPage}`)
+  
   pageNumber.value = newPage
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   
-  // Fetch jobs and update queue status simultaneously
-  await Promise.all([
-    jobsStore.fetchJobs(true, newPage, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
-    jobsStore.fetchQueueStatus()
-  ])
+  console.log(`📄 [PAGE DEBUG] Starting jobs API call for page change (skipping queue status for performance)...`)
+  const apiStartTime = performance.now()
+  
+  // Only fetch jobs - queue status doesn't change when paginating
+  await jobsStore.fetchJobs(true, newPage, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
+  
+  const apiTime = performance.now() - apiStartTime
+  const totalTime = performance.now() - startTime
+  console.log(`📄 [PAGE DEBUG] Page change API calls completed in ${apiTime.toFixed(2)}ms`)
+  console.log(`📄 [PAGE DEBUG] handlePageChange completed in ${totalTime.toFixed(2)}ms`)
 }
 
 // Handle limit change
 const handleLimitChange = async () => {
+  const startTime = performance.now()
+  console.log(`📊 [LIMIT DEBUG] handleLimitChange started - new limit: ${itemsPerPage.value}`)
+  
   pageNumber.value = 1 // Reset to first page when changing limit
   const statusFilter = jobsStore.filters.status || ''
   const subjectUuid = selectedSubjectFilter.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  
+  console.log(`📊 [LIMIT DEBUG] Starting parallel API calls for limit change...`)
+  const apiStartTime = performance.now()
   
   // Fetch jobs and update queue status simultaneously
   await Promise.all([
     jobsStore.fetchJobs(true, 1, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
     jobsStore.fetchQueueStatus()
   ])
+  
+  const apiTime = performance.now() - apiStartTime
+  const totalTime = performance.now() - startTime
+  console.log(`📊 [LIMIT DEBUG] Limit change API calls completed in ${apiTime.toFixed(2)}ms`)
+  console.log(`📊 [LIMIT DEBUG] handleLimitChange completed in ${totalTime.toFixed(2)}ms`)
 }
 
 const viewJobDetails = async (jobId) => {

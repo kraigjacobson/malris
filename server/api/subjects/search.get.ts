@@ -2,6 +2,7 @@ import { eq, ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
 import { subjects, mediaRecords } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { decryptMediaData } from '~/server/utils/encryption'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -23,9 +24,9 @@ export default defineEventHandler(async (event) => {
     const sortBy = (query.sort_by as string) || 'name'
     const sortOrder = (query.sort_order as string) || 'asc'
     
-    console.log('🔍 Subjects search params:', { name_pattern, tags, tag_match_mode, has_hero_image, limit, page })
+    logger.info('🔍 Subjects search params:', { name_pattern, tags, tag_match_mode, has_hero_image, limit, page })
     
-    console.log('🔍 Searching subjects via ORM...')
+    logger.info('🔍 Searching subjects via ORM...')
 
     const db = getDb()
 
@@ -130,7 +131,7 @@ export default defineEventHandler(async (event) => {
           const decryptedData = decryptMediaData(subject.encryptedThumbnailData, encryptionKey)
           thumbnail_data = decryptedData.toString('base64')
         } catch (error) {
-          console.error('Failed to decrypt thumbnail for subject:', subject.id, error)
+          logger.error('Failed to decrypt thumbnail for subject:', subject.id, error)
         }
       }
 
@@ -146,7 +147,7 @@ export default defineEventHandler(async (event) => {
       }
     }))
     
-    console.log(`✅ Found ${processedSubjects.length} subjects (${totalCount} total)`)
+    logger.info(`✅ Found ${processedSubjects.length} subjects (${totalCount} total)`)
 
     return {
       subjects: processedSubjects,
@@ -160,7 +161,7 @@ export default defineEventHandler(async (event) => {
     }
     
   } catch (error: any) {
-    console.error('Subjects search error:', error)
+    logger.error('Subjects search error:', error)
     
     // Handle database errors
     if (error.statusCode) {

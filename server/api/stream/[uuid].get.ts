@@ -2,6 +2,7 @@ import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { decryptMediaData, getContentType } from '~/server/utils/encryption'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -61,7 +62,7 @@ export default defineEventHandler(async (event) => {
     try {
       decryptedData = decryptMediaData(record.encryptedData, encryptionKey)
     } catch (error) {
-      console.error('Decryption error:', error)
+      logger.error('Decryption error:', error)
       throw createError({
         statusCode: 500,
         statusMessage: 'Failed to decrypt media data'
@@ -117,7 +118,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error) {
-    console.error('Stream error:', error)
+    logger.error('Stream error:', error)
     
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error

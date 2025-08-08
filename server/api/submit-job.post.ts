@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (event) => {
   try {
     // Get the request body
@@ -40,10 +41,10 @@ export default defineEventHandler(async (event) => {
       parameters: body.parameters || {}
     }
 
-    console.log('Submitting job to Media Server API:', jobData)
+    logger.info('Submitting job to Media Server API:', jobData)
 
     // Use internal job creation logic directly
-    console.log('Creating job internally...')
+    logger.info('Creating job internally...')
     
     // Import the job creation logic directly
     const { getDb } = await import('~/server/utils/database')
@@ -68,7 +69,7 @@ export default defineEventHandler(async (event) => {
     
     await db.insert(jobs).values(newJob)
     
-    console.log('Job created successfully:', newJob)
+    logger.info('Job created successfully:', newJob)
 
     return {
       success: true,
@@ -80,7 +81,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error: any) {
-    console.error('Error submitting job to Media Server API:', error)
+    logger.error('Error submitting job to Media Server API:', error)
     
     // Handle different types of errors
     if (error.cause?.code === 'ECONNREFUSED') {

@@ -1,9 +1,19 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Subjects
-      </h1>
+      <div class="flex justify-between items-center">
+        <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+          Subjects
+        </h1>
+        <UButton
+          @click="openManageSubjectModal()"
+          color="primary"
+          icon="i-heroicons-plus"
+          size="sm"
+        >
+          Add Subject
+        </UButton>
+      </div>
     </div>
 
     <!-- Search Filters -->
@@ -150,7 +160,7 @@
           :selection-mode="false"
           :display-images="settingsStore.displayImages"
           :empty-state-message="'Use the search filters above to find subjects'"
-          @subject-click="openModal"
+          @subject-click="openManageSubjectModal"
         />
       </div>
 
@@ -160,7 +170,7 @@
           v-for="subject in subjectResults"
           :key="subject.id"
           class="bg-neutral-800 rounded-lg p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
-          @click="openModal(subject)"
+          @click="openManageSubjectModal(subject)"
         >
           <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
@@ -234,87 +244,14 @@
       <p class="text-gray-500">Use the search filters above to find subjects</p>
     </div>
 
-    <!-- Subject Detail Modal -->
-    <UModal v-model:open="isModalOpen">
-      <template #body>
-        <div v-if="selectedSubject" class="p-3 sm:p-6">
-          <!-- Header -->
-          <div class="flex justify-between items-center mb-3 sm:mb-6">
-            <h3 class="text-base sm:text-lg font-semibold">{{ selectedSubject.name }}</h3>
-            <UButton
-              variant="ghost"
-              icon="i-heroicons-x-mark"
-              size="sm"
-              @click="isModalOpen = false"
-            />
-          </div>
 
-          <div class="space-y-4">
-            <!-- Hero Image Display -->
-            <div v-if="selectedSubject.has_thumbnail && selectedSubject.thumbnail_data" class="max-w-full">
-              <img
-                v-if="settingsStore.displayImages"
-                :src="`data:image/jpeg;base64,${selectedSubject.thumbnail_data}`"
-                :alt="selectedSubject.name"
-                class="w-full h-auto max-h-[60vh] object-contain rounded"
-                @error="handleImageError"
-              />
-              <div v-else class="w-full h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded">
-                <UIcon name="i-heroicons-user-circle" class="text-6xl text-gray-400" />
-              </div>
-            </div>
-
-            <!-- Subject Details -->
-            <div class="grid grid-cols-1 gap-2 sm:gap-4 text-sm">
-              <div v-if="selectedSubject.note">
-                <span class="font-medium">Note:</span>
-                <p class="mt-1 text-gray-600 dark:text-gray-400">{{ selectedSubject.note }}</p>
-              </div>
-              <div>
-                <span class="font-medium">Created:</span>
-                <span class="ml-2">{{ formatDate(selectedSubject.created_at) }}</span>
-              </div>
-            </div>
-
-            <!-- Tags -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tags
-              </label>
-              <UInputTags
-                v-model="editableTags"
-                placeholder="Add tags (e.g., portrait, landscape, anime)"
-                class="w-full"
-              />
-            </div>
-
-            <!-- ID -->
-            <div class="text-xs text-gray-500">
-              <span class="font-medium">ID:</span>
-              <span class="ml-2 font-mono">{{ selectedSubject.id }}</span>
-            </div>
-          </div>
-        </div>
-      </template>
-      
-      <template #footer>
-        <div class="flex justify-end gap-3 p-3 sm:p-6 pt-0">
-          <UButton
-            variant="outline"
-            @click="isModalOpen = false"
-          >
-            Cancel
-          </UButton>
-          <UButton
-            color="primary"
-            :loading="isSavingTags"
-            @click="saveTags"
-          >
-            Save Tags
-          </UButton>
-        </div>
-      </template>
-    </UModal>
+    <!-- Manage Subject Modal -->
+    <ManageSubjectModal
+      v-model="isManageSubjectModalOpen"
+      :subject="selectedSubjectForManagement"
+      @subject-created="handleSubjectCreated"
+      @subject-updated="handleSubjectUpdated"
+    />
   </div>
 </template>
 
@@ -385,10 +322,8 @@ const subjectResults = ref([])
 const isLoading = ref(false)
 const hasSearched = ref(false)
 const viewMode = ref('grid')
-const selectedSubject = ref(null)
-const isModalOpen = ref(false)
-const editableTags = ref([])
-const isSavingTags = ref(false)
+const isManageSubjectModalOpen = ref(false)
+const selectedSubjectForManagement = ref(null)
 const currentPage = ref(1)
 const pagination = ref({
   total: 0,
@@ -509,65 +444,44 @@ const clearFilters = () => {
   hasSearched.value = false
 }
 
-
-const openModal = (subject) => {
-  selectedSubject.value = subject
-  // Initialize editable tags with current subject tags
-  editableTags.value = subject.tags && subject.tags.tags ? [...subject.tags.tags] : []
-  isModalOpen.value = true
+const openManageSubjectModal = (subject = null) => {
+  selectedSubjectForManagement.value = subject
+  isManageSubjectModalOpen.value = true
 }
 
-const saveTags = async () => {
-  if (!selectedSubject.value) return
+const handleSubjectCreated = (newSubject) => {
+  // Update the selected subject for management to the newly created one
+  selectedSubjectForManagement.value = newSubject
   
-  isSavingTags.value = true
-  
-  try {
-    const response = await useApiFetch(`subjects/${selectedSubject.value.id}/tags`, {
-      method: 'PUT',
-      body: {
-        tags: editableTags.value
-      }
-    })
-    
-    if (response.success) {
-      // Update the selected subject with new tags
-      selectedSubject.value.tags = editableTags.value
-      
-      // Update the subject in the results list
-      const subjectIndex = subjectResults.value.findIndex(s => s.id === selectedSubject.value.id)
-      if (subjectIndex !== -1) {
-        subjectResults.value[subjectIndex].tags = editableTags.value
-      }
-      
-      const toast = useToast()
-      toast.add({
-        title: 'Success',
-        description: 'Subject tags updated successfully',
-        color: 'green',
-        timeout: 3000
-      })
-      
-      isModalOpen.value = false
-    }
-  } catch (err) {
-    console.error('Error saving tags:', err)
-    const toast = useToast()
-    
-    let errorMessage = 'Failed to save tags'
-    if (err.data?.message) {
-      errorMessage = err.data.message
-    }
-    
-    toast.add({
-      title: 'Error',
-      description: errorMessage,
-      color: 'red',
-      timeout: 5000
-    })
-  } finally {
-    isSavingTags.value = false
+  // Add the new subject to the results if we have searched
+  if (hasSearched.value) {
+    subjectResults.value.unshift(newSubject)
+    pagination.value.total += 1
   }
+  
+  const toast = useToast()
+  toast.add({
+    title: 'Success',
+    description: 'Subject created successfully',
+    color: 'green',
+    timeout: 3000
+  })
+}
+
+const handleSubjectUpdated = (updatedSubject) => {
+  // Update the subject in the results list
+  const subjectIndex = subjectResults.value.findIndex(s => s.id === updatedSubject.id)
+  if (subjectIndex !== -1) {
+    subjectResults.value[subjectIndex] = { ...subjectResults.value[subjectIndex], ...updatedSubject }
+  }
+  
+  const toast = useToast()
+  toast.add({
+    title: 'Success',
+    description: 'Subject updated successfully',
+    color: 'green',
+    timeout: 3000
+  })
 }
 
 // Watch for page changes

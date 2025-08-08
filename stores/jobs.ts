@@ -60,8 +60,14 @@ export const useJobsStore = defineStore('jobs', () => {
 
   // Actions
   const fetchQueueStatus = async () => {
+    const startTime = performance.now()
+    console.log(`📊 [QUEUE DEBUG] fetchQueueStatus started`)
+    
     try {
       const response = await useApiFetch('jobs') as QueueStatus
+      const apiTime = performance.now() - startTime
+      console.log(`📊 [QUEUE DEBUG] API call completed in ${apiTime.toFixed(2)}ms`)
+      
       queueStatus.value = response
       
       // Always update processing status from queue status - this is the authoritative source
@@ -74,8 +80,12 @@ export const useJobsStore = defineStore('jobs', () => {
       } else {
         console.warn('⚠️ Server response missing is_processing field:', response)
       }
+      
+      const totalTime = performance.now() - startTime
+      console.log(`📊 [QUEUE DEBUG] fetchQueueStatus completed in ${totalTime.toFixed(2)}ms`)
     } catch (error) {
-      console.error('❌ Failed to fetch queue status:', error)
+      const totalTime = performance.now() - startTime
+      console.error(`❌ [QUEUE DEBUG] fetchQueueStatus failed after ${totalTime.toFixed(2)}ms:`, error)
       queueStatus.value = {
         queue: {
           total: 0,
@@ -95,6 +105,9 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   const fetchJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '', sourceTypeFilter = 'all') => {
+    const startTime = performance.now()
+    console.log(`🔍 [JOBS DEBUG] fetchJobs started - status: "${statusFilter}", subject: "${subjectFilter}", sourceType: "${sourceTypeFilter}", page: ${page}, limit: ${limit}`)
+    
     if (showLoading) {
       isLoading.value = true
     }
@@ -107,6 +120,7 @@ export const useJobsStore = defineStore('jobs', () => {
     currentSourceTypeFilter.value = sourceTypeFilter
 
     try {
+      const paramsStartTime = performance.now()
       const searchParams = new URLSearchParams()
       searchParams.append('limit', limit.toString())
       searchParams.append('offset', ((page - 1) * limit).toString())
@@ -125,8 +139,26 @@ export const useJobsStore = defineStore('jobs', () => {
         searchParams.append('source_type', sourceTypeFilter)
       }
 
-      const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
+      const paramsTime = performance.now() - paramsStartTime
+      console.log(`🔍 [JOBS DEBUG] URL params built in ${paramsTime.toFixed(2)}ms`)
 
+      const apiStartTime = performance.now()
+      console.log(`🔍 [JOBS DEBUG] Making API call to: /api/jobs/search?${searchParams.toString()}`)
+      console.log(`🔍 [JOBS DEBUG] Request started at: ${new Date().toISOString()}`)
+      
+      try {
+        const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
+        const apiTime = performance.now() - apiStartTime
+        console.log(`🔍 [JOBS DEBUG] API call completed at: ${new Date().toISOString()}`)
+        console.log(`🔍 [JOBS DEBUG] API call completed successfully in ${apiTime.toFixed(2)}ms`)
+        
+        if (apiTime > 1000) {
+          console.error(`🚨 [JOBS DEBUG] EXTREMELY SLOW API CALL! ${apiTime.toFixed(2)}ms - This indicates a serious network/connection issue!`)
+          console.error(`🚨 [JOBS DEBUG] Server processes in <50ms but frontend waits ${apiTime.toFixed(2)}ms - likely Docker networking, database connection pool, or HTTP timeout issue`)
+        }
+
+      const processingStartTime = performance.now()
+      
       // Handle different response formats from the API and only update after successful fetch
       let newJobs: Job[] = []
       let total = 0
@@ -149,14 +181,36 @@ export const useJobsStore = defineStore('jobs', () => {
         total = 0
       }
 
+      const sortStartTime = performance.now()
       // Sort jobs to prioritize active jobs while maintaining updated_at order
       const sortedJobs = sortJobsWithActivePriority(newJobs)
+      const sortTime = performance.now() - sortStartTime
       
       // Only replace jobs after successful fetch
       jobs.value = sortedJobs
       totalJobs.value = total
+      
+      const processingTime = performance.now() - processingStartTime
+      const totalTime = performance.now() - startTime
+      
+      console.log(`🔍 [JOBS DEBUG] Data processing completed in ${processingTime.toFixed(2)}ms (sort: ${sortTime.toFixed(2)}ms)`)
+        console.log(`🔍 [JOBS DEBUG] fetchJobs completed in ${totalTime.toFixed(2)}ms - fetched ${newJobs.length} jobs, total: ${total}`)
+      } catch (apiError) {
+        const apiTime = performance.now() - apiStartTime
+        console.error(`❌ [JOBS DEBUG] API call failed after ${apiTime.toFixed(2)}ms:`, apiError)
+        throw apiError
+      }
     } catch (error) {
-      console.error('❌ Failed to fetch jobs:', error)
+      const totalTime = performance.now() - startTime
+      console.error(`❌ [JOBS DEBUG] fetchJobs failed after ${totalTime.toFixed(2)}ms:`, error)
+      
+      // Check if this is a network timeout or connection issue
+      const errorMessage = (error as any)?.message || ''
+      const errorCode = (error as any)?.code || ''
+      if (errorMessage.includes('timeout') || errorMessage.includes('network') || errorCode === 'NETWORK_ERROR') {
+        console.error(`🌐 [JOBS DEBUG] Network error detected - this may be a connection issue between frontend and backend`)
+      }
+      
       // Don't clear jobs on error, keep existing data
     } finally {
       if (showLoading) {

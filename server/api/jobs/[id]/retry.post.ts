@@ -1,10 +1,11 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (event) => {
   try {
     // Get the job ID from the route parameters
     const jobId = getRouterParam(event, 'id')
     
-    console.log('🔍 Debug - jobId from route:', jobId)
-    console.log('🔍 Debug - jobId type:', typeof jobId)
+    logger.info('🔍 Debug - jobId from route:', jobId)
+    logger.info('🔍 Debug - jobId type:', typeof jobId)
     
     if (!jobId) {
       throw createError({
@@ -13,7 +14,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    console.log(`Retrying job ${jobId}...`)
+    logger.info(`Retrying job ${jobId}...`)
 
     // Use Drizzle ORM for simpler retry logic
     const { getDb } = await import('~/server/utils/database')
@@ -42,11 +43,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    console.log(`Resetting job ${jobId} to queued status and cleaning up output media...`)
+    logger.info(`Resetting job ${jobId} to queued status and cleaning up output media...`)
 
     // Reset the job status to queued FIRST, before deleting media
-    console.log('🔍 Debug - About to update job with ID:', jobId)
-    console.log('🔍 Debug - Job ID type before update:', typeof jobId)
+    logger.info('🔍 Debug - About to update job with ID:', jobId)
+    logger.info('🔍 Debug - Job ID type before update:', typeof jobId)
     
     const updatedJob = await db.update(jobs)
       .set({
@@ -67,8 +68,8 @@ export default defineEventHandler(async (event) => {
         updatedAt: jobs.updatedAt
       })
 
-    console.log('🔍 Debug - updatedJob result:', updatedJob)
-    console.log('🔍 Debug - updatedJob length:', updatedJob.length)
+    logger.info('🔍 Debug - updatedJob result:', updatedJob)
+    logger.info('🔍 Debug - updatedJob length:', updatedJob.length)
     
     if (updatedJob.length === 0) {
       throw createError({
@@ -82,10 +83,10 @@ export default defineEventHandler(async (event) => {
       .where(eq(mediaRecords.jobId, jobId))
       .returning({ uuid: mediaRecords.uuid })
 
-    console.log(`Deleted ${deletedMedia.length} output media records for job ${jobId}`)
+    logger.info(`Deleted ${deletedMedia.length} output media records for job ${jobId}`)
 
-    console.log('🔍 Debug - updatedJob result:', updatedJob)
-    console.log('🔍 Debug - updatedJob length:', updatedJob.length)
+    logger.info('🔍 Debug - updatedJob result:', updatedJob)
+    logger.info('🔍 Debug - updatedJob length:', updatedJob.length)
     
     if (updatedJob.length === 0) {
       throw createError({
@@ -95,15 +96,15 @@ export default defineEventHandler(async (event) => {
     }
     
     const retried = updatedJob[0]
-    console.log('🔍 Debug - retried job:', retried)
-    console.log(`Successfully reset job ${jobId} to queued status`)
+    logger.info('🔍 Debug - retried job:', retried)
+    logger.info(`Successfully reset job ${jobId} to queued status`)
 
     // Update job counts for WebSocket clients after status change
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job retry:', error)
+      logger.error('Failed to update job counts after job retry:', error)
     }
 
     return {
@@ -117,7 +118,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error: any) {
-    console.error('Error retrying job:', error)
+    logger.error('Error retrying job:', error)
     
     // Handle different types of errors
     if (error.cause?.code === 'ECONNREFUSED') {

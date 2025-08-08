@@ -3,6 +3,8 @@
  * This endpoint handles the completion of jobs and stores the output media
  */
 import path from 'path'
+import { logger } from '~/server/utils/logger'
+
 
 export default defineEventHandler(async (event) => {
   const jobId = getRouterParam(event, 'id')
@@ -15,7 +17,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    console.log(`📥 Receiving outputs for job ${jobId}`)
+    logger.info(`📥 Receiving outputs for job ${jobId}`)
     
     const { getDb } = await import('~/server/utils/database')
     const { jobs, mediaRecords } = await import('~/server/utils/schema')
@@ -58,15 +60,16 @@ export default defineEventHandler(async (event) => {
     let jobType = null // Add job_type variable
     let workflowType = null // Add workflow_type variable
     const sourceMediaUuids = new Map<string, string>() // Map filename to source UUID
+    const videoMetadata = new Map<string, any>() // Map file index to video metadata
     
     const metadataFields = formData.filter(field => !field.filename)
-    console.log(`🔍 JESSICA'S DEBUG: Processing ${metadataFields.length} metadata fields`)
-    console.log(`🔍 JESSICA'S DEBUG: All form field names: ${formData.map(f => f.name).join(', ')}`)
+    logger.info(`🔍 JESSICA'S DEBUG: Processing ${metadataFields.length} metadata fields`)
+    logger.info(`🔍 JESSICA'S DEBUG: All form field names: ${formData.map(f => f.name).join(', ')}`)
     
     for (const field of metadataFields) {
       const fieldName = field.name
       const fieldValue = field.data.toString()
-      console.log(`🔍 JESSICA'S DEBUG: Processing field ${fieldName} = ${fieldValue}`)
+      logger.info(`🔍 JESSICA'S DEBUG: Processing field ${fieldName} = ${fieldValue}`)
       
       if (fieldName === 'purpose') {
         purpose = fieldValue
@@ -74,39 +77,63 @@ export default defineEventHandler(async (event) => {
         errorMessage = fieldValue
       } else if (fieldName === 'job_type') {
         jobType = fieldValue
-        console.log(`🔄 JOB TYPE: Received explicit job_type=${jobType}`)
+        logger.info(`🔄 JOB TYPE: Received explicit job_type=${jobType}`)
       } else if (fieldName === 'workflow_type') {
         workflowType = fieldValue
-        console.log(`🔄 WORKFLOW TYPE: Received explicit workflow_type=${workflowType}`)
+        logger.info(`🔄 WORKFLOW TYPE: Received explicit workflow_type=${workflowType}`)
       } else if (fieldName === 'source_media_uuid') {
         sourceMediaUuid = fieldValue
-        console.log(`🔗 SOURCE UUID: Received source media UUID for output linking: ${sourceMediaUuid}`)
+        logger.info(`🔗 SOURCE UUID: Received source media UUID for output linking: ${sourceMediaUuid}`)
       } else if (fieldName && fieldName.startsWith('source_media_uuid_')) {
         // Extract individual source UUIDs for each file (e.g., source_media_uuid_0, source_media_uuid_1, etc.)
         const fileIndex = fieldName.replace('source_media_uuid_', '')
         sourceMediaUuids.set(fileIndex, fieldValue)
-        console.log(`🔗 INDIVIDUAL SOURCE UUID: File ${fileIndex} -> ${fieldValue}`)
+        logger.info(`🔗 INDIVIDUAL SOURCE UUID: File ${fileIndex} -> ${fieldValue}`)
+      } else if (fieldName && fieldName.startsWith('video_')) {
+        // Extract video metadata fields (video_fps_0, video_codec_0, video_bitrate_0, etc.)
+        const parts = fieldName.split('_')
+        if (parts.length >= 3) {
+          const metadataType = parts[1] // fps, codec, bitrate, width, height, duration
+          const fileIndex = parts[2] // 0, 1, 2, etc.
+          
+          if (!videoMetadata.has(fileIndex)) {
+            videoMetadata.set(fileIndex, {})
+          }
+          
+          const metadata = videoMetadata.get(fileIndex)
+          
+          // Parse numeric values appropriately
+          if (metadataType === 'fps' || metadataType === 'duration') {
+            metadata[metadataType] = parseFloat(fieldValue)
+          } else if (metadataType === 'bitrate' || metadataType === 'width' || metadataType === 'height') {
+            metadata[metadataType] = parseInt(fieldValue)
+          } else {
+            metadata[metadataType] = fieldValue // codec as string
+          }
+          
+          logger.info(`🎬 VIDEO METADATA: File ${fileIndex} ${metadataType} = ${fieldValue}`)
+        }
       }
     }
     
-    console.log(`🔍 JESSICA'S DEBUG: Final sourceMediaUuid = ${sourceMediaUuid}`)
-    console.log(`🔍 JESSICA'S DEBUG: Final sourceMediaUuids map = ${JSON.stringify(Object.fromEntries(sourceMediaUuids))}`)
+    logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuid = ${sourceMediaUuid}`)
+    logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuids map = ${JSON.stringify(Object.fromEntries(sourceMediaUuids))}`)
     
     // REQUIRED: Throw error if job_type is not provided
     if (!jobType) {
       const error = "job_type is required but not provided in request"
-      console.log(`❌ ERROR: ${error}`)
+      logger.info(`❌ ERROR: ${error}`)
       throw createError({
         statusCode: 400,
         statusMessage: error
       })
     }
     
-    console.log(`🔗 SOURCE UUID MAPPING: Found ${sourceMediaUuids.size} individual source UUIDs`)
+    logger.info(`🔗 SOURCE UUID MAPPING: Found ${sourceMediaUuids.size} individual source UUIDs`)
     
     // Handle error case
     if (purpose === 'error') {
-      console.log(`❌ Job ${jobId} failed with error: ${errorMessage}`)
+      logger.info(`❌ Job ${jobId} failed with error: ${errorMessage}`)
       
       // Update job status to failed
       await db
@@ -124,12 +151,12 @@ export default defineEventHandler(async (event) => {
         const { updateJobCounts } = await import('~/server/services/systemStatusManager')
         await updateJobCounts()
       } catch (error) {
-        console.error('Failed to update job counts after job failure:', error)
+        logger.error('Failed to update job counts after job failure:', error)
       }
       
       // Job triggering is now handled exclusively by the continuous processing interval
       // This prevents race conditions and ensures proper job sequencing
-      console.log('🔄 Job failed - continuous processing will handle next job automatically')
+      logger.info('🔄 Job failed - continuous processing will handle next job automatically')
       
       return {
         success: true,
@@ -141,11 +168,11 @@ export default defineEventHandler(async (event) => {
     // SINGLE REQUEST PROCESSING: Process ALL files at once
     const files = formData.filter(field => field.filename)
     
-    console.log(`📦 SINGLE REQUEST: Received ${files.length} files in single request for job ${jobId}`)
-    console.log(`📦 FILES DEBUG: ${files.map(f => `${f.filename} (${f.data?.length || 0} bytes)`).join(', ')}`)
-    console.log(`📦 FORM DATA DEBUG: Total form fields: ${formData.length}`)
-    console.log(`📦 FORM DATA DEBUG: Non-file fields: ${formData.filter(f => !f.filename).map(f => `${f.name}=${f.data?.toString()}`).join(', ')}`)
-    console.log(`📦 JOB DEBUG: sourceMediaUuid=${job?.sourceMediaUuid}, explicit job_type=${jobType}`)
+    logger.info(`📦 SINGLE REQUEST: Received ${files.length} files in single request for job ${jobId}`)
+    logger.info(`📦 FILES DEBUG: ${files.map(f => `${f.filename} (${f.data?.length || 0} bytes)`).join(', ')}`)
+    logger.info(`📦 FORM DATA DEBUG: Total form fields: ${formData.length}`)
+    logger.info(`📦 FORM DATA DEBUG: Non-file fields: ${formData.filter(f => !f.filename).map(f => `${f.name}=${f.data?.toString()}`).join(', ')}`)
+    logger.info(`📦 JOB DEBUG: sourceMediaUuid=${job?.sourceMediaUuid}, explicit job_type=${jobType}`)
     
     const savedMedia = []
     
@@ -153,11 +180,11 @@ export default defineEventHandler(async (event) => {
     const videoFiles = []
     const imageFiles = []
     
-    console.log(`📦 CATEGORIZATION: Processing ${files.length} files from request`)
+    logger.info(`📦 CATEGORIZATION: Processing ${files.length} files from request`)
     
     for (const file of files) {
       if (!file.data || file.data.length === 0) {
-        console.log(`⚠️ Skipping empty file: ${file.filename}`)
+        logger.info(`⚠️ Skipping empty file: ${file.filename}`)
         continue
       }
       
@@ -169,7 +196,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     
-    console.log(`📊 CATEGORIZED: ${videoFiles.length} videos, ${imageFiles.length} images`)
+    logger.info(`📊 CATEGORIZED: ${videoFiles.length} videos, ${imageFiles.length} images`)
     
     // Fetch tags from destination video record if available
     let destVideoTags = null
@@ -181,10 +208,10 @@ export default defineEventHandler(async (event) => {
         
         if (destVideoRecord.length > 0) {
           destVideoTags = destVideoRecord[0].tags
-          console.log(`🏷️ Found destination video tags:`, destVideoTags)
+          logger.info(`🏷️ Found destination video tags:`, destVideoTags)
         }
       } catch (tagError) {
-        console.error(`⚠️ Failed to fetch destination video tags:`, tagError)
+        logger.error(`⚠️ Failed to fetch destination video tags:`, tagError)
         // Don't fail the job if tag fetching fails
       }
     }
@@ -203,11 +230,11 @@ export default defineEventHandler(async (event) => {
     // Process image files first (as thumbnails if we have videos)
     for (let i = 0; i < imageFiles.length; i++) {
       const file = imageFiles[i]
-      console.log(`🖼️ Processing image file ${i}: ${file.filename} (${file.data.length} bytes)`)
+      logger.info(`🖼️ Processing image file ${i}: ${file.filename} (${file.data.length} bytes)`)
       
       // Get the individual source UUID for this specific file
       const fileSourceUuid = sourceMediaUuids.get(i.toString()) || sourceMediaUuid
-      console.log(`🔗 FILE SOURCE UUID: File ${i} (${file.filename}) -> ${fileSourceUuid}`)
+      logger.info(`🔗 FILE SOURCE UUID: File ${i} (${file.filename}) -> ${fileSourceUuid}`)
       
       // Calculate checksum of the original file data
       const { createHash } = await import('crypto')
@@ -221,12 +248,12 @@ export default defineEventHandler(async (event) => {
       const imagePurpose = videoFiles.length > 0 ? 'thumbnail' : 'output'
       const imageType = 'image'
       
-      console.log(`🎯 THUMBNAIL LOGIC: videoFiles.length=${videoFiles.length}, imagePurpose=${imagePurpose}`)
+      logger.info(`🎯 THUMBNAIL LOGIC: videoFiles.length=${videoFiles.length}, imagePurpose=${imagePurpose}`)
       
       // Strip path from filename for storage
       const baseFilename = file.filename ? path.basename(file.filename) : 'thumbnail.png'
       
-      console.log(`💾 CREATING IMAGE MEDIA RECORD:`, {
+      logger.info(`💾 CREATING IMAGE MEDIA RECORD:`, {
         filename: baseFilename,
         type: imageType,
         purpose: imagePurpose,
@@ -245,8 +272,8 @@ export default defineEventHandler(async (event) => {
       let mediaRecord
       if (isTestWorkflow) {
         // TEST WORKFLOW: Always create separate records for each output image
-        console.log(`✨ TEST WORKFLOW (${workflowType}): Creating NEW media record for each output image: job ${jobId}, source ${fileSourceUuid}, filename ${baseFilename}`)
-        console.log(`✨ TEST WORKFLOW DEBUG: fileSourceUuid=${fileSourceUuid}, subjectUuid=${job?.subjectUuid}, purpose=${imagePurpose}`)
+        logger.info(`✨ TEST WORKFLOW (${workflowType}): Creating NEW media record for each output image: job ${jobId}, source ${fileSourceUuid}, filename ${baseFilename}`)
+        logger.info(`✨ TEST WORKFLOW DEBUG: fileSourceUuid=${fileSourceUuid}, subjectUuid=${job?.subjectUuid}, purpose=${imagePurpose}`)
         mediaRecord = await db.insert(mediaRecords).values({
           filename: baseFilename,
           type: imageType,
@@ -292,7 +319,7 @@ export default defineEventHandler(async (event) => {
 
         if (existingRecord.length > 0) {
           // Update existing record (only from the same job)
-          console.log(`🔄 VID WORKFLOW: Updating existing media record for job ${jobId}, source ${fileSourceUuid} and subject ${job.subjectUuid}`)
+          logger.info(`🔄 VID WORKFLOW: Updating existing media record for job ${jobId}, source ${fileSourceUuid} and subject ${job.subjectUuid}`)
           mediaRecord = await db.update(mediaRecords)
             .set({
               filename: baseFilename,
@@ -311,7 +338,7 @@ export default defineEventHandler(async (event) => {
             })
         } else {
           // Create new record (always create new records for different jobs)
-          console.log(`✨ VID WORKFLOW: Creating NEW media record for job ${jobId}, source ${fileSourceUuid} and subject ${job.subjectUuid}`)
+          logger.info(`✨ VID WORKFLOW: Creating NEW media record for job ${jobId}, source ${fileSourceUuid} and subject ${job.subjectUuid}`)
           mediaRecord = await db.insert(mediaRecords).values({
             filename: baseFilename,
             type: imageType,
@@ -336,21 +363,21 @@ export default defineEventHandler(async (event) => {
       const imageRecord = mediaRecord[0]
       savedMedia.push(imageRecord)
       
-      console.log(`✅ RECORD CREATED: ${imageRecord.uuid} with sourceMediaUuidRef=${imageRecord.sourceMediaUuidRef}, filename=${imageRecord.filename}`)
+      logger.info(`✅ RECORD CREATED: ${imageRecord.uuid} with sourceMediaUuidRef=${imageRecord.sourceMediaUuidRef}, filename=${imageRecord.filename}`)
       
       if (imagePurpose === 'thumbnail') {
         thumbnailRecord = imageRecord
-        console.log(`✅ Saved thumbnail: ${imageRecord.uuid} - WILL BE LINKED TO VIDEOS`)
+        logger.info(`✅ Saved thumbnail: ${imageRecord.uuid} - WILL BE LINKED TO VIDEOS`)
       } else {
-        console.log(`✅ Saved image: ${imageRecord.uuid}`)
+        logger.info(`✅ Saved image: ${imageRecord.uuid}`)
       }
     }
     
-    console.log(`🔍 THUMBNAIL STATUS BEFORE VIDEO PROCESSING: thumbnailRecord=${thumbnailRecord ? thumbnailRecord.uuid : 'NULL'}`)
+    logger.info(`🔍 THUMBNAIL STATUS BEFORE VIDEO PROCESSING: thumbnailRecord=${thumbnailRecord ? thumbnailRecord.uuid : 'NULL'}`)
     
     // Delete existing output images for this job when we receive videos
     if (videoFiles.length > 0) {
-      console.log(`🗑️ CLEANUP: Deleting existing output images for job ${jobId} before processing videos`)
+      logger.info(`🗑️ CLEANUP: Deleting existing output images for job ${jobId} before processing videos`)
       const { and } = await import('drizzle-orm')
       
       try {
@@ -369,20 +396,21 @@ export default defineEventHandler(async (event) => {
           })
         
         if (deletedRecords.length > 0) {
-          console.log(`🗑️ DELETED: Removed ${deletedRecords.length} output images for job ${jobId}:`,
+          logger.info(`🗑️ DELETED: Removed ${deletedRecords.length} output images for job ${jobId}:`,
             deletedRecords.map(r => `${r.filename} (${r.uuid})`))
         } else {
-          console.log(`🗑️ CLEANUP: No existing output images found for job ${jobId}`)
+          logger.info(`🗑️ CLEANUP: No existing output images found for job ${jobId}`)
         }
       } catch (deleteError) {
-        console.error(`⚠️ Failed to delete existing output images for job ${jobId}:`, deleteError)
+        logger.error(`⚠️ Failed to delete existing output images for job ${jobId}:`, deleteError)
         // Don't fail the job if cleanup fails, just log the error
       }
     }
     
     // Process video files with thumbnail reference
-    for (const file of videoFiles) {
-      console.log(`🎬 Processing video file: ${file.filename} (${file.data.length} bytes)`)
+    for (let fileIndex = 0; fileIndex < videoFiles.length; fileIndex++) {
+      const file = videoFiles[fileIndex]
+      logger.info(`🎬 Processing video file ${fileIndex}: ${file.filename} (${file.data.length} bytes)`)
       
       // Calculate checksum of the original file data
       const { createHash } = await import('crypto')
@@ -395,7 +423,11 @@ export default defineEventHandler(async (event) => {
       // Strip path from filename for storage
       const baseFilename = file.filename ? path.basename(file.filename) : 'output.mp4'
       
-      console.log(`💾 CREATING VIDEO MEDIA RECORD:`, {
+      // Get video metadata for this file
+      const fileMetadata = videoMetadata.get(fileIndex.toString()) || {}
+      logger.info(`🎬 Video metadata for file ${fileIndex}:`, fileMetadata)
+      
+      logger.info(`💾 CREATING VIDEO MEDIA RECORD:`, {
         filename: baseFilename,
         type: 'video',
         purpose: purpose,
@@ -406,7 +438,8 @@ export default defineEventHandler(async (event) => {
         fileSize: file.data.length,
         jobId: jobId,
         hasThumbnailRecord: !!thumbnailRecord,
-        thumbnailRecordUuid: thumbnailRecord?.uuid || 'NO_THUMBNAIL'
+        thumbnailRecordUuid: thumbnailRecord?.uuid || 'NO_THUMBNAIL',
+        videoMetadata: fileMetadata
       })
       
       // Check if a record already exists for this EXACT job, source UUID and subject UUID combination
@@ -430,7 +463,7 @@ export default defineEventHandler(async (event) => {
 
         if (existingRecord.length > 0) {
           // Update existing record (only from the same job)
-          console.log(`🔄 VID WORKFLOW (${workflowType}): Updating existing video media record for job ${jobId}, source ${sourceMediaUuid} and subject ${job.subjectUuid}`)
+          logger.info(`🔄 VID WORKFLOW (${workflowType}): Updating existing video media record for job ${jobId}, source ${sourceMediaUuid} and subject ${job.subjectUuid}`)
           mediaRecord = await db.update(mediaRecords)
             .set({
               filename: baseFilename,
@@ -440,6 +473,12 @@ export default defineEventHandler(async (event) => {
               originalSize: file.data.length,
               checksum: checksum,
               tags: destVideoTags, // Apply tags from destination video
+              fps: fileMetadata.fps || null,
+              codec: fileMetadata.codec || null,
+              bitrate: fileMetadata.bitrate || null,
+              width: fileMetadata.width || null,
+              height: fileMetadata.height || null,
+              duration: fileMetadata.duration || null,
               updatedAt: new Date()
             })
             .where(eq(mediaRecords.uuid, existingRecord[0].uuid))
@@ -451,7 +490,7 @@ export default defineEventHandler(async (event) => {
             })
         } else {
           // Create new record (always create new records for different jobs)
-          console.log(`✨ VID WORKFLOW (${workflowType}): Creating NEW video media record for job ${jobId}, source ${sourceMediaUuid} and subject ${job.subjectUuid}`)
+          logger.info(`✨ VID WORKFLOW (${workflowType}): Creating NEW video media record for job ${jobId}, source ${sourceMediaUuid} and subject ${job.subjectUuid}`)
           mediaRecord = await db.insert(mediaRecords).values({
             filename: baseFilename,
             type: 'video',
@@ -465,7 +504,13 @@ export default defineEventHandler(async (event) => {
             originalSize: file.data.length,
             checksum: checksum,
             jobId: jobId,
-            tags: destVideoTags // Apply tags from destination video
+            tags: destVideoTags, // Apply tags from destination video
+            fps: fileMetadata.fps || null,
+            codec: fileMetadata.codec || null,
+            bitrate: fileMetadata.bitrate || null,
+            width: fileMetadata.width || null,
+            height: fileMetadata.height || null,
+            duration: fileMetadata.duration || null
           }).returning({
             uuid: mediaRecords.uuid,
             filename: mediaRecords.filename,
@@ -488,7 +533,13 @@ export default defineEventHandler(async (event) => {
           originalSize: file.data.length,
           checksum: checksum,
           jobId: jobId,
-          tags: destVideoTags // Apply tags from destination video
+          tags: destVideoTags, // Apply tags from destination video
+          fps: fileMetadata.fps || null,
+          codec: fileMetadata.codec || null,
+          bitrate: fileMetadata.bitrate || null,
+          width: fileMetadata.width || null,
+          height: fileMetadata.height || null,
+          duration: fileMetadata.duration || null
         }).returning({
           uuid: mediaRecords.uuid,
           filename: mediaRecords.filename,
@@ -499,7 +550,7 @@ export default defineEventHandler(async (event) => {
       
       const videoRecord = mediaRecord[0]
       savedMedia.push(videoRecord)
-      console.log(`✅ Saved video: ${videoRecord.uuid}${thumbnailRecord ? ` with thumbnail ${thumbnailRecord.uuid}` : ' WITHOUT THUMBNAIL'}`)
+      logger.info(`✅ Saved video: ${videoRecord.uuid}${thumbnailRecord ? ` with thumbnail ${thumbnailRecord.uuid}` : ' WITHOUT THUMBNAIL'}`)
       
       // Update thumbnail record to reference the video (just update timestamp for tracking)
       if (thumbnailRecord) {
@@ -510,9 +561,9 @@ export default defineEventHandler(async (event) => {
           })
           .where(eq(mediaRecords.uuid, thumbnailRecord.uuid))
         
-        console.log(`🔗 Linked thumbnail ${thumbnailRecord.uuid} to video ${videoRecord.uuid} via thumbnailUuid field`)
+        logger.info(`🔗 Linked thumbnail ${thumbnailRecord.uuid} to video ${videoRecord.uuid} via thumbnailUuid field`)
       } else {
-        console.log(`⚠️ NO THUMBNAIL RECORD AVAILABLE for video ${videoRecord.uuid}`)
+        logger.info(`⚠️ NO THUMBNAIL RECORD AVAILABLE for video ${videoRecord.uuid}`)
       }
     }
     
@@ -524,7 +575,7 @@ export default defineEventHandler(async (event) => {
     }
     
     // SINGLE REQUEST COMPLETION: All files processed in single request
-    console.log(`📦 COMPLETION: Processing completion for ${savedMedia.length} files`)
+    logger.info(`📦 COMPLETION: Processing completion for ${savedMedia.length} files`)
     
     // Determine job status based on output type
     const hasImages = savedMedia.some(media => media.type === 'image')
@@ -537,9 +588,9 @@ export default defineEventHandler(async (event) => {
     if (hasImages && !hasVideos) {
       jobStatus = 'need_input'
       statusMessage = `Job ${jobId} produced ${savedMedia.length} images - needs additional input for video generation`
-      console.log(`🔄 STATUS: Job ${jobId} marked as need_input - received images instead of video`)
+      logger.info(`🔄 STATUS: Job ${jobId} marked as need_input - received images instead of video`)
     } else {
-      console.log(`✅ STATUS: Job ${jobId} completed successfully with ${savedMedia.length} output files`)
+      logger.info(`✅ STATUS: Job ${jobId} completed successfully with ${savedMedia.length} output files`)
     }
     
     // Update job with output UUID (use the video if available, otherwise first output)
@@ -553,10 +604,10 @@ export default defineEventHandler(async (event) => {
       .limit(1)
     
     if (currentJobStatus.length === 0) {
-      console.error(`⚠️ Job ${jobId} not found when trying to update status to ${jobStatus}`)
+      logger.error(`⚠️ Job ${jobId} not found when trying to update status to ${jobStatus}`)
     } else if (currentJobStatus[0].status === 'failed') {
-      console.log(`⚠️ Job ${jobId} is already marked as failed - not updating to ${jobStatus}`)
-      console.log(`⚠️ This is likely due to the "keep only 2 active jobs" logic in jobProcessingService.ts`)
+      logger.info(`⚠️ Job ${jobId} is already marked as failed - not updating to ${jobStatus}`)
+      logger.info(`⚠️ This is likely due to the "keep only 2 active jobs" logic in jobProcessingService.ts`)
       
       // Just update the outputUuid to link the output to the job
       // Don't change the status or progress since it's already marked as failed
@@ -568,7 +619,7 @@ export default defineEventHandler(async (event) => {
         })
         .where(eq(jobs.id, jobId))
       
-      console.log(`✅ Updated job ${jobId} with output UUID while preserving failed status`)
+      logger.info(`✅ Updated job ${jobId} with output UUID while preserving failed status`)
     } else {
       // Normal update flow for active jobs
       await db
@@ -589,12 +640,12 @@ export default defineEventHandler(async (event) => {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job completion:', error)
+      logger.error('Failed to update job counts after job completion:', error)
     }
     
     // Job triggering is now handled exclusively by the continuous processing interval
     // This prevents race conditions and ensures proper job sequencing
-    console.log('🔄 COMPLETION: Continuous processing will handle next job automatically')
+    logger.info('🔄 COMPLETION: Continuous processing will handle next job automatically')
     
     return {
       success: true,
@@ -614,7 +665,7 @@ export default defineEventHandler(async (event) => {
     }
     
   } catch (error: any) {
-    console.error(`❌ Failed to process outputs for job ${jobId}:`, error)
+    logger.error(`❌ Failed to process outputs for job ${jobId}:`, error)
     
     // Try to update the job status to failed with error message
     try {
@@ -632,10 +683,10 @@ export default defineEventHandler(async (event) => {
         .limit(1)
       
       if (currentJobStatus.length === 0) {
-        console.log(`⚠️ Job ${jobId} not found when trying to update status to failed`)
+        logger.info(`⚠️ Job ${jobId} not found when trying to update status to failed`)
       } else if (currentJobStatus[0].status === 'failed') {
-        console.log(`⚠️ Job ${jobId} is already marked as failed - not updating error message`)
-        console.log(`⚠️ This is likely due to the "keep only 2 active jobs" logic in jobProcessingService.ts`)
+        logger.info(`⚠️ Job ${jobId} is already marked as failed - not updating error message`)
+        logger.info(`⚠️ This is likely due to the "keep only 2 active jobs" logic in jobProcessingService.ts`)
       } else {
         // Normal update flow for active jobs
         await db
@@ -648,7 +699,7 @@ export default defineEventHandler(async (event) => {
           })
           .where(eq(jobs.id, jobId))
         
-        console.log(`📝 Updated job ${jobId} status to failed`)
+        logger.info(`📝 Updated job ${jobId} status to failed`)
       }
       
       // Update job counts for WebSocket clients after status change
@@ -656,15 +707,15 @@ export default defineEventHandler(async (event) => {
         const { updateJobCounts } = await import('~/server/services/systemStatusManager')
         await updateJobCounts()
       } catch (error) {
-        console.error('Failed to update job counts after job failure in catch block:', error)
+        logger.error('Failed to update job counts after job failure in catch block:', error)
       }
       
       // Job triggering is now handled exclusively by the continuous processing interval
       // This prevents race conditions and ensures proper job sequencing
-      console.log('🔄 Job failed during processing - continuous processing will handle next job automatically')
+      logger.info('🔄 Job failed during processing - continuous processing will handle next job automatically')
       
     } catch (updateError) {
-      console.error(`❌ Failed to update job ${jobId} status:`, updateError)
+      logger.error(`❌ Failed to update job ${jobId} status:`, updateError)
     }
     
     if (error.statusCode) {

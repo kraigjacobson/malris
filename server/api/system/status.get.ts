@@ -4,6 +4,7 @@
  */
 
 import { getCurrentStatus, getConnectedClientsCount } from '~/server/services/systemStatusManager'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (_event) => {
   try {
@@ -18,7 +19,7 @@ export default defineEventHandler(async (_event) => {
     }
     
   } catch (error: any) {
-    console.error('❌ [API] Error fetching system status:', error)
+    logger.error('❌ [API] Error fetching system status:', error)
     
     throw createError({
       statusCode: 500,

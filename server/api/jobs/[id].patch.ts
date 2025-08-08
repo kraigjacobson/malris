@@ -1,6 +1,7 @@
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -65,7 +66,7 @@ export default defineEventHandler(async (event) => {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('❌ Failed to update job counts after progress update:', error)
+      logger.error('❌ Failed to update job counts after progress update:', error)
     }
 
     return {
@@ -75,7 +76,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error: any) {
-    console.error('Error updating job progress:', error)
+    logger.error('Error updating job progress:', error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

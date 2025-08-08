@@ -1,6 +1,7 @@
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -141,7 +142,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error: any) {
-    console.error('Error fetching job from database:', error)
+    logger.error('Error fetching job from database:', error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

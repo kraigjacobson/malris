@@ -1,6 +1,7 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (_event) => {
   try {
-    console.log('Checking Nuxt backend health...')
+    logger.info('Checking Nuxt backend health...')
 
     // Check internal Nuxt backend health instead of external media server
     // Check database connection
@@ -24,7 +25,7 @@ export default defineEventHandler(async (_event) => {
     }
 
   } catch (error: any) {
-    console.error('Backend health check failed:', error)
+    logger.error('Backend health check failed:', error)
     
     return {
       status: 'unhealthy',

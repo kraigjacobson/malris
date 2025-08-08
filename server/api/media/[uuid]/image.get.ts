@@ -3,6 +3,7 @@ import { mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { decryptMediaData, getContentType } from '~/server/utils/encryption'
 import sharp from 'sharp'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -29,7 +30,7 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const size = query.size || 'md'
 
-    console.log('🖼️ Serving image for UUID:', uuid, 'size:', size)
+    logger.info('🖼️ Serving image for UUID:', uuid, 'size:', size)
 
     // Get database connection
     const db = getDb()
@@ -42,7 +43,7 @@ export default defineEventHandler(async (event) => {
       .limit(1)
 
     if (!mediaRecord || mediaRecord.length === 0) {
-      console.error(`🖼️ Media record not found for UUID: ${uuid}`)
+      logger.error(`🖼️ Media record not found for UUID: ${uuid}`)
       throw createError({
         statusCode: 404,
         statusMessage: 'Media not found'
@@ -81,7 +82,7 @@ export default defineEventHandler(async (event) => {
     try {
       decryptedData = decryptMediaData(record.encryptedData, encryptionKey)
     } catch (error) {
-      console.error('Decryption error:', error)
+      logger.error('Decryption error:', error)
       throw createError({
         statusCode: 500,
         statusMessage: 'Failed to decrypt media data'
@@ -139,7 +140,7 @@ export default defineEventHandler(async (event) => {
           break
       }
     } catch (error) {
-      console.error('Image processing error:', error)
+      logger.error('Image processing error:', error)
       // Fallback to original data if processing fails
       processedData = decryptedData
     }
@@ -157,7 +158,7 @@ export default defineEventHandler(async (event) => {
     return processedData
 
   } catch (error: any) {
-    console.error('Error serving image:', error)
+    logger.error('Error serving image:', error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

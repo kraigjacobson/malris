@@ -1,6 +1,7 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
 import { eq, and, isNull, or } from 'drizzle-orm'
+import { logger } from '~/server/utils/logger'
 
 // Import queue state from tag-all-untagged
 import { getQueueStatus } from '~/server/api/media/tag-all-untagged.post'
@@ -38,7 +39,7 @@ export default defineEventHandler(async (_event) => {
     }
     
   } catch (error: any) {
-    console.error('❌ Error getting queue status:', error)
+    logger.error('❌ Error getting queue status:', error)
     throw createError({
       statusCode: 500,
       statusMessage: error?.message || 'Failed to get queue status'

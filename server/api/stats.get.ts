@@ -2,6 +2,7 @@
  * Get storage statistics
  * Replaces the FastAPI /stats route
  */
+
 export default defineEventHandler(async (_event) => {
   try {
     const { getDbClient } = await import('~/server/utils/database')

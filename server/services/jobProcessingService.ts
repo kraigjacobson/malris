@@ -8,6 +8,7 @@ import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq, desc, sql, and } from 'drizzle-orm'
 import { updateAutoProcessingStatus, getCurrentStatus, checkWorkerHealth } from './systemStatusManager'
+import { logger } from '~/server/utils/logger'
 
 // Processing states
 type ProcessingMode = 'idle' | 'single' | 'continuous'
@@ -89,7 +90,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
     }
     
-    console.log('✅ ComfyUI worker is healthy and idle - proceeding with job processing')
+    logger.info('✅ ComfyUI worker is healthy and idle - proceeding with job processing')
     
     // Check counts of queued jobs with and without source media uuid
     const [testJobCount, videoJobCount] = await Promise.all([
@@ -133,7 +134,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         .limit(1)
     } else if (videoCount > 0) {
       // No test jobs available, get the most recent updated_at queued vid job
-      console.log(`📅 No test jobs available, selecting most recent updated_at video job from ${videoCount} available`)
+      logger.info(`📅 No test jobs available, selecting most recent updated_at video job from ${videoCount} available`)
       const orderBy = sql`RANDOM()`
       // const orderBy = desc(jobs.updatedAt)
       queuedJobs = await db
@@ -162,7 +163,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     }
     
     const job = queuedJobs[0]
-    console.log(`🚀 Processing job ${job.id} in ${currentMode} mode`)
+    logger.info(`🚀 Processing job ${job.id} in ${currentMode} mode`)
     
     // Get subject and media data for the job
     const [subjectData, destMediaData, sourceMediaData] = await Promise.all([
@@ -221,9 +222,9 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         // Extract video duration from destination video metadata for progress tracking
         if (destMediaData.length > 0 && destMediaData[0].duration) {
           formData.append('video_duration', destMediaData[0].duration.toString())
-          console.log(`📊 Added video duration to form data: ${destMediaData[0].duration}s`)
+          logger.info(`📊 Added video duration to form data: ${destMediaData[0].duration}s`)
         } else {
-          console.log(`⚠️ No duration found in destination video metadata for ${job.destMediaUuid}`)
+          logger.info(`⚠️ No duration found in destination video metadata for ${job.destMediaUuid}`)
         }
       }
       
@@ -271,7 +272,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
       
       // Send job to comfyui-runpod-worker
-      console.log(`🚀 Sending job ${job.id} to comfyui-runpod-worker at ${workerUrl}/process`)
+      logger.info(`🚀 Sending job ${job.id} to comfyui-runpod-worker at ${workerUrl}/process`)
       
       const workerResponse = await fetch(`${workerUrl}/process`, {
         method: 'POST',
@@ -284,7 +285,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
       
       const workerResult = await workerResponse.json()
-      console.log('✅ Worker response:', workerResult)
+      logger.info('✅ Worker response:', workerResult)
       
       // STRICT SOLUTION: Only allow 1 active job at a time
       // Mark all other active jobs as failed before starting the new one
@@ -316,10 +317,10 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
               })
             
             if (deletedMedia.length > 0) {
-              console.log(`🗑️ Cleaned up ${deletedMedia.length} output media records for failed job ${jobId}`)
+              logger.info(`🗑️ Cleaned up ${deletedMedia.length} output media records for failed job ${jobId}`)
             }
           } catch (cleanupError) {
-            console.error(`⚠️ Failed to clean up media records for job ${jobId}:`, cleanupError)
+            logger.error(`⚠️ Failed to clean up media records for job ${jobId}:`, cleanupError)
           }
         }
       }
@@ -338,9 +339,9 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           .where(eq(jobs.status, 'active'))
         
         affectedRows = result.rowCount || 0
-        console.log(`🧹 Marked ${affectedRows} active jobs as failed to enforce single active job limit`)
+        logger.info(`🧹 Marked ${affectedRows} active jobs as failed to enforce single active job limit`)
       } else {
-        console.log(`✅ No active jobs found - proceeding with new job`)
+        logger.info(`✅ No active jobs found - proceeding with new job`)
       }
       
       // Now update the current job to active status
@@ -358,7 +359,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         const { updateJobCounts } = await import('./systemStatusManager')
         await updateJobCounts()
       } catch (error) {
-        console.error('Failed to update job counts after job status changes:', error)
+        logger.error('Failed to update job counts after job status changes:', error)
       }
       
       // Job status is already set to active in our cleanup code above
@@ -374,7 +375,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
       
     } catch (workerError: any) {
-      console.error('❌ Failed to send job to worker:', workerError)
+      logger.error('❌ Failed to send job to worker:', workerError)
       
       // Set job status to failed on worker error (don't retry automatically)
       await db
@@ -392,7 +393,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         const { updateJobCounts } = await import('./systemStatusManager')
         await updateJobCounts()
       } catch (error) {
-        console.error('Failed to update job counts after job failure:', error)
+        logger.error('Failed to update job counts after job failure:', error)
       }
       
       // CRITICAL FIX: Return failure result instead of throwing error
@@ -406,7 +407,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     }
     
   } catch (error: any) {
-    console.error('❌ Failed to process next job:', error)
+    logger.error('❌ Failed to process next job:', error)
     throw new Error(`Failed to process next job: ${error.message || 'Unknown error'}`)
   } finally {
     // Always reset the processing flag
@@ -421,7 +422,7 @@ export async function startSingleJob() {
   }
   
   currentMode = 'single'
-  console.log('▶️ Starting single job processing - waiting 10 seconds before checking if idle...')
+  logger.info('▶️ Starting single job processing - waiting 10 seconds before checking if idle...')
   
   // Update status manager
   updateAutoProcessingStatus('enabled', 'Single job processing started - waiting 10 seconds', false)
@@ -429,7 +430,7 @@ export async function startSingleJob() {
   try {
     // Wait 10 seconds first
     await new Promise(resolve => setTimeout(resolve, 10000))
-    console.log('⏰ 10 seconds elapsed, now checking if ComfyUI is idle...')
+    logger.info('⏰ 10 seconds elapsed, now checking if ComfyUI is idle...')
     
     // Now check if we can process
     const result = await processNextJob()
@@ -457,7 +458,7 @@ export function startContinuousProcessing() {
   }
   
   currentMode = 'continuous'
-  console.log('🔄 Starting continuous job processing...')
+  logger.info('🔄 Starting continuous job processing...')
   
   // Update status manager
   updateAutoProcessingStatus('enabled', 'Continuous processing is running', true)
@@ -479,7 +480,7 @@ export function startContinuousProcessing() {
           // Skip this cycle - there are still active jobs running
           // Log occasionally to show we're still monitoring
           if (Math.random() < 0.05) { // 5% chance to log waiting messages
-            console.log(`🕐 Continuous processing: Waiting for ${activeCount} active job(s) to complete`)
+            logger.info(`🕐 Continuous processing: Waiting for ${activeCount} active job(s) to complete`)
           }
           return
         }
@@ -487,17 +488,17 @@ export function startContinuousProcessing() {
         const result = await processNextJob()
         // Only log when something interesting happens (not when skipping for idle wait)
         if (result.success) {
-          console.log('🔄 Continuous processing: Job started successfully -', result.message)
+          logger.info('🔄 Continuous processing: Job started successfully -', result.message)
         } else if (!('skip' in result && result.skip)) {
-          console.log('🔄 Continuous processing: Failed -', result.message)
+          logger.info('🔄 Continuous processing: Failed -', result.message)
         } else if (result.message.includes('waiting') || result.message.includes('busy')) {
           // Log idle waiting less frequently to avoid spam
           if (Math.random() < 0.1) { // 10% chance to log waiting messages
-            console.log('🕐 Continuous processing:', result.message)
+            logger.info('🕐 Continuous processing:', result.message)
           }
         }
       } catch (error: any) {
-        console.error('❌ Continuous processing error:', error.message)
+        logger.error('❌ Continuous processing error:', error.message)
       }
     }
   }, PROCESSING_INTERVAL)
@@ -518,7 +519,7 @@ export async function stopAllProcessing() {
     processingInterval = null
   }
   
-  console.log('⏹️ Stopping all job processing and interrupting running jobs...')
+  logger.info('⏹️ Stopping all job processing and interrupting running jobs...')
   
   // Update status manager
   updateAutoProcessingStatus('disabled', 'All processing stopped by user', false)
@@ -526,7 +527,7 @@ export async function stopAllProcessing() {
   // Send interrupt to ComfyUI to kill running jobs
   try {
     const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
-    console.log('🛑 Sending interrupt request to ComfyUI worker...')
+    logger.info('🛑 Sending interrupt request to ComfyUI worker...')
     
     const interruptResponse = await fetch(`${workerUrl}/interrupt`, {
       method: 'POST',
@@ -537,14 +538,14 @@ export async function stopAllProcessing() {
       throw new Error(`ComfyUI interrupt request failed: ${interruptResponse.status}`)
     }
     
-    console.log('✅ Successfully stopped all processing and interrupted running jobs')
+    logger.info('✅ Successfully stopped all processing and interrupted running jobs')
     return {
       success: true,
       message: 'All processing stopped and running jobs interrupted',
       wasActive
     }
   } catch (error: any) {
-    console.error('❌ Failed to interrupt ComfyUI jobs:', error)
+    logger.error('❌ Failed to interrupt ComfyUI jobs:', error)
     return {
       success: true, // Still consider it success since we stopped our processing
       message: `Processing stopped but failed to interrupt ComfyUI: ${error.message}`,

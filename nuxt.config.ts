@@ -19,7 +19,10 @@ export default defineNuxtConfig({
       wasm: true,
       openAPI: true,
       websocket: true
-    }
+    },
+    logLevel: 4, // Enable verbose logging
+    timing: true // Enable request timing
+    // Removed devProxy - API routes should be handled by the same Nuxt server
   },
   modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt'],
 

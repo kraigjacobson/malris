@@ -8,6 +8,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { logger } from '~/server/utils/logger'
 
 const execAsync = promisify(exec)
 
@@ -88,17 +89,17 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
     let skipped = 0
     const errors: string[] = []
 
-    console.log(`🎬 Starting thumbnail regeneration for ${filteredVideos.length} videos...`)
+    logger.info(`🎬 Starting thumbnail regeneration for ${filteredVideos.length} videos...`)
 
     for (const video of filteredVideos) {
       try {
         if (!video.thumbnailUuid) {
-          console.log(`⚠️ Skipping ${video.filename}: No thumbnail UUID`)
+          logger.info(`⚠️ Skipping ${video.filename}: No thumbnail UUID`)
           skipped++
           continue
         }
 
-        console.log(`🔄 Processing ${video.filename} (${video.uuid})...`)
+        logger.info(`🔄 Processing ${video.filename} (${video.uuid})...`)
 
         // Get the thumbnail record
         const thumbnailRecord = await db.select()
@@ -107,7 +108,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
           .limit(1)
 
         if (thumbnailRecord.length === 0) {
-          console.log(`⚠️ Skipping ${video.filename}: Thumbnail record not found`)
+          logger.info(`⚠️ Skipping ${video.filename}: Thumbnail record not found`)
           skipped++
           continue
         }
@@ -124,7 +125,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
           await writeFile(tempVideoPath, decryptedVideo)
 
           // Extract video metadata using ffprobe
-          console.log(`📊 Extracting metadata for ${video.filename}...`)
+          logger.info(`📊 Extracting metadata for ${video.filename}...`)
           const ffprobeCmd = `ffprobe -v quiet -print_format json -show_format -show_streams "${tempVideoPath}"`
           const { stdout: ffprobeOutput } = await execAsync(ffprobeCmd)
           const ffprobeData = JSON.parse(ffprobeOutput)
@@ -144,7 +145,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
           // Generate thumbnail using ffmpeg
           const ffmpegCmd = `ffmpeg -i "${tempVideoPath}" -ss 00:00:01 -vframes 1 -vf scale=320:-1 -y "${tempThumbnailPath}"`
           
-          console.log(`🎥 Generating thumbnail for ${video.filename}...`)
+          logger.info(`🎥 Generating thumbnail for ${video.filename}...`)
           await execAsync(ffmpegCmd)
 
           // Read the generated thumbnail
@@ -162,7 +163,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
             width = 320
             height = Math.round(320 * 0.75) // Assume 4:3 aspect ratio as default
           } catch {
-            console.log(`⚠️ Could not get dimensions for ${video.filename}, using defaults`)
+            logger.info(`⚠️ Could not get dimensions for ${video.filename}, using defaults`)
           }
 
           // Encrypt the new thumbnail
@@ -190,8 +191,8 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
             })
             .where(eq(mediaRecords.uuid, video.uuid))
 
-          console.log(`✅ Successfully regenerated thumbnail for ${video.filename} (${width}x${height})`)
-          console.log(`📊 Updated metadata: fps=${metadata.fps}, codec=${metadata.codec}, bitrate=${metadata.bitrate}`)
+          logger.info(`✅ Successfully regenerated thumbnail for ${video.filename} (${width}x${height})`)
+          logger.info(`📊 Updated metadata: fps=${metadata.fps}, codec=${metadata.codec}, bitrate=${metadata.bitrate}`)
           processed++
 
         } finally {
@@ -206,7 +207,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
 
       } catch (error) {
         const errorMsg = `Failed to process ${video.filename}: ${error instanceof Error ? error.message : 'Unknown error'}`
-        console.error(`❌ ${errorMsg}`)
+        logger.error(`❌ ${errorMsg}`)
         errors.push(errorMsg)
         failed++
       }
@@ -224,8 +225,8 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
     const remainingWithoutMetadata = Number(remainingQuery[0]?.count || 0)
 
     const message = `Thumbnail regeneration complete: ${processed} processed, ${failed} failed, ${skipped} skipped`
-    console.log(`🎉 ${message}`)
-    console.log(`📊 Remaining videos without metadata: ${remainingWithoutMetadata}`)
+    logger.info(`🎉 ${message}`)
+    logger.info(`📊 Remaining videos without metadata: ${remainingWithoutMetadata}`)
 
     return {
       success: true,
@@ -238,7 +239,7 @@ export default defineEventHandler(async (event): Promise<RegenerateThumbnailsRes
     }
 
   } catch (error) {
-    console.error('❌ Thumbnail regeneration failed:', error)
+    logger.error('❌ Thumbnail regeneration failed:', error)
     return {
       success: false,
       message: `Thumbnail regeneration failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

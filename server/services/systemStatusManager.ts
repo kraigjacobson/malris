@@ -13,6 +13,7 @@ import type {
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
 import { count, eq } from 'drizzle-orm'
+import { logger } from '~/server/utils/logger'
 
 // WebSocket clients management
 const wsClients = new Set<any>()
@@ -67,7 +68,7 @@ const COMFYUI_CHECK_INTERVAL = 15000 // 15 seconds
 // WebSocket client management
 export function addWebSocketClient(ws: any) {
   wsClients.add(ws)
-  console.log(`🔌 WebSocket client connected. Total clients: ${wsClients.size}`)
+  logger.info(`🔌 WebSocket client connected. Total clients: ${wsClients.size}`)
   
   // Send current status to new client immediately
   sendToClient(ws, {
@@ -79,7 +80,7 @@ export function addWebSocketClient(ws: any) {
   // Handle client disconnect
   ws.on('close', () => {
     wsClients.delete(ws)
-    console.log(`🔌 WebSocket client disconnected. Total clients: ${wsClients.size}`)
+    logger.info(`🔌 WebSocket client disconnected. Total clients: ${wsClients.size}`)
   })
 }
 
@@ -95,7 +96,7 @@ function broadcastToClients(message: WebSocketMessage) {
         wsClients.delete(ws) // Clean up dead connections
       }
     } catch (error) {
-      console.error('❌ Failed to send WebSocket message:', error)
+      logger.error('❌ Failed to send WebSocket message:', error)
       wsClients.delete(ws) // Remove failed connection
     }
   })
@@ -108,7 +109,7 @@ function sendToClient(ws: any, message: WebSocketMessage) {
       ws.send(JSON.stringify(message))
     }
   } catch (error) {
-    console.error('❌ Failed to send WebSocket message to client:', error)
+    logger.error('❌ Failed to send WebSocket message to client:', error)
     wsClients.delete(ws)
   }
 }
@@ -157,7 +158,7 @@ function updateStatus(updates: Partial<SystemStatus>, eventType: string = 'statu
   
   // Log significant changes
   if (previousStatus.systemHealth !== currentStatus.systemHealth) {
-    console.log(`🏥 System health changed: ${previousStatus.systemHealth} → ${currentStatus.systemHealth}`)
+    logger.info(`🏥 System health changed: ${previousStatus.systemHealth} → ${currentStatus.systemHealth}`)
   }
 }
 
@@ -278,9 +279,9 @@ async function checkComfyUIHealth() {
     // This was causing completed jobs to be reset to queued status
     // if (processingStatus === 'idle' && currentStatus.jobCounts.active > 0) {
     //   if (!resetActiveJobsTimeout) {
-    //     console.log(`🔄 ComfyUI is idle but ${currentStatus.jobCounts.active} jobs are marked as active - will reset to queued in 60 seconds`)
+    //     logger.info(`🔄 ComfyUI is idle but ${currentStatus.jobCounts.active} jobs are marked as active - will reset to queued in 60 seconds`)
     //     resetActiveJobsTimeout = setTimeout(async () => {
-    //       console.log(`⏰ 60 seconds elapsed since ComfyUI became idle - resetting active jobs to queued`)
+    //       logger.info(`⏰ 60 seconds elapsed since ComfyUI became idle - resetting active jobs to queued`)
     //       await resetActiveJobsToQueued()
     //       resetActiveJobsTimeout = null
     //     }, 60000) // 60 seconds
@@ -288,7 +289,7 @@ async function checkComfyUIHealth() {
     // } else {
     //   // Clear timeout if ComfyUI is no longer idle or no active jobs
     //   if (resetActiveJobsTimeout) {
-    //     console.log(`✅ ComfyUI is no longer idle or no active jobs - canceling reset timeout`)
+    //     logger.info(`✅ ComfyUI is no longer idle or no active jobs - canceling reset timeout`)
     //     clearTimeout(resetActiveJobsTimeout)
     //     resetActiveJobsTimeout = null
     //   }
@@ -355,7 +356,7 @@ export async function updateJobCounts() {
     }, 'job_counts_update')
     
   } catch (error: any) {
-    console.error('❌ Failed to update job counts:', error)
+    logger.error('❌ Failed to update job counts:', error)
   }
 }
 
@@ -377,14 +378,14 @@ export async function updateJobCounts() {
 //       .returning({ id: jobs.id })
 //
 //     if (resetJobs.length > 0) {
-//       console.log(`✅ Reset ${resetJobs.length} stuck active jobs to queued status`)
+//       logger.info(`✅ Reset ${resetJobs.length} stuck active jobs to queued status`)
 //
 //       // Update job counts after resetting jobs
 //       await updateJobCounts()
 //     }
 //
 //   } catch (error: any) {
-//     console.error('❌ Failed to reset active jobs to queued:', error)
+//     logger.error('❌ Failed to reset active jobs to queued:', error)
 //   }
 // }
 
@@ -406,7 +407,7 @@ export function updateAutoProcessingStatus(
 
 // Start all monitoring intervals
 export function startSystemMonitoring() {
-  console.log('🚀 Starting system status monitoring...')
+  logger.info('🚀 Starting system status monitoring...')
   
   // Stop any existing intervals
   stopSystemMonitoring()
@@ -420,7 +421,7 @@ export function startSystemMonitoring() {
   runpodHealthInterval = setInterval(checkRunPodWorkerHealth, RUNPOD_CHECK_INTERVAL)
   comfyuiHealthInterval = setInterval(checkComfyUIHealth, COMFYUI_CHECK_INTERVAL)
   
-  console.log('✅ System monitoring started')
+  logger.info('✅ System monitoring started')
 }
 
 // Stop all monitoring intervals
@@ -435,7 +436,7 @@ export function stopSystemMonitoring() {
     comfyuiHealthInterval = null
   }
   
-  console.log('⏹️ System monitoring stopped')
+  logger.info('⏹️ System monitoring stopped')
 }
 
 // Get current status

@@ -2,19 +2,20 @@ import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { onTaggingComplete } from '~/server/api/media/tag-all-untagged.post'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
     const uuid = getRouterParam(event, 'uuid')
     const body = await readBody(event)
     
-    console.log(`🔥 [TAGGING-RESULTS] ===== INCOMING REQUEST =====`)
-    console.log(`🔥 [TAGGING-RESULTS] Media UUID: ${uuid}`)
-    console.log(`🔥 [TAGGING-RESULTS] Request method: ${event.node.req.method}`)
-    console.log(`🔥 [TAGGING-RESULTS] Request URL: ${event.node.req.url}`)
-    console.log(`🔥 [TAGGING-RESULTS] Request headers:`, JSON.stringify(event.node.req.headers, null, 2))
-    console.log(`🔥 [TAGGING-RESULTS] Request body:`, JSON.stringify(body, null, 2))
-    console.log(`🔥 [TAGGING-RESULTS] Tags: ${body.tag_results}`)
+    logger.info(`🔥 [TAGGING-RESULTS] ===== INCOMING REQUEST =====`)
+    logger.info(`🔥 [TAGGING-RESULTS] Media UUID: ${uuid}`)
+    logger.info(`🔥 [TAGGING-RESULTS] Request method: ${event.node.req.method}`)
+    logger.info(`🔥 [TAGGING-RESULTS] Request URL: ${event.node.req.url}`)
+    logger.info(`🔥 [TAGGING-RESULTS] Request headers:`, JSON.stringify(event.node.req.headers, null, 2))
+    logger.info(`🔥 [TAGGING-RESULTS] Request body:`, JSON.stringify(body, null, 2))
+    logger.info(`🔥 [TAGGING-RESULTS] Tags: ${body.tag_results}`)
     
     if (!uuid) {
       throw createError({
@@ -59,9 +60,9 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    console.log(`🔥 [TAGGING-RESULTS] Database update result:`, JSON.stringify(result, null, 2))
-    console.log(`🔥 [TAGGING-RESULTS] ✅ Successfully updated tags for media UUID: ${uuid}`)
-    console.log(`🔥 [TAGGING-RESULTS] Final tags object:`, JSON.stringify(tagsObject, null, 2))
+    logger.info(`🔥 [TAGGING-RESULTS] Database update result:`, JSON.stringify(result, null, 2))
+    logger.info(`🔥 [TAGGING-RESULTS] ✅ Successfully updated tags for media UUID: ${uuid}`)
+    logger.info(`🔥 [TAGGING-RESULTS] Final tags object:`, JSON.stringify(tagsObject, null, 2))
     
     const response = {
       success: true,
@@ -70,8 +71,8 @@ export default defineEventHandler(async (event) => {
       tags: tagsObject
     }
     
-    console.log(`🔥 [TAGGING-RESULTS] Sending response:`, JSON.stringify(response, null, 2))
-    console.log(`🔥 [TAGGING-RESULTS] ===== REQUEST COMPLETED =====`)
+    logger.info(`🔥 [TAGGING-RESULTS] Sending response:`, JSON.stringify(response, null, 2))
+    logger.info(`🔥 [TAGGING-RESULTS] ===== REQUEST COMPLETED =====`)
     
     // Notify the queue system that tagging is complete so it can process the next video
     onTaggingComplete()
@@ -79,7 +80,7 @@ export default defineEventHandler(async (event) => {
     return response
     
   } catch (error: any) {
-    console.error('❌ Error updating media tags:', error)
+    logger.error('❌ Error updating media tags:', error)
     throw createError({
       statusCode: error.statusCode || 500,
       statusMessage: error.statusMessage || 'Failed to update media tags'

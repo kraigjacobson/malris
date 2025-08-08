@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (event) => {
   const jobId = getRouterParam(event, 'id')
   
@@ -9,7 +10,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    console.log(`🔄 Re-queuing failed job ${jobId} via Drizzle ORM...`)
+    logger.info(`🔄 Re-queuing failed job ${jobId} via Drizzle ORM...`)
 
     // Use Drizzle ORM instead of raw SQL
     const { getDb } = await import('~/server/utils/database')
@@ -42,7 +43,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Delete all output purpose media records associated with this job
-    console.log(`🗑️ Deleting output media records for job ${jobId}...`)
+    logger.info(`🗑️ Deleting output media records for job ${jobId}...`)
     const deletedMedia = await db.delete(mediaRecords)
       .where(and(
         eq(mediaRecords.jobId, jobId),
@@ -54,9 +55,9 @@ export default defineEventHandler(async (event) => {
       })
     
     if (deletedMedia.length > 0) {
-      console.log(`✅ Deleted ${deletedMedia.length} output media records:`, deletedMedia.map(m => m.filename))
+      logger.info(`✅ Deleted ${deletedMedia.length} output media records:`, deletedMedia.map(m => m.filename))
     } else {
-      console.log(`ℹ️ No output media records found for job ${jobId}`)
+      logger.info(`ℹ️ No output media records found for job ${jobId}`)
     }
 
     // Update job status to queued and clear error/source fields
@@ -78,14 +79,14 @@ export default defineEventHandler(async (event) => {
       })
     
     const requeued = requeuedJob[0]
-    console.log(`✅ Successfully re-queued job ${jobId}:`, requeued)
+    logger.info(`✅ Successfully re-queued job ${jobId}:`, requeued)
 
     // Update job counts for WebSocket clients
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job re-queue:', error)
+      logger.error('Failed to update job counts after job re-queue:', error)
     }
 
     return {
@@ -99,7 +100,7 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: any) {
-    console.error('Failed to re-queue job:', error)
+    logger.error('Failed to re-queue job:', error)
     
     // Handle different error scenarios
     if (error.status === 404) {

@@ -1,8 +1,11 @@
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc } from 'drizzle-orm'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
+  const startTime = performance.now()
+  
   try {
     // Get query parameters
     const query = getQuery(event)
@@ -32,6 +35,8 @@ export default defineEventHandler(async (event) => {
       include_thumbnails = false
     } = query
 
+    logger.info(`🔍 [JOBS API DEBUG] Search request started - status: "${status}", subject: "${subject_uuid}", source_type: "${source_type}", limit: ${limit}, offset: ${offset}`)
+
     const db = getDb()
 
     // Validate sort parameters
@@ -50,6 +55,8 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    const conditionsStartTime = performance.now()
+    
     // Build where conditions
     const conditions = []
 
@@ -173,7 +180,11 @@ export default defineEventHandler(async (event) => {
         break
     }
 
+    const conditionsTime = performance.now() - conditionsStartTime
+    logger.info(`🔍 [JOBS API DEBUG] Query conditions built in ${conditionsTime.toFixed(2)}ms - ${conditions.length} conditions`)
+
     // Execute the main query with joins
+    const mainQueryStartTime = performance.now()
     const results = await db
       .select({
         id: jobs.id,
@@ -202,20 +213,27 @@ export default defineEventHandler(async (event) => {
       .limit(limitNum)
       .offset(offsetNum)
 
+    const mainQueryTime = performance.now() - mainQueryStartTime
+    logger.info(`🔍 [JOBS API DEBUG] Main query completed in ${mainQueryTime.toFixed(2)}ms - returned ${results.length} jobs`)
+
     // Get total count for pagination info
+    const countQueryStartTime = performance.now()
     const totalCountResult = await db
       .select({ count: count() })
       .from(jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
     
     const filteredCount = totalCountResult[0].count
+    const countQueryTime = performance.now() - countQueryStartTime
+    logger.info(`🔍 [JOBS API] Count query completed in ${countQueryTime.toFixed(2)}ms - filtered count: ${filteredCount}`)
 
     // Get additional media info for each job (source, dest, output)
+    const enhancementStartTime = performance.now()
     const enhancedResults = await Promise.all(
       results.map(async (job) => {
         const [sourceMedia, destMedia, outputMedia] = await Promise.all([
           // Get source media info
-          job.source_media_uuid ? 
+          job.source_media_uuid ?
             db.select({
               uuid: mediaRecords.uuid,
               filename: mediaRecords.filename,
@@ -227,7 +245,7 @@ export default defineEventHandler(async (event) => {
             .limit(1) : Promise.resolve([]),
           
           // Get dest media info
-          job.dest_media_uuid ? 
+          job.dest_media_uuid ?
             db.select({
               uuid: mediaRecords.uuid,
               filename: mediaRecords.filename,
@@ -239,7 +257,7 @@ export default defineEventHandler(async (event) => {
             .limit(1) : Promise.resolve([]),
           
           // Get output media info
-          job.output_uuid ? 
+          job.output_uuid ?
             db.select({
               uuid: mediaRecords.uuid,
               filename: mediaRecords.filename,
@@ -279,9 +297,15 @@ export default defineEventHandler(async (event) => {
       })
     )
 
+    const enhancementTime = performance.now() - enhancementStartTime
+    logger.info(`🔍 [JOBS API] Media enhancement completed in ${enhancementTime.toFixed(2)}ms`)
+
     // Get total jobs count for additional metadata
+    const totalCountStartTime = performance.now()
     const totalJobsResult = await db.select({ count: count() }).from(jobs)
     const totalJobsCount = totalJobsResult[0].count
+    const totalCountTime = performance.now() - totalCountStartTime
+    logger.info(`🔍 [JOBS API] Total count query completed in ${totalCountTime.toFixed(2)}ms - total jobs: ${totalJobsCount}`)
 
     const response: any = {
       results: enhancedResults,
@@ -297,10 +321,16 @@ export default defineEventHandler(async (event) => {
       // Thumbnail processing would go here - requires decryption logic
     }
 
+    const totalTime = performance.now() - startTime
+    const responseTimestamp = new Date().toISOString()
+    logger.info(`🔍 [JOBS API] Search request completed at: ${responseTimestamp}`)
+    logger.info(`🔍 [JOBS API] Search request completed in ${totalTime.toFixed(2)}ms - returned ${enhancedResults.length} enhanced jobs`)
+
     return response
 
   } catch (error: any) {
-    console.error('Error searching jobs from database:', error)
+    const totalTime = performance.now() - startTime
+    logger.error(`❌ [JOBS API] Search request failed after ${totalTime.toFixed(2)}ms:`, error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

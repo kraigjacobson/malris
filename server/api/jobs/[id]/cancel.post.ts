@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (event) => {
   const jobId = getRouterParam(event, 'id')
   
@@ -9,7 +10,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    console.log(`🛑 Canceling job ${jobId} via Drizzle ORM...`)
+    logger.info(`🛑 Canceling job ${jobId} via Drizzle ORM...`)
 
     // Use Drizzle ORM instead of raw SQL
     const { getDb } = await import('~/server/utils/database')
@@ -43,7 +44,7 @@ export default defineEventHandler(async (event) => {
 
     // If job is currently active, try to interrupt ALL jobs via rp_handler
     if (job.status === 'active') {
-      console.log(`🛑 Canceling active job ${jobId} - attempting to interrupt ALL jobs via rp_handler`)
+      logger.info(`🛑 Canceling active job ${jobId} - attempting to interrupt ALL jobs via rp_handler`)
       
       try {
         // Use rp_handler interrupt endpoint - use Docker network service name and internal port
@@ -61,13 +62,13 @@ export default defineEventHandler(async (event) => {
         
         if (response.ok) {
           const result = await response.json()
-          console.log(`✅ Successfully interrupted ALL jobs via rp_handler:`, result)
+          logger.info(`✅ Successfully interrupted ALL jobs via rp_handler:`, result)
         } else {
           const errorText = await response.text()
-          console.log(`⚠️ rp_handler interrupt response: ${response.status} ${response.statusText} - ${errorText}`)
+          logger.info(`⚠️ rp_handler interrupt response: ${response.status} ${response.statusText} - ${errorText}`)
         }
       } catch (error: any) {
-        console.log(`⚠️ Error interrupting ALL jobs via rp_handler: ${error.message}`)
+        logger.info(`⚠️ Error interrupting ALL jobs via rp_handler: ${error.message}`)
         // Continue with cancellation even if interrupt fails
       }
     }
@@ -76,7 +77,7 @@ export default defineEventHandler(async (event) => {
     const { mediaRecords } = await import('~/server/utils/schema')
     const { and } = await import('drizzle-orm')
     
-    console.log(`🗑️ Deleting output media records for job ${jobId}...`)
+    logger.info(`🗑️ Deleting output media records for job ${jobId}...`)
     const deletedMedia = await db.delete(mediaRecords)
       .where(and(
         eq(mediaRecords.jobId, jobId),
@@ -88,9 +89,9 @@ export default defineEventHandler(async (event) => {
       })
     
     if (deletedMedia.length > 0) {
-      console.log(`✅ Deleted ${deletedMedia.length} output media records:`, deletedMedia.map(m => m.filename))
+      logger.info(`✅ Deleted ${deletedMedia.length} output media records:`, deletedMedia.map(m => m.filename))
     } else {
-      console.log(`ℹ️ No output media records found for job ${jobId}`)
+      logger.info(`ℹ️ No output media records found for job ${jobId}`)
     }
 
     // Update job status to canceled and clear sourceMediaUuid to convert back to test workflow
@@ -112,18 +113,18 @@ export default defineEventHandler(async (event) => {
       })
     
     const canceled = canceledJob[0]
-    console.log(`✅ Successfully canceled job ${jobId}:`, canceled)
+    logger.info(`✅ Successfully canceled job ${jobId}:`, canceled)
 
     // Update job counts for WebSocket clients
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job cancellation:', error)
+      logger.error('Failed to update job counts after job cancellation:', error)
     }
 
     // Job cancellation complete - no auto-processing of next job
-    console.log(`✅ Job ${jobId} canceled successfully - manual job control enabled`)
+    logger.info(`✅ Job ${jobId} canceled successfully - manual job control enabled`)
 
     return {
       success: true,
@@ -135,7 +136,7 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: any) {
-    console.error('Failed to cancel job:', error)
+    logger.error('Failed to cancel job:', error)
     
     // Handle different error scenarios
     if (error.status === 404) {

@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 export default defineEventHandler(async (event) => {
   try {
     // Get the job ID from the route parameters
@@ -10,7 +11,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    console.log(`🗑️ Deleting job ${jobId} via Drizzle ORM...`)
+    logger.info(`🗑️ Deleting job ${jobId} via Drizzle ORM...`)
 
     // Use Drizzle ORM instead of raw SQL
     const { getDb } = await import('~/server/utils/database')
@@ -41,14 +42,14 @@ export default defineEventHandler(async (event) => {
     })
     
     const deleted = deletedJob[0]
-    console.log(`✅ Successfully deleted job ${jobId} from database:`, deleted)
+    logger.info(`✅ Successfully deleted job ${jobId} from database:`, deleted)
 
     // Update job counts for WebSocket clients
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job deletion:', error)
+      logger.error('Failed to update job counts after job deletion:', error)
     }
 
     return {
@@ -61,8 +62,8 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: any) {
-    console.error('❌ Failed to delete job:', error)
-    console.error('❌ Error details:', {
+    logger.error('❌ Failed to delete job:', error)
+    logger.error('❌ Error details:', {
       message: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,

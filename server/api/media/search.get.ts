@@ -2,6 +2,7 @@ import { getDb } from '~/server/utils/database'
 import { mediaRecords, jobs, subjects } from '~/server/utils/schema'
 import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event) => {
     } = query
 
     // Debug logging for include_thumbnails parameter
-    console.log('🔍 Media search parameters:', {
+    logger.info('🔍 Media search parameters:', {
       include_thumbnails,
       include_thumbnails_type: typeof include_thumbnails,
       media_type,
@@ -280,6 +281,9 @@ export default defineEventHandler(async (event) => {
           width: mediaRecords.width,
           height: mediaRecords.height,
           duration: mediaRecords.duration,
+          fps: mediaRecords.fps,
+          codec: mediaRecords.codec,
+          bitrate: mediaRecords.bitrate,
           tags: mediaRecords.tags,
           subject_uuid: mediaRecords.subjectUuid,
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
@@ -385,6 +389,9 @@ export default defineEventHandler(async (event) => {
         width: mediaRecords.width,
         height: mediaRecords.height,
         duration: mediaRecords.duration,
+        fps: mediaRecords.fps,
+        codec: mediaRecords.codec,
+        bitrate: mediaRecords.bitrate,
         tags: mediaRecords.tags,
         subject_uuid: mediaRecords.subjectUuid,
         source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
@@ -441,6 +448,9 @@ export default defineEventHandler(async (event) => {
       width: result.width,
       height: result.height,
       duration: result.duration,
+      fps: result.fps,
+      codec: result.codec,
+      bitrate: result.bitrate,
       tags: result.tags,
       subject_uuid: result.subject_uuid,
       source_media_uuid_ref: result.source_media_uuid_ref,
@@ -468,7 +478,7 @@ export default defineEventHandler(async (event) => {
 
     // Process thumbnails and images if include_thumbnails is explicitly true
     if (include_thumbnails === 'true' || include_thumbnails === true) {
-      console.log('🖼️ Processing thumbnails and images for media results...')
+      logger.info('🖼️ Processing thumbnails and images for media results...')
       
       for (const result of transformedResults) {
         // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
@@ -522,19 +532,19 @@ export default defineEventHandler(async (event) => {
                 const contentType = getContentType(filename as string, 'image/jpeg')
                 const base64Data = decryptedData.toString('base64')
                 result.thumbnail = `data:${contentType};base64,${base64Data}`
-                console.log(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
+                logger.info(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
               }
             } catch (error) {
-              console.error(`❌ Failed to generate ${thumbnailType} thumbnail for video ${result.uuid}:`, error)
+              logger.error(`❌ Failed to generate ${thumbnailType} thumbnail for video ${result.uuid}:`, error)
             }
           } else {
-            console.warn(`⚠️ Video ${result.uuid} has no subject thumbnail or video thumbnail`)
+            logger.warn(`⚠️ Video ${result.uuid} has no subject thumbnail or video thumbnail`)
           }
         }
         
         // Handle image data directly - images still use their own data
         else if (result.type === 'image') {
-          console.log(`✅ Processing image ${result.uuid}`)
+          logger.info(`✅ Processing image ${result.uuid}`)
           
           try {
             // For images, we need to get the data separately since we didn't join it
@@ -555,11 +565,11 @@ export default defineEventHandler(async (event) => {
                 const contentType = getContentType(result.filename, 'image/jpeg')
                 const base64Data = decryptedData.toString('base64')
                 result.thumbnail = `data:${contentType};base64,${base64Data}`
-                console.log(`✅ Generated base64 data for image ${result.uuid} - contentType: ${contentType}, base64 length: ${base64Data.length}, decrypted size: ${decryptedData.length} bytes`)
+                logger.info(`✅ Generated base64 data for image ${result.uuid} - contentType: ${contentType}, base64 length: ${base64Data.length}, decrypted size: ${decryptedData.length} bytes`)
               }
             }
           } catch (error) {
-            console.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
+            logger.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
           }
         }
         
@@ -568,7 +578,7 @@ export default defineEventHandler(async (event) => {
         Object.assign(result, cleanResult)
       }
     } else {
-      console.log('🚫 Skipping thumbnail processing - include_thumbnails is false')
+      logger.info('🚫 Skipping thumbnail processing - include_thumbnails is false')
     }
 
     const response = {
@@ -579,7 +589,7 @@ export default defineEventHandler(async (event) => {
       total_count: totalCount
     }
 
-    console.log('🔍 Media search completed:', {
+    logger.info('🔍 Media search completed:', {
       total_results: transformedResults.length,
       total_count: totalCount,
       videos_with_thumbnails: transformedResults.filter(r => r.type === 'video' && r.has_thumbnail).length
@@ -588,7 +598,7 @@ export default defineEventHandler(async (event) => {
     return response
 
   } catch (error: any) {
-    console.error('Error searching media from database:', error)
+    logger.error('Error searching media from database:', error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

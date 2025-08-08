@@ -2,7 +2,7 @@
  * Continuous Job Processing Endpoint
  * Starts continuous processing that runs jobs one after another
  */
-
+import { logger } from '~/server/utils/logger'
 import { startContinuousProcessing } from '~/server/services/jobProcessingService'
 
 export default defineEventHandler(async (_event) => {
@@ -16,7 +16,7 @@ export default defineEventHandler(async (_event) => {
     }
     
   } catch (error: any) {
-    console.error('❌ Continuous processing failed to start:', error)
+    logger.error('❌ Continuous processing failed to start:', error)
     
     throw createError({
       statusCode: 500,

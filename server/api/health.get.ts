@@ -2,6 +2,8 @@
  * Health check endpoint
  * Replaces the FastAPI /health route
  */
+import { logger } from '~/server/utils/logger'
+
 export default defineEventHandler(async (_event) => {
   try {
     // Test database connection
@@ -16,7 +18,7 @@ export default defineEventHandler(async (_event) => {
         totalFiles = parseInt(result.rows[0]?.count || '0')
         client.release()
       } catch (error) {
-        console.warn('Could not get file count:', error)
+        logger.warn('Could not get file count:', error)
       }
     }
     

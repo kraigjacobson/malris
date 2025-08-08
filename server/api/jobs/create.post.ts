@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 /**
  * Create a new job and add it to the queue
  * Replaces the FastAPI /jobs POST route
@@ -89,7 +90,7 @@ export default defineEventHandler(async (event) => {
         try {
           params = JSON.parse(parameters)
         } catch (error: any) {
-          console.error("error", error)
+          logger.error("error", error)
           throw createError({
             statusCode: 400,
             statusMessage: "Invalid parameters JSON"
@@ -128,7 +129,7 @@ export default defineEventHandler(async (event) => {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('Failed to update job counts after job creation:', error)
+      logger.error('Failed to update job counts after job creation:', error)
     }
     
     return {

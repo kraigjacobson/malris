@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 /**
  * Update subject tags
  */
@@ -40,7 +41,7 @@ export default defineEventHandler(async (event) => {
       try {
         tagsStructure = currentResult.rows[0].tags || {}
       } catch (parseError) {
-        console.warn('Failed to parse existing tags structure:', parseError)
+        logger.warn('Failed to parse existing tags structure:', parseError)
         tagsStructure = {}
       }
       

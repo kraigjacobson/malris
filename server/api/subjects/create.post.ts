@@ -1,11 +1,10 @@
 /**
- * Create a new subject
- * Replaces the FastAPI /subjects POST route
+ * Create a new subject using Drizzle ORM
  */
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
-    const { name, tags, note, hero_image_uuid } = body
+    const { name, tags, note, thumbnail } = body
     
     if (!name) {
       throw createError({
@@ -14,71 +13,84 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    const { getDbClient } = await import('~/server/utils/database')
-    const client = await getDbClient()
+    const { getDb } = await import('~/server/utils/database')
+    const { subjects, mediaRecords } = await import('~/server/utils/schema')
+    const { eq } = await import('drizzle-orm')
     
-    try {
-      // Parse tags
-      let tagList: string[] = []
-      if (tags) {
-        if (typeof tags === 'string') {
-          tagList = tags.split(',').map(tag => tag.trim()).filter(tag => tag)
-        } else if (Array.isArray(tags)) {
-          tagList = tags
-        }
+    const db = getDb()
+    
+    // Parse tags
+    let tagList: string[] = []
+    if (tags) {
+      if (typeof tags === 'string') {
+        tagList = tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+      } else if (Array.isArray(tags)) {
+        tagList = tags
       }
+    }
+    
+    // Check if name already exists
+    const existingSubject = await db.select().from(subjects).where(eq(subjects.name, name)).limit(1)
+    
+    if (existingSubject.length > 0) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "Subject with this name already exists"
+      })
+    }
+    
+    // Verify thumbnail image exists if provided
+    if (thumbnail) {
+      const existingImage = await db.select()
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, thumbnail))
+        .limit(1)
       
-      // Check if name already exists
-      const checkQuery = 'SELECT id FROM subjects WHERE name = $1'
-      const checkResult = await client.query(checkQuery, [name])
-      
-      if (checkResult.rows.length > 0) {
+      if (existingImage.length === 0) {
         throw createError({
-          statusCode: 409,
-          statusMessage: "Subject with this name already exists"
+          statusCode: 404,
+          statusMessage: "Thumbnail image not found"
         })
       }
-      
-      // Verify hero image exists if provided
-      if (hero_image_uuid) {
-        const imageQuery = 'SELECT uuid FROM media_records WHERE uuid = $1 AND type = $2'
-        const imageResult = await client.query(imageQuery, [hero_image_uuid, 'image'])
-        
-        if (imageResult.rows.length === 0) {
-          throw createError({
-            statusCode: 404,
-            statusMessage: "Hero image not found"
-          })
-        }
-      }
-      
-      // Create subject
-      const insertQuery = `
-        INSERT INTO subjects (name, tags, note, hero_image_uuid, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
-        RETURNING id, name, created_at
-      `
-      
-      const tagsJson = tagList.length > 0 ? JSON.stringify({ tags: tagList }) : null
-      const result = await client.query(insertQuery, [name, tagsJson, note || null, hero_image_uuid || null])
-      
-      const newSubject = result.rows[0]
-      
-      return {
-        id: newSubject.id,
-        name: newSubject.name,
-        message: "Subject created successfully",
-        created_at: newSubject.created_at
-      }
-      
-    } finally {
-      client.release()
     }
+    
+    // Create subject using Drizzle - explicitly generate UUID since database doesn't have default
+    const tagsJson = tagList.length > 0 ? { tags: tagList } : null
+    const crypto = await import('crypto')
+    const subjectId = crypto.randomUUID()
+    
+    const newSubject = await db.insert(subjects).values({
+      id: subjectId,
+      name: name.trim(),
+      tags: tagsJson,
+      note: note?.trim() || null,
+      thumbnail: thumbnail || null
+    }).returning({
+      id: subjects.id,
+      name: subjects.name,
+      createdAt: subjects.createdAt
+    })
+    
+    if (newSubject.length === 0) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "Failed to create subject"
+      })
+    }
+    
+    return {
+      id: newSubject[0].id,
+      name: newSubject[0].name,
+      message: "Subject created successfully",
+      created_at: newSubject[0].createdAt
+    }
+    
   } catch (error: any) {
     if (error.statusCode) {
       throw error
     }
     
+    console.error('Subject creation error:', error)
     throw createError({
       statusCode: 500,
       statusMessage: `Failed to create subject: ${error.message || 'Unknown error'}`

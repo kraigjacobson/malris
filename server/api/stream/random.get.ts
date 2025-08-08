@@ -2,6 +2,8 @@ import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
 import { eq, sql, and } from 'drizzle-orm'
 import { pbkdf2Sync, createDecipheriv, createHmac, timingSafeEqual } from 'crypto'
+import { logger } from '~/server/utils/logger'
+import { getQuery, getHeader, setHeader, setResponseStatus, createError } from 'h3'
 
 // Manual Fernet implementation for binary data
 class FernetDecryptor {
@@ -132,18 +134,13 @@ export default defineEventHandler(async (event) => {
     // Decrypt the data
     let decryptedData: Buffer
     try {
-      // Handle both string and Buffer types for encrypted data
-      let hexData: string
-      if (Buffer.isBuffer(record.encryptedData)) {
-        // If it's a Buffer, convert to hex string
-        hexData = record.encryptedData.toString('hex')
-      } else if (typeof record.encryptedData === 'string') {
-        // If it's a string, remove \x prefix if present
-        hexData = record.encryptedData.startsWith('\\x') ? record.encryptedData.slice(2) : record.encryptedData
-      } else {
-        throw new Error(`Unexpected encryptedData type: ${typeof record.encryptedData}`)
+      // encryptedData is always a Buffer from the database (bytea type)
+      if (!Buffer.isBuffer(record.encryptedData)) {
+        throw new Error(`Expected Buffer for encryptedData, got: ${typeof record.encryptedData}`)
       }
       
+      // Convert buffer to hex string, then to utf8 to get base64url string
+      const hexData = record.encryptedData.toString('hex')
       const base64urlString = Buffer.from(hexData, 'hex').toString('utf8')
       
       // Decode base64url to get the actual Fernet token
@@ -151,7 +148,7 @@ export default defineEventHandler(async (event) => {
       
       decryptedData = decryptor.decrypt(fernetToken)
     } catch (error) {
-      console.error('Decryption error:', error)
+      logger.error('Decryption error:', error)
       throw createError({
         statusCode: 500,
         statusMessage: 'Failed to decrypt media data'
@@ -234,7 +231,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error) {
-    console.error('Error streaming random video:', error)
+    logger.error('Error streaming random video:', error)
     
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error

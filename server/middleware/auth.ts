@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   // Only apply auth to routes in the /api/auth/ folder
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const supabaseKey = config.supabaseKey
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error('Missing Supabase configuration')
+    logger.error('Missing Supabase configuration')
     return
   }
 
@@ -44,7 +45,7 @@ export default defineEventHandler(async (event) => {
     event.context.user = user
     
   } catch (error) {
-    console.error('Auth verification error:', error)
+    logger.error('Auth verification error:', error)
     throw createError({
       statusCode: 401,
       statusMessage: 'Authentication failed'

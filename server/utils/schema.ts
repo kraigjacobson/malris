@@ -50,6 +50,9 @@ export const mediaRecords = pgTable('media_records', {
   width: integer('width'),
   height: integer('height'),
   duration: real('duration'), // for videos/audio
+  fps: real('fps'), // frames per second for videos
+  codec: varchar('codec', { length: 50 }), // video codec (h264, h265, etc.)
+  bitrate: integer('bitrate'), // video bitrate in bits per second
   metadata: jsonb('metadata'), // JSONB field for video metadata (codec, format, etc.)
   tags: jsonb('tags'), // JSONB field for tags
   tagsConfirmed: boolean('tags_confirmed').default(false).notNull(), // Whether tags have been confirmed by user

@@ -2,6 +2,7 @@
  * Media Service - Internal service for media file operations
  * This service contains the actual business logic that can be used by both API endpoints and internal functions
  */
+import { logger } from '~/server/utils/logger'
 
 export interface MediaFileData {
   buffer: Buffer
@@ -50,7 +51,7 @@ export async function getMediaFileData(uuid: string): Promise<MediaFileData | nu
         const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY || 'default_key'
         fileData = decryptMediaData(record.encrypted_data, encryptionKey)
       } catch (error: any) {
-        console.error("Decryption error:", error)
+        logger.error("Decryption error:", error)
         throw new Error("Failed to decrypt media data")
       }
       
@@ -95,7 +96,7 @@ export async function getMediaFileData(uuid: string): Promise<MediaFileData | nu
       client.release()
     }
   } catch (error: any) {
-    console.error(`Failed to get media file data for ${uuid}:`, error)
+    logger.error(`Failed to get media file data for ${uuid}:`, error)
     return null
   }
 }

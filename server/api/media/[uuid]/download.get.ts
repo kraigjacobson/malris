@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 /**
  * Download and decrypt a media file with optional resizing
  * Replaces the FastAPI /media/{record_uuid}/download route
@@ -64,7 +65,7 @@ export default defineEventHandler(async (event) => {
         const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY || 'default_key'
         fileData = decryptMediaData(record.encrypted_data, encryptionKey)
       } catch (error: any) {
-        console.error("Decryption error:", error)
+        logger.error("Decryption error:", error)
         throw createError({
           statusCode: 500,
           statusMessage: "Failed to decrypt media data"

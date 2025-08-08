@@ -1,3 +1,4 @@
+import { logger } from '~/server/utils/logger'
 /**
  * Direct media search endpoint (bypasses external API)
  * Replaces the FastAPI /media/search route with direct database access
@@ -224,7 +225,7 @@ export default defineEventHandler(async (event) => {
       client.release()
     }
   } catch (error: any) {
-    console.error('Error in direct media search:', error)
+    logger.error('Error in direct media search:', error)
     
     if (error.statusCode) {
       throw error

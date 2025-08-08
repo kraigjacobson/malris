@@ -1,3 +1,5 @@
+import { logger } from '~/server/utils/logger'
+
 export default defineEventHandler(async (event) => {
   try {
     const jobId = getRouterParam(event, 'id')
@@ -10,7 +12,7 @@ export default defineEventHandler(async (event) => {
       })
     }
     
-    console.log(`🔄 [API] Adding source to job ${jobId} via Drizzle ORM...`)
+    logger.info(`🔄 [API] Adding source to job ${jobId} via Drizzle ORM...`)
     
     if (!body.source_media_uuid) {
       throw createError({
@@ -67,14 +69,14 @@ export default defineEventHandler(async (event) => {
       })
     
     const updated = updatedJob[0]
-    console.log(`✅ [API] Source added to job ${jobId} successfully:`, updated)
+    logger.info(`✅ [API] Source added to job ${jobId} successfully:`, updated)
 
     // Update job counts to refresh frontend queue status
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      console.error('❌ Failed to update job counts after adding source:', error)
+      logger.error('❌ Failed to update job counts after adding source:', error)
     }
 
     return {
@@ -88,7 +90,7 @@ export default defineEventHandler(async (event) => {
     }
     
   } catch (error: any) {
-    console.error(`❌ [API] Error adding source to job:`, error)
+    logger.error(`❌ [API] Error adding source to job:`, error)
     
     // Handle different types of errors
     if (error.cause?.code === 'ECONNREFUSED') {

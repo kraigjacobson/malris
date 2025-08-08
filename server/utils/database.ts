@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
+import { logger } from '~/server/utils/logger'
 
 // Database connection configuration
 const dbConfig = {
@@ -22,7 +23,7 @@ export function getPool(): Pool {
     
     // Handle pool errors
     pool.on('error', (err: any) => {
-      console.error('Unexpected error on idle client', err)
+      logger.error('Unexpected error on idle client', err)
     })
   }
   
@@ -47,10 +48,10 @@ export async function testConnection(): Promise<boolean> {
     const client = await getDbClient()
     const result = await client.query('SELECT NOW()')
     client.release()
-    console.log('✅ Database connection successful:', result.rows[0])
+    logger.info('✅ Database connection successful:', result.rows[0])
     return true
   } catch (error) {
-    console.error('❌ Database connection failed:', error)
+    logger.error('❌ Database connection failed:', error)
     return false
   }
 }

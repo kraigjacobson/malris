@@ -2,6 +2,7 @@ import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { decryptMediaData, getContentType } from '~/server/utils/encryption'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const size = query.size || 'md'
 
-    console.log('Serving video for UUID:', uuid, 'size:', size)
+    logger.info('Serving video for UUID:', uuid, 'size:', size)
 
     // Get database connection
     const db = getDb()
@@ -70,7 +71,7 @@ export default defineEventHandler(async (event) => {
     try {
       decryptedData = decryptMediaData(record.encryptedData, encryptionKey)
     } catch (error) {
-      console.error('Decryption error:', error)
+      logger.error('Decryption error:', error)
       throw createError({
         statusCode: 500,
         statusMessage: 'Failed to decrypt media data'
@@ -88,12 +89,12 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'access-control-allow-methods', 'GET')
     setHeader(event, 'accept-ranges', 'bytes')
     
-    console.log(`Successfully serving video: ${uuid}, size: ${size}, type: ${contentType}, bytes: ${decryptedData.length}`)
+    logger.info(`Successfully serving video: ${uuid}, size: ${size}, type: ${contentType}, bytes: ${decryptedData.length}`)
     
     return decryptedData
 
   } catch (error: any) {
-    console.error('Error serving video:', error)
+    logger.error('Error serving video:', error)
     
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {

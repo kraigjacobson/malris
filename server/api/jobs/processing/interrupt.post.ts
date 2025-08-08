@@ -2,10 +2,11 @@
  * Interrupt current job processing
  * Sends interrupt signal to ComfyUI worker to stop current job
  */
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (_event) => {
   try {
-    console.log('🛑 Stop all processing request received')
+    logger.info('🛑 Stop all processing request received')
     
     // Use the unified job processing service to stop everything
     const { stopAllProcessing } = await import('~/server/services/jobProcessingService')
@@ -14,7 +15,7 @@ export default defineEventHandler(async (_event) => {
     return result
     
   } catch (error: any) {
-    console.error('❌ Failed to send interrupt to ComfyUI:', error)
+    logger.error('❌ Failed to send interrupt to ComfyUI:', error)
     
     throw createError({
       statusCode: 500,

@@ -2,6 +2,7 @@
  * Get processing status endpoint
  * Returns current processing mode and state
  */
+import { logger } from '~/server/utils/logger'
 
 import { getProcessingStatus } from '~/server/services/jobProcessingService'
 
@@ -19,7 +20,7 @@ export default defineEventHandler(async (_event) => {
     }
     
   } catch (error: any) {
-    console.error('❌ Failed to get processing status:', error)
+    logger.error('❌ Failed to get processing status:', error)
     
     throw createError({
       statusCode: 500,

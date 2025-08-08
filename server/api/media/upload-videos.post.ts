@@ -8,6 +8,7 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { logger } from '~/server/utils/logger'
 
 const execAsync = promisify(exec)
 
@@ -71,7 +72,7 @@ export default defineEventHandler(async (event) => {
         const file = videoFiles[i]
         
         try {
-          console.log(`🎬 Processing video ${i + 1}/${videoFiles.length}: ${file.filename}`)
+          logger.info(`🎬 Processing video ${i + 1}/${videoFiles.length}: ${file.filename}`)
 
           // Validate file size
           if (file.data.length > MAX_FILE_SIZE) {
@@ -106,7 +107,7 @@ export default defineEventHandler(async (event) => {
             .limit(1)
 
           if (existingVideo.length > 0) {
-            console.log(`⚠️ Duplicate video skipped: ${baseFilename} (${metadata.width}x${metadata.height})`)
+            logger.info(`⚠️ Duplicate video skipped: ${baseFilename} (${metadata.width}x${metadata.height})`)
             results.push({
               filename: baseFilename,
               success: true,
@@ -184,13 +185,13 @@ export default defineEventHandler(async (event) => {
             metadata: metadata
           })
 
-          console.log(`✅ Successfully processed: ${baseFilename}`)
+          logger.info(`✅ Successfully processed: ${baseFilename}`)
 
           // Clean up temp file
           await unlink(tempVideoPath)
 
         } catch (error) {
-          console.error(`❌ Error processing ${file.filename}:`, error)
+          logger.error(`❌ Error processing ${file.filename}:`, error)
           errors.push({
             filename: path.basename(file.filename!),
             error: error instanceof Error ? error.message : 'Unknown error'
@@ -204,7 +205,7 @@ export default defineEventHandler(async (event) => {
         const { rm } = await import('fs/promises')
         await rm(tempDir, { recursive: true, force: true })
       } catch (cleanupError) {
-        console.warn('Failed to clean up temp directory:', cleanupError)
+        logger.warn('Failed to clean up temp directory:', cleanupError)
       }
     }
 
@@ -217,7 +218,7 @@ export default defineEventHandler(async (event) => {
     }
 
   } catch (error: any) {
-    console.error('Video upload error:', error)
+    logger.error('Video upload error:', error)
     
     throw createError({
       statusCode: error.statusCode || 500,
