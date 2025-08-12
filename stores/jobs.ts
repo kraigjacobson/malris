@@ -40,23 +40,6 @@ export const useJobsStore = defineStore('jobs', () => {
   const autoRefreshInterval = ref<NodeJS.Timeout | null>(null)
   const REFRESH_INTERVAL = 5000 // 5 seconds
 
-  // Helper function to sort jobs with active jobs prioritized
-  const sortJobsWithActivePriority = (jobsList: Job[]) => {
-    return jobsList.sort((a, b) => {
-      // First, prioritize active jobs
-      if (a.status === 'active' && b.status !== 'active') {
-        return -1 // a comes first
-      }
-      if (b.status === 'active' && a.status !== 'active') {
-        return 1 // b comes first
-      }
-      
-      // If both are active or both are not active, sort by updated_at (most recent first)
-      const aUpdated = new Date(a.updated_at || a.created_at).getTime()
-      const bUpdated = new Date(b.updated_at || b.created_at).getTime()
-      return bUpdated - aUpdated
-    })
-  }
 
   // Actions
   const fetchQueueStatus = async () => {
@@ -112,15 +95,7 @@ export const useJobsStore = defineStore('jobs', () => {
       isLoading.value = true
     }
 
-    // Store current pagination state for auto-refresh
-    currentPage.value = page
-    currentLimit.value = limit
-    currentStatusFilter.value = statusFilter
-    currentSubjectFilter.value = subjectFilter
-    currentSourceTypeFilter.value = sourceTypeFilter
-
     try {
-      const paramsStartTime = performance.now()
       const searchParams = new URLSearchParams()
       searchParams.append('limit', limit.toString())
       searchParams.append('offset', ((page - 1) * limit).toString())
@@ -139,40 +114,23 @@ export const useJobsStore = defineStore('jobs', () => {
         searchParams.append('source_type', sourceTypeFilter)
       }
 
-      const paramsTime = performance.now() - paramsStartTime
-      console.log(`🔍 [JOBS DEBUG] URL params built in ${paramsTime.toFixed(2)}ms`)
-
       const apiStartTime = performance.now()
       console.log(`🔍 [JOBS DEBUG] Making API call to: /api/jobs/search?${searchParams.toString()}`)
-      console.log(`🔍 [JOBS DEBUG] Request started at: ${new Date().toISOString()}`)
       
-      try {
-        const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
-        const apiTime = performance.now() - apiStartTime
-        console.log(`🔍 [JOBS DEBUG] API call completed at: ${new Date().toISOString()}`)
-        console.log(`🔍 [JOBS DEBUG] API call completed successfully in ${apiTime.toFixed(2)}ms`)
-        
-        if (apiTime > 1000) {
-          console.error(`🚨 [JOBS DEBUG] EXTREMELY SLOW API CALL! ${apiTime.toFixed(2)}ms - This indicates a serious network/connection issue!`)
-          console.error(`🚨 [JOBS DEBUG] Server processes in <50ms but frontend waits ${apiTime.toFixed(2)}ms - likely Docker networking, database connection pool, or HTTP timeout issue`)
-        }
+      const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
+      const apiTime = performance.now() - apiStartTime
+      console.log(`🔍 [JOBS DEBUG] API call completed successfully in ${apiTime.toFixed(2)}ms`)
 
-      const processingStartTime = performance.now()
-      
-      // Handle different response formats from the API and only update after successful fetch
+      // Handle different response formats from the API
       let newJobs: Job[] = []
       let total = 0
       
       if (response.results) {
         newJobs = response.results as Job[]
-        // Use filtered count for pagination when filters are applied, otherwise use total count
-        const hasFilters = statusFilter || subjectFilter || sourceTypeFilter !== 'all'
-        total = hasFilters ? (response.count || newJobs.length) : (response.total_jobs_count || response.total || newJobs.length)
+        total = response.count || newJobs.length
       } else if (response.jobs) {
         newJobs = response.jobs as Job[]
-        // Use filtered count for pagination when filters are applied, otherwise use total count
-        const hasFilters = statusFilter || subjectFilter || sourceTypeFilter !== 'all'
-        total = hasFilters ? (response.count || newJobs.length) : (response.total_jobs_count || response.total || newJobs.length)
+        total = response.count || newJobs.length
       } else if (Array.isArray(response)) {
         newJobs = response as Job[]
         total = newJobs.length
@@ -181,37 +139,20 @@ export const useJobsStore = defineStore('jobs', () => {
         total = 0
       }
 
-      const sortStartTime = performance.now()
-      // Sort jobs to prioritize active jobs while maintaining updated_at order
-      const sortedJobs = sortJobsWithActivePriority(newJobs)
-      const sortTime = performance.now() - sortStartTime
-      
-      // Only replace jobs after successful fetch
-      jobs.value = sortedJobs
+      // Simple assignment - no caching, no complex state management
+      jobs.value = newJobs
       totalJobs.value = total
       
-      const processingTime = performance.now() - processingStartTime
       const totalTime = performance.now() - startTime
+      console.log(`🔍 [JOBS DEBUG] fetchJobs completed in ${totalTime.toFixed(2)}ms - fetched ${newJobs.length} jobs`)
       
-      console.log(`🔍 [JOBS DEBUG] Data processing completed in ${processingTime.toFixed(2)}ms (sort: ${sortTime.toFixed(2)}ms)`)
-        console.log(`🔍 [JOBS DEBUG] fetchJobs completed in ${totalTime.toFixed(2)}ms - fetched ${newJobs.length} jobs, total: ${total}`)
-      } catch (apiError) {
-        const apiTime = performance.now() - apiStartTime
-        console.error(`❌ [JOBS DEBUG] API call failed after ${apiTime.toFixed(2)}ms:`, apiError)
-        throw apiError
-      }
     } catch (error) {
       const totalTime = performance.now() - startTime
       console.error(`❌ [JOBS DEBUG] fetchJobs failed after ${totalTime.toFixed(2)}ms:`, error)
       
-      // Check if this is a network timeout or connection issue
-      const errorMessage = (error as any)?.message || ''
-      const errorCode = (error as any)?.code || ''
-      if (errorMessage.includes('timeout') || errorMessage.includes('network') || errorCode === 'NETWORK_ERROR') {
-        console.error(`🌐 [JOBS DEBUG] Network error detected - this may be a connection issue between frontend and backend`)
-      }
-      
-      // Don't clear jobs on error, keep existing data
+      // Clear jobs on error
+      jobs.value = []
+      totalJobs.value = 0
     } finally {
       if (showLoading) {
         isLoading.value = false
@@ -222,8 +163,8 @@ export const useJobsStore = defineStore('jobs', () => {
   const fetchInitialData = async () => {
     isLoading.value = true
     try {
-      await fetchQueueStatus() // This now also updates processing status
-      await fetchJobs()
+      // Just fetch queue status - jobs will be loaded when user clicks a filter
+      await fetchQueueStatus()
       
       // WebSocket connection is now handled by the websocket plugin on app startup
       // Only start fallback polling if WebSocket is not connected
@@ -370,7 +311,7 @@ export const useJobsStore = defineStore('jobs', () => {
         break
         
       case 'job_counts_update':
-        // Job counts changed - update queue status and refresh job list
+        // Job counts changed - update queue status only (no automatic job refresh)
         if (data.jobCounts) {
           // Update queue status with new counts
           queueStatus.value = {
@@ -387,8 +328,7 @@ export const useJobsStore = defineStore('jobs', () => {
             }
           }
           
-          // Also refresh job list to show updated jobs
-          fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value, currentSourceTypeFilter.value)
+          // Don't automatically refresh job list - let user click filters to refresh
         }
         break
     }
@@ -414,7 +354,7 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  // Auto-refresh methods (now used as fallback)
+  // Auto-refresh methods (simplified - only queue status)
   const startAutoRefresh = () => {
     // Don't start polling if WebSocket is connected
     if (wsConnected.value) {
@@ -422,19 +362,16 @@ export const useJobsStore = defineStore('jobs', () => {
       return
     }
     
-    console.log('🚀 Starting auto-refresh fallback...', { interval: REFRESH_INTERVAL })
+    console.log('🚀 Starting auto-refresh fallback for queue status only...', { interval: REFRESH_INTERVAL })
     
     if (autoRefreshInterval.value) {
       clearInterval(autoRefreshInterval.value)
     }
     
     autoRefreshInterval.value = setInterval(() => {
-      // Only refresh if not currently loading and page is visible
+      // Only refresh queue status if not currently loading and page is visible
       if (!isLoading.value && !document.hidden && !wsConnected.value) {
-        Promise.all([
-          fetchJobs(false, currentPage.value, currentLimit.value, currentStatusFilter.value, currentSubjectFilter.value, currentSourceTypeFilter.value),
-          fetchQueueStatus() // This ensures processing state stays in sync
-        ]).catch(error => {
+        fetchQueueStatus().catch(error => {
           console.error('❌ Auto-refresh failed:', error)
         })
       }

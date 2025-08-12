@@ -12,7 +12,7 @@ import type {
 } from '~/types/systemStatus'
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
-import { count, eq } from 'drizzle-orm'
+import { count } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 
 // WebSocket clients management
@@ -322,41 +322,72 @@ async function checkComfyUIHealth() {
 
 // Update job counts from database - call this when jobs are modified
 export async function updateJobCounts() {
+  const startTime = performance.now()
+  
   try {
     const db = getDb()
     
-    const [
-      totalJobs,
-      queuedJobs,
-      activeJobs,
-      completedJobs,
-      failedJobs,
-      needInputJobs,
-      canceledJobs
-    ] = await Promise.all([
-      db.select({ count: count() }).from(jobs),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'queued')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'active')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'completed')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'failed')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'need_input')),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.status, 'canceled'))
-    ])
+    // Get status counts in a single query using GROUP BY
+    const statusCounts = await db
+      .select({
+        status: jobs.status,
+        count: count()
+      })
+      .from(jobs)
+      .groupBy(jobs.status)
+    
+    // Get total count separately
+    const totalResult = await db.select({ count: count() }).from(jobs)
+    const total = totalResult[0].count
+    
+    const queryTime = performance.now() - startTime
+    logger.info(`📊 [JOB COUNTS] Status counts query completed in ${queryTime.toFixed(2)}ms`)
+    
+    // Build counts object from results
+    const counts = {
+      total,
+      queued: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      canceled: 0,
+      needInput: 0
+    }
+    
+    // Map status counts to our structure
+    statusCounts.forEach(row => {
+      switch (row.status) {
+        case 'queued':
+          counts.queued = row.count
+          break
+        case 'active':
+          counts.active = row.count
+          break
+        case 'completed':
+          counts.completed = row.count
+          break
+        case 'failed':
+          counts.failed = row.count
+          break
+        case 'canceled':
+          counts.canceled = row.count
+          break
+        case 'need_input':
+          counts.needInput = row.count
+          break
+      }
+    })
     
     updateStatus({
-      jobCounts: {
-        total: totalJobs[0].count,
-        queued: queuedJobs[0].count,
-        active: activeJobs[0].count,
-        completed: completedJobs[0].count,
-        failed: failedJobs[0].count,
-        canceled: canceledJobs[0].count,
-        needInput: needInputJobs[0].count
-      }
+      jobCounts: counts
     }, 'job_counts_update')
     
+    const totalTime = performance.now() - startTime
+    logger.info(`📊 [JOB COUNTS] Update completed in ${totalTime.toFixed(2)}ms - total: ${counts.total}, queued: ${counts.queued}, active: ${counts.active}`)
+    
   } catch (error: any) {
-    logger.error('❌ Failed to update job counts:', error)
+    const totalTime = performance.now() - startTime
+    logger.error(`❌ [JOB COUNTS] Failed to update job counts after ${totalTime.toFixed(2)}ms:`, error)
   }
 }
 

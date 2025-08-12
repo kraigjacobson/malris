@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
@@ -227,85 +227,73 @@ export default defineEventHandler(async (event) => {
     const countQueryTime = performance.now() - countQueryStartTime
     logger.info(`🔍 [JOBS API] Count query completed in ${countQueryTime.toFixed(2)}ms - filtered count: ${filteredCount}`)
 
-    // Get additional media info for each job (source, dest, output)
+    // Get additional media info efficiently with bulk queries instead of N+1
     const enhancementStartTime = performance.now()
-    const enhancedResults = await Promise.all(
-      results.map(async (job) => {
-        const [sourceMedia, destMedia, outputMedia] = await Promise.all([
-          // Get source media info
-          job.source_media_uuid ?
-            db.select({
-              uuid: mediaRecords.uuid,
-              filename: mediaRecords.filename,
-              type: mediaRecords.type,
-              thumbnail_uuid: mediaRecords.thumbnailUuid
-            })
-            .from(mediaRecords)
-            .where(eq(mediaRecords.uuid, job.source_media_uuid))
-            .limit(1) : Promise.resolve([]),
-          
-          // Get dest media info
-          job.dest_media_uuid ?
-            db.select({
-              uuid: mediaRecords.uuid,
-              filename: mediaRecords.filename,
-              type: mediaRecords.type,
-              thumbnail_uuid: mediaRecords.thumbnailUuid
-            })
-            .from(mediaRecords)
-            .where(eq(mediaRecords.uuid, job.dest_media_uuid))
-            .limit(1) : Promise.resolve([]),
-          
-          // Get output media info
-          job.output_uuid ?
-            db.select({
-              uuid: mediaRecords.uuid,
-              filename: mediaRecords.filename,
-              type: mediaRecords.type,
-              thumbnail_uuid: mediaRecords.thumbnailUuid
-            })
-            .from(mediaRecords)
-            .where(eq(mediaRecords.uuid, job.output_uuid))
-            .limit(1) : Promise.resolve([])
-        ])
-
-        return {
-          id: job.id,
-          job_type: job.job_type,
-          status: job.status,
-          subject_uuid: job.subject_uuid,
-          source_media_uuid: job.source_media_uuid,
-          dest_media_uuid: job.dest_media_uuid,
-          output_uuid: job.output_uuid,
-          parameters: job.parameters,
-          progress: job.progress,
-          error_message: job.error_message,
-          created_at: job.created_at,
-          started_at: job.started_at,
-          completed_at: job.completed_at,
-          updated_at: job.updated_at,
-          subject: job.subject_name ? {
-            id: job.subject_uuid,
-            name: job.subject_name,
-            tags: job.subject_tags,
-            thumbnail_uuid: job.subject_thumbnail_uuid
-          } : null,
-          source_media: sourceMedia[0] || null,
-          dest_media: destMedia[0] || null,
-          output_media: outputMedia[0] || null
-        }
+    
+    // Collect all unique media UUIDs from jobs (filter out nulls)
+    const sourceUuids = results.filter(job => job.source_media_uuid).map(job => job.source_media_uuid!)
+    const destUuids = results.filter(job => job.dest_media_uuid).map(job => job.dest_media_uuid!)
+    const outputUuids = results.filter(job => job.output_uuid).map(job => job.output_uuid!)
+    const allMediaUuids = [...new Set([...sourceUuids, ...destUuids, ...outputUuids])]
+    
+    // Single bulk query to get all media records
+    const mediaMap = new Map()
+    if (allMediaUuids.length > 0) {
+      const mediaRecordsData = await db
+        .select({
+          uuid: mediaRecords.uuid,
+          filename: mediaRecords.filename,
+          type: mediaRecords.type,
+          thumbnail_uuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(inArray(mediaRecords.uuid, allMediaUuids))
+      
+      // Build lookup map
+      mediaRecordsData.forEach(media => {
+        mediaMap.set(media.uuid, media)
       })
-    )
+    }
+    
+    // Build enhanced results using the media map
+    const enhancedResults = results.map(job => ({
+      id: job.id,
+      job_type: job.job_type,
+      status: job.status,
+      subject_uuid: job.subject_uuid,
+      source_media_uuid: job.source_media_uuid,
+      dest_media_uuid: job.dest_media_uuid,
+      output_uuid: job.output_uuid,
+      parameters: job.parameters,
+      progress: job.progress,
+      error_message: job.error_message,
+      created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
+      updated_at: job.updated_at,
+      subject: job.subject_name ? {
+        id: job.subject_uuid,
+        name: job.subject_name,
+        tags: job.subject_tags,
+        thumbnail_uuid: job.subject_thumbnail_uuid
+      } : null,
+      source_media: job.source_media_uuid ? mediaMap.get(job.source_media_uuid) || null : null,
+      dest_media: job.dest_media_uuid ? mediaMap.get(job.dest_media_uuid) || null : null,
+      output_media: job.output_uuid ? mediaMap.get(job.output_uuid) || null : null
+    }))
 
     const enhancementTime = performance.now() - enhancementStartTime
-    logger.info(`🔍 [JOBS API] Media enhancement completed in ${enhancementTime.toFixed(2)}ms`)
+    logger.info(`🔍 [JOBS API] Media enhancement completed in ${enhancementTime.toFixed(2)}ms - bulk query for ${allMediaUuids.length} media records`)
 
-    // Get total jobs count for additional metadata
-    const totalCountStartTime = performance.now()
-    const totalJobsResult = await db.select({ count: count() }).from(jobs)
-    const totalJobsCount = totalJobsResult[0].count
-    const totalCountTime = performance.now() - totalCountStartTime
-    logger.info(`🔍 [JOBS API] Total count query completed in ${totalCountTime.toFixed(2)}ms - total jobs: ${totalJobsCount}`)
+    // Get total jobs count for additional metadata (only if needed for pagination)
+    let totalJobsCount = filteredCount // Default to filtered count
+    if (offsetNum === 0) { // Only get total count on first page
+      const totalCountStartTime = performance.now()
+      const totalJobsResult = await db.select({ count: count() }).from(jobs)
+      totalJobsCount = totalJobsResult[0].count
+      const totalCountTime = performance.now() - totalCountStartTime
+      logger.info(`🔍 [JOBS API] Total count query completed in ${totalCountTime.toFixed(2)}ms - total jobs: ${totalJobsCount}`)
+    }
 
     const response: any = {
       results: enhancedResults,
