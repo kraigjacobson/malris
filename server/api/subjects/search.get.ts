@@ -2,6 +2,7 @@ import { eq, ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
 import { subjects, mediaRecords } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { decryptMediaData } from '~/server/utils/encryption'
+import { decryptChunked, type ChunkMetadata } from '~/server/services/chunkEncryption'
 import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
@@ -70,7 +71,9 @@ export default defineEventHandler(async (event) => {
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt,
         has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
-        encryptedThumbnailData: mediaRecords.encryptedData
+        encryptedThumbnailData: mediaRecords.encryptedData,
+        encryptionMethod: mediaRecords.encryptionMethod,
+        metadata: mediaRecords.metadata
       })
       .from(subjects)
       .leftJoin(mediaRecords, eq(subjects.thumbnail, mediaRecords.uuid))
@@ -128,7 +131,22 @@ export default defineEventHandler(async (event) => {
       
       if (subject.encryptedThumbnailData) {
         try {
-          const decryptedData = decryptMediaData(subject.encryptedThumbnailData, encryptionKey)
+          let decryptedData: Buffer
+          
+          // Use proper decryption method based on encryption method
+          if (subject.encryptionMethod === 'aes-gcm-unified' && subject.metadata) {
+            // New unified AES-GCM encryption
+            const chunkMetadata = (typeof subject.metadata === 'string' ? JSON.parse(subject.metadata) : subject.metadata) as ChunkMetadata
+            decryptedData = await decryptChunked(subject.encryptedThumbnailData, chunkMetadata, encryptionKey)
+          } else if (subject.encryptionMethod === 'chunk-based' && subject.metadata) {
+            // Legacy chunk-based encryption
+            const chunkMetadata = (typeof subject.metadata === 'string' ? JSON.parse(subject.metadata) : subject.metadata) as ChunkMetadata
+            decryptedData = await decryptChunked(subject.encryptedThumbnailData, chunkMetadata, encryptionKey)
+          } else {
+            // Legacy Fernet full-file decryption
+            decryptedData = decryptMediaData(subject.encryptedThumbnailData, encryptionKey)
+          }
+          
           thumbnail_data = decryptedData.toString('base64')
         } catch (error) {
           logger.error('Failed to decrypt thumbnail for subject:', subject.id, error)
