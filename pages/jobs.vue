@@ -632,6 +632,7 @@
 </template>
 
 <script setup>
+import { nextTick } from 'vue'
 import JobDetailsModal from '~/components/JobDetailsModal.vue'
 import SubmitJobModal from '~/components/SubmitJobModal.vue'
 
@@ -766,26 +767,43 @@ const handleSubjectFilterSelection = async (selected) => {
   const startTime = performance.now()
   console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection started - selected:`, selected)
   
-  handleSubjectSelection(selected)
-  if (selected && selected.value) {
-    // Filter jobs by subject UUID
-    currentFilter.value = `subject:${selected.value}`
-    pageNumber.value = 1
-    const statusFilter = currentFilter.value || ''
-    const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  return new Promise((resolve) => {
+    const performSelection = async () => {
+      try {
+        handleSubjectSelection(selected)
+        if (selected && selected.value) {
+          // Filter jobs by subject UUID
+          currentFilter.value = `subject:${selected.value}`
+          pageNumber.value = 1
+          const statusFilter = currentFilter.value || ''
+          const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+          
+          console.log(`👤 [SUBJECT DEBUG] Starting jobs API call for subject filter...`)
+          const apiStartTime = performance.now()
+          
+          await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter)
+          
+          const apiTime = performance.now() - apiStartTime
+          const totalTime = performance.now() - startTime
+          console.log(`👤 [SUBJECT DEBUG] Subject filter API calls completed in ${apiTime.toFixed(2)}ms`)
+          console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection completed in ${totalTime.toFixed(2)}ms`)
+        } else {
+          await clearSubjectFilter()
+        }
+        resolve()
+      } catch (error) {
+        console.error('Subject filter failed:', error)
+        resolve()
+      }
+    }
     
-    console.log(`👤 [SUBJECT DEBUG] Starting jobs API call for subject filter...`)
-    const apiStartTime = performance.now()
-    
-    await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter)
-    
-    const apiTime = performance.now() - apiStartTime
-    const totalTime = performance.now() - startTime
-    console.log(`👤 [SUBJECT DEBUG] Subject filter API calls completed in ${apiTime.toFixed(2)}ms`)
-    console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection completed in ${totalTime.toFixed(2)}ms`)
-  } else {
-    await clearSubjectFilter()
-  }
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(performSelection)
+    } else {
+      setTimeout(performSelection, 0)
+    }
+  })
 }
 
 const clearSubjectFilter = async () => {
@@ -803,20 +821,37 @@ const handleSourceTypeFilterSelection = async (selected) => {
   const startTime = performance.now()
   console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection started - selected: "${selected}"`)
   
-  selectedSourceTypeFilter.value = selected
-  pageNumber.value = 1
-  const statusFilter = currentFilter.value || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
-  
-  console.log(`📁 [SOURCE TYPE DEBUG] Starting jobs API call for source type filter...`)
-  const apiStartTime = performance.now()
-  
-  await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected)
-  
-  const apiTime = performance.now() - apiStartTime
-  const totalTime = performance.now() - startTime
-  console.log(`📁 [SOURCE TYPE DEBUG] Source type filter API calls completed in ${apiTime.toFixed(2)}ms`)
-  console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection completed in ${totalTime.toFixed(2)}ms`)
+  return new Promise((resolve) => {
+    const performSelection = async () => {
+      try {
+        selectedSourceTypeFilter.value = selected
+        pageNumber.value = 1
+        const statusFilter = currentFilter.value || ''
+        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        
+        console.log(`📁 [SOURCE TYPE DEBUG] Starting jobs API call for source type filter...`)
+        const apiStartTime = performance.now()
+        
+        await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected)
+        
+        const apiTime = performance.now() - apiStartTime
+        const totalTime = performance.now() - startTime
+        console.log(`📁 [SOURCE TYPE DEBUG] Source type filter API calls completed in ${apiTime.toFixed(2)}ms`)
+        console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection completed in ${totalTime.toFixed(2)}ms`)
+        resolve()
+      } catch (error) {
+        console.error('Source type filter failed:', error)
+        resolve()
+      }
+    }
+    
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(performSelection)
+    } else {
+      setTimeout(performSelection, 0)
+    }
+  })
 }
 
 const clearSourceTypeFilter = async () => {
@@ -912,46 +947,80 @@ const filterByStatus = async (status) => {
   const startTime = performance.now()
   console.log(`🎯 [FILTER DEBUG] filterByStatus clicked - status: "${status}"`)
   
-  // Update local filter immediately for UI feedback
-  currentFilter.value = status
-  pageNumber.value = 1
-  
-  // Show loading state immediately with specific filter tracking
-  loadingFilter.value = status
-  isLoading.value = true
-  jobs.value = []
-  
-  // Fetch fresh jobs for this status
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
-  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  
-  try {
-    await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter)
-  } catch (error) {
-    console.error('Filter failed:', error)
-  } finally {
-    // Always reset loading state
-    isLoading.value = false
-    loadingFilter.value = ''
-  }
-  
-  const totalTime = performance.now() - startTime
-  console.log(`🎯 [FILTER DEBUG] filterByStatus completed in ${totalTime.toFixed(2)}ms`)
+  // Use requestIdleCallback or setTimeout to prevent blocking
+  return new Promise((resolve) => {
+    const performFilter = async () => {
+      try {
+        // Update local filter immediately for UI feedback
+        currentFilter.value = status
+        pageNumber.value = 1
+        
+        // Show loading state immediately with specific filter tracking
+        loadingFilter.value = status
+        isLoading.value = true
+        
+        // Clear jobs array in next tick to avoid blocking
+        await nextTick()
+        jobs.value = []
+        
+        // Fetch fresh jobs for this status
+        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+        
+        await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter)
+        
+        const totalTime = performance.now() - startTime
+        console.log(`🎯 [FILTER DEBUG] filterByStatus completed in ${totalTime.toFixed(2)}ms`)
+        resolve()
+      } catch (error) {
+        console.error('Filter failed:', error)
+        resolve()
+      } finally {
+        // Always reset loading state
+        isLoading.value = false
+        loadingFilter.value = ''
+      }
+    }
+    
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(performFilter)
+    } else {
+      setTimeout(performFilter, 0)
+    }
+  })
 }
 
 const refreshJobsWithCurrentState = async () => {
   const startTime = performance.now()
   console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState started`)
   
-  const statusFilter = currentFilter.value || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
-  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  
-  // Only fetch jobs for refresh - queue status is updated via WebSocket
-  await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
-  
-  const totalTime = performance.now() - startTime
-  console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState completed in ${totalTime.toFixed(2)}ms`)
+  return new Promise((resolve) => {
+    const performRefresh = async () => {
+      try {
+        const statusFilter = currentFilter.value || ''
+        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+        
+        // Only fetch jobs for refresh - queue status is updated via WebSocket
+        await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
+        
+        const totalTime = performance.now() - startTime
+        console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState completed in ${totalTime.toFixed(2)}ms`)
+        resolve()
+      } catch (error) {
+        console.error('Refresh failed:', error)
+        resolve()
+      }
+    }
+    
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(performRefresh)
+    } else {
+      setTimeout(performRefresh, 0)
+    }
+  })
 }
 
 // New processing methods for the updated UI

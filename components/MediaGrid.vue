@@ -8,7 +8,7 @@
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Grid View -->
-      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-2 sm:gap-3">
+      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
@@ -40,7 +40,7 @@
             class="aspect-[3/4] relative"
           >
             <img
-              :src="getImageUrl(media, 'sm')"
+              :src="getImageUrl(media, 'md')"
               :alt="media.filename"
               class="w-full h-full object-cover object-top"
               loading="lazy"
@@ -368,35 +368,15 @@ const getVideoPosterUrl = (media) => {
   // Use direct thumbnail if available
   if (media.thumbnail) return media.thumbnail
   
-  // For destination videos, ONLY use video thumbnails - never subject thumbnails
-  if (media.purpose === 'dest') {
-    // Only check for video thumbnail UUID - no fallback to subject thumbnail
-    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
-      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
-    }
-    // Return undefined to show placeholder instead of subject thumbnail
-    return undefined
+  // Simplified logic: ALWAYS use video thumbnail first for consistency
+  // This ensures all posters come from the same source type
+  if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
+    return `/api/media/${media.thumbnail_uuid}/image?size=md`
   }
   
-  // For output videos, prioritize video thumbnail over subject thumbnail
-  if (media.purpose === 'output') {
-    // Check for video thumbnail UUID first
-    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
-      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
-    }
-    // Fallback to subject thumbnail for output videos
-    if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
-      return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
-    }
-  } else {
-    // For other videos (source, intermediate), prioritize subject thumbnail
-    if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
-      return `/api/media/${media.subject_thumbnail_uuid}/image?size=sm`
-    }
-    // Fallback to video thumbnail
-    if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
-      return `/api/media/${media.thumbnail_uuid}/image?size=sm`
-    }
+  // Only use subject thumbnail as absolute last resort
+  if (media.subject_thumbnail_uuid && media.subject_thumbnail_uuid !== 'undefined' && media.subject_thumbnail_uuid !== 'null') {
+    return `/api/media/${media.subject_thumbnail_uuid}/image?size=md`
   }
   
   // No valid poster available

@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :fullscreen="isMobile">
+  <UModal v-model:open="isOpen" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
     <template #header>
       <div class="flex items-center justify-between w-full">
         <h3 class="text-lg font-semibold">Submit Job</h3>
@@ -216,7 +216,7 @@
                 <div v-if="displayImages" class="w-12 h-9 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
                   <img
                     v-if="selectedVideo.thumbnail_uuid"
-                    :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm`"
+                    :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=md`"
                     :alt="selectedVideo.filename"
                     class="w-full h-full object-cover object-top"
                   />
@@ -441,8 +441,8 @@ import { useSubjectsStore } from '~/stores/subjects'
 import VideoSearchFilters from '~/components/VideoSearchFilters.vue'
 import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 
-// Use Nuxt's device detection
-const { isMobile } = useDevice()
+// Use our responsive breakpoints composable
+const { isMobile } = useBreakpoints()
 
 // Props
 const props = defineProps({

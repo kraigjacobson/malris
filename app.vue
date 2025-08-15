@@ -18,15 +18,17 @@ const user = useSupabaseUser()
 const subjectsStore = useSubjectsStore()
 
 // Initialize subjects cache when app loads (only when user is authenticated)
-watch(user, async (newUser) => {
+// This runs in the background without blocking app startup
+watch(user, (newUser) => {
   if (newUser) {
-    try {
-      console.log('🚀 Initializing subjects cache...')
-      await subjectsStore.initializeFullSubjects()
-      console.log('✅ Subjects cache initialized')
-    } catch (error) {
-      console.error('❌ Failed to initialize subjects cache:', error)
-    }
+    console.log('🚀 Initializing subjects cache in background...')
+    subjectsStore.initializeFullSubjects()
+      .then(() => {
+        console.log('✅ Subjects cache initialized')
+      })
+      .catch((error) => {
+        console.error('❌ Failed to initialize subjects cache:', error)
+      })
   }
 }, { immediate: true })
 </script>

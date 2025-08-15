@@ -76,36 +76,36 @@ export default defineEventHandler(async (event) => {
       switch (size) {
         case 'thumbnail':
           processedData = await sharpInstance
-            .resize(150, 150, {
+            .resize(150, 200, {
               fit: 'cover',
-              position: 'center'
+              position: 'top'
             })
             .jpeg({ quality: 80 })
             .toBuffer()
           break
         case 'sm':
           processedData = await sharpInstance
-            .resize(300, 300, {
-              fit: 'inside',
-              withoutEnlargement: true
+            .resize(300, 400, {
+              fit: 'cover',
+              position: 'top'
             })
             .jpeg({ quality: 85 })
             .toBuffer()
           break
         case 'md':
           processedData = await sharpInstance
-            .resize(600, 600, {
-              fit: 'inside',
-              withoutEnlargement: true
+            .resize(600, 800, {
+              fit: 'cover',
+              position: 'top'
             })
             .jpeg({ quality: 90 })
             .toBuffer()
           break
         case 'lg':
           processedData = await sharpInstance
-            .resize(1200, 1200, {
-              fit: 'inside',
-              withoutEnlargement: true
+            .resize(1200, 1600, {
+              fit: 'cover',
+              position: 'top'
             })
             .jpeg({ quality: 95 })
             .toBuffer()

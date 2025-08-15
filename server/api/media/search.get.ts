@@ -46,7 +46,8 @@ export default defineEventHandler(async (event) => {
       offset = 0,
       page,
       pick_random = false,
-      include_thumbnails = false
+      include_thumbnails = false,
+      include_images = false
     } = query
 
     // Debug logging for include_thumbnails parameter
@@ -69,8 +70,8 @@ export default defineEventHandler(async (event) => {
       const videoThumbnailMedia = alias(mediaRecords, 'video_thumbnail_media')
       const subjectThumbnailMedia = alias(mediaRecords, 'subject_thumbnail_media')
 
-      // Conditionally include thumbnail data based on include_thumbnails parameter
-      const shouldIncludeThumbnails = include_thumbnails === 'true' || include_thumbnails === true
+      // Conditionally include thumbnail data based on include_thumbnails or include_images parameter
+      const shouldIncludeThumbnails = include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true
 
       // Build query conditionally based on whether thumbnails are needed
       let queryBuilder = db
@@ -172,104 +173,42 @@ export default defineEventHandler(async (event) => {
         _subject_thumbnail_filename: result.subject_thumbnail_filename
       }))
 
-      // Process thumbnails and images if include_thumbnails is explicitly true
-      if (include_thumbnails === 'true' || include_thumbnails === true) {
-        logger.info('🖼️ Processing thumbnails and images for UUID search result...')
+      // Process thumbnails if include_thumbnails or include_images is explicitly true
+      if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
+        logger.info('🖼️ Setting thumbnail URLs for UUID search result...')
         
         for (const result of transformedResults) {
           // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
           if (result.type === 'video') {
-            let encryptedData = null
-            let filename = null
-            let thumbnailType = 'none'
+            let thumbnailUuid = null
             
             // For destination videos, ONLY use video thumbnails - never subject thumbnails
             if (result.purpose === 'dest') {
-              // Only check for video thumbnail - no fallback to subject thumbnail
-              if (result._video_thumbnail_data) {
-                encryptedData = result._video_thumbnail_data
-                filename = result._video_thumbnail_filename
-                thumbnailType = 'video'
-              }
-              // Don't set any thumbnail data for dest videos without video thumbnails
+              thumbnailUuid = result.thumbnail_uuid
             }
             // For output videos, prioritize video thumbnail over subject thumbnail
             else if (result.purpose === 'output') {
-              if (result._video_thumbnail_data) {
-                encryptedData = result._video_thumbnail_data
-                filename = result._video_thumbnail_filename
-                thumbnailType = 'video'
-              } else if (result._subject_thumbnail_data) {
-                encryptedData = result._subject_thumbnail_data
-                filename = result._subject_thumbnail_filename
-                thumbnailType = 'subject'
-              }
+              thumbnailUuid = result.thumbnail_uuid || result.subject_thumbnail_uuid
             } else {
               // For other videos (source, intermediate), prioritize subject thumbnail
-              if (result._subject_thumbnail_data) {
-                encryptedData = result._subject_thumbnail_data
-                filename = result._subject_thumbnail_filename
-                thumbnailType = 'subject'
-              } else if (result._video_thumbnail_data) {
-                encryptedData = result._video_thumbnail_data
-                filename = result._video_thumbnail_filename
-                thumbnailType = 'video'
-              }
+              thumbnailUuid = result.subject_thumbnail_uuid || result.thumbnail_uuid
             }
             
-            if (encryptedData && filename && filename !== null) {
-              try {
-                const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-                if (encryptionKey) {
-                  const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
-                  // Handle bytea data - convert to Buffer if needed
-                  const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
-                  const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                  const contentType = getContentType(filename as string, 'image/jpeg')
-                  const base64Data = decryptedData.toString('base64')
-                  result.thumbnail = `data:${contentType};base64,${base64Data}`
-                  logger.info(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
-                }
-              } catch (error) {
-                logger.error(`❌ Failed to generate ${thumbnailType} thumbnail for video ${result.uuid}:`, error)
-              }
+            if (thumbnailUuid) {
+              result.thumbnail = `/api/media/${thumbnailUuid}/image?size=md`
+              logger.info(`✅ Set thumbnail URL for video ${result.uuid}`)
             } else {
-              logger.warn(`⚠️ Video ${result.uuid} has no subject thumbnail or video thumbnail`)
+              logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
             }
           }
           
-          // Handle image data directly - images still use their own data
+          // Handle image data directly - images use their own data as thumbnail
           else if (result.type === 'image') {
-            logger.info(`✅ Processing image ${result.uuid}`)
-            
-            try {
-              // For images, we need to get the data separately since we didn't join it
-              const imageRecord = await db
-                .select({ encryptedData: mediaRecords.encryptedData })
-                .from(mediaRecords)
-                .where(eq(mediaRecords.uuid, result.uuid))
-                .limit(1)
-              
-              if (imageRecord && imageRecord.length > 0 && imageRecord[0].encryptedData) {
-                const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-                if (encryptionKey) {
-                  const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
-                  // Handle bytea data - convert to Buffer if needed
-                  const encryptedData = imageRecord[0].encryptedData
-                  const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
-                  const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                  const contentType = getContentType(result.filename, 'image/jpeg')
-                  const base64Data = decryptedData.toString('base64')
-                  result.thumbnail = `data:${contentType};base64,${base64Data}`
-                  logger.info(`✅ Generated base64 data for image ${result.uuid} - contentType: ${contentType}, base64 length: ${base64Data.length}, decrypted size: ${decryptedData.length} bytes`)
-                }
-              }
-            } catch (error) {
-              logger.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
-            }
+            result.thumbnail = `/api/media/${result.uuid}/image?size=md`
+            logger.info(`✅ Set thumbnail URL for image ${result.uuid}`)
           }
           
-          // Clean up internal fields by creating a new object without them
+          // Clean up internal fields
           const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
           Object.assign(result, cleanResult)
         }
@@ -605,8 +544,8 @@ export default defineEventHandler(async (event) => {
     const videoThumbnailMedia = alias(mediaRecords, 'video_thumbnail_media')
     const subjectThumbnailMedia = alias(mediaRecords, 'subject_thumbnail_media')
 
-    // Conditionally include thumbnail data based on include_thumbnails parameter
-    const shouldIncludeThumbnails = include_thumbnails === 'true' || include_thumbnails === true
+    // Conditionally include thumbnail data based on include_thumbnails or include_images parameter
+    const shouldIncludeThumbnails = include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true
 
     // Build query conditionally based on whether thumbnails are needed
     let queryBuilder = db
@@ -708,104 +647,42 @@ export default defineEventHandler(async (event) => {
       _subject_thumbnail_filename: result.subject_thumbnail_filename
     }))
 
-    // Process thumbnails and images if include_thumbnails is explicitly true
-    if (include_thumbnails === 'true' || include_thumbnails === true) {
-      logger.info('🖼️ Processing thumbnails and images for media results...')
+    // Process thumbnails and images if include_thumbnails or include_images is explicitly true
+    if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
+      logger.info('🖼️ Setting thumbnail URLs for media results...')
       
       for (const result of transformedResults) {
         // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
         if (result.type === 'video') {
-          let encryptedData = null
-          let filename = null
-          let thumbnailType = 'none'
+          let thumbnailUuid = null
           
           // For destination videos, ONLY use video thumbnails - never subject thumbnails
           if (result.purpose === 'dest') {
-            // Only check for video thumbnail - no fallback to subject thumbnail
-            if (result._video_thumbnail_data) {
-              encryptedData = result._video_thumbnail_data
-              filename = result._video_thumbnail_filename
-              thumbnailType = 'video'
-            }
-            // Don't set any thumbnail data for dest videos without video thumbnails
+            thumbnailUuid = result.thumbnail_uuid
           }
           // For output videos, prioritize video thumbnail over subject thumbnail
           else if (result.purpose === 'output') {
-            if (result._video_thumbnail_data) {
-              encryptedData = result._video_thumbnail_data
-              filename = result._video_thumbnail_filename
-              thumbnailType = 'video'
-            } else if (result._subject_thumbnail_data) {
-              encryptedData = result._subject_thumbnail_data
-              filename = result._subject_thumbnail_filename
-              thumbnailType = 'subject'
-            }
+            thumbnailUuid = result.thumbnail_uuid || result.subject_thumbnail_uuid
           } else {
             // For other videos (source, intermediate), prioritize subject thumbnail
-            if (result._subject_thumbnail_data) {
-              encryptedData = result._subject_thumbnail_data
-              filename = result._subject_thumbnail_filename
-              thumbnailType = 'subject'
-            } else if (result._video_thumbnail_data) {
-              encryptedData = result._video_thumbnail_data
-              filename = result._video_thumbnail_filename
-              thumbnailType = 'video'
-            }
+            thumbnailUuid = result.subject_thumbnail_uuid || result.thumbnail_uuid
           }
           
-          if (encryptedData && filename && filename !== null) {
-            try {
-              const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-              if (encryptionKey) {
-                const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
-                // Handle bytea data - convert to Buffer if needed
-                const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
-                const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                const contentType = getContentType(filename as string, 'image/jpeg')
-                const base64Data = decryptedData.toString('base64')
-                result.thumbnail = `data:${contentType};base64,${base64Data}`
-                logger.info(`✅ Using ${thumbnailType} thumbnail for video ${result.uuid}`)
-              }
-            } catch (error) {
-              logger.error(`❌ Failed to generate ${thumbnailType} thumbnail for video ${result.uuid}:`, error)
-            }
+          if (thumbnailUuid) {
+            result.thumbnail = `/api/media/${thumbnailUuid}/image?size=thumbnail`
+            logger.info(`✅ Set thumbnail URL for video ${result.uuid}`)
           } else {
-            logger.warn(`⚠️ Video ${result.uuid} has no subject thumbnail or video thumbnail`)
+            logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
           }
         }
         
-        // Handle image data directly - images still use their own data
+        // Handle image data directly - images use their own data as thumbnail
         else if (result.type === 'image') {
-          logger.info(`✅ Processing image ${result.uuid}`)
-          
-          try {
-            // For images, we need to get the data separately since we didn't join it
-            const imageRecord = await db
-              .select({ encryptedData: mediaRecords.encryptedData })
-              .from(mediaRecords)
-              .where(eq(mediaRecords.uuid, result.uuid))
-              .limit(1)
-            
-            if (imageRecord && imageRecord.length > 0 && imageRecord[0].encryptedData) {
-              const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-              if (encryptionKey) {
-                const { decryptMediaData, getContentType } = await import('~/server/utils/encryption')
-                // Handle bytea data - convert to Buffer if needed
-                const encryptedData = imageRecord[0].encryptedData
-                const encryptedBuffer = Buffer.isBuffer(encryptedData) ? encryptedData : Buffer.from(encryptedData as string, 'hex')
-                const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-                const contentType = getContentType(result.filename, 'image/jpeg')
-                const base64Data = decryptedData.toString('base64')
-                result.thumbnail = `data:${contentType};base64,${base64Data}`
-                logger.info(`✅ Generated base64 data for image ${result.uuid} - contentType: ${contentType}, base64 length: ${base64Data.length}, decrypted size: ${decryptedData.length} bytes`)
-              }
-            }
-          } catch (error) {
-            logger.error(`❌ Failed to generate base64 data for image ${result.uuid}:`, error)
-          }
+          result.thumbnail = `/api/media/${result.uuid}/image?size=thumbnail`
+          logger.info(`✅ Set thumbnail URL for image ${result.uuid}`)
         }
         
-        // Clean up internal fields by creating a new object without them
+        // Clean up internal fields
         const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
         Object.assign(result, cleanResult)
       }

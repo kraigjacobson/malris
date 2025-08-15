@@ -176,8 +176,8 @@
             <!-- Thumbnail -->
             <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 rounded shrink-0">
               <img
-                v-if="subject.has_thumbnail && subject.thumbnail_data && settingsStore.displayImages"
-                :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
+                v-if="subject.has_thumbnail && subject.thumbnail_url && settingsStore.displayImages"
+                :src="subject.thumbnail_url"
                 :alt="subject.name"
                 class="w-full h-full object-cover object-top rounded"
                 loading="lazy"

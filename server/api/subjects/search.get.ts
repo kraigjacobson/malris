@@ -1,8 +1,6 @@
 import { eq, ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
 import { subjects, mediaRecords } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
-import { decryptMediaData } from '~/server/utils/encryption'
-import { decryptChunked, type ChunkMetadata } from '~/server/services/chunkEncryption'
 import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
@@ -115,42 +113,14 @@ export default defineEventHandler(async (event) => {
     const countResult = await countQuery
     const totalCount = countResult[0]?.count || 0
 
-    // Get encryption key from environment
-    const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-    if (!encryptionKey) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Media encryption key not configured',
-        data: { message: 'MEDIA_ENCRYPTION_KEY environment variable is required' }
-      })
-    }
 
-    // Process results to decrypt thumbnail data
-    const processedSubjects = await Promise.all(result.map(async (subject) => {
-      let thumbnail_data = null
-      
-      if (subject.encryptedThumbnailData) {
-        try {
-          let decryptedData: Buffer
-          
-          // Use proper decryption method based on encryption method
-          if (subject.encryptionMethod === 'aes-gcm-unified' && subject.metadata) {
-            // New unified AES-GCM encryption
-            const chunkMetadata = (typeof subject.metadata === 'string' ? JSON.parse(subject.metadata) : subject.metadata) as ChunkMetadata
-            decryptedData = await decryptChunked(subject.encryptedThumbnailData, chunkMetadata, encryptionKey)
-          } else if (subject.encryptionMethod === 'chunk-based' && subject.metadata) {
-            // Legacy chunk-based encryption
-            const chunkMetadata = (typeof subject.metadata === 'string' ? JSON.parse(subject.metadata) : subject.metadata) as ChunkMetadata
-            decryptedData = await decryptChunked(subject.encryptedThumbnailData, chunkMetadata, encryptionKey)
-          } else {
-            // Legacy Fernet full-file decryption
-            decryptedData = decryptMediaData(subject.encryptedThumbnailData, encryptionKey)
-          }
-          
-          thumbnail_data = decryptedData.toString('base64')
-        } catch (error) {
-          logger.error('Failed to decrypt thumbnail for subject:', subject.id, error)
-        }
+    // Process results to set thumbnail URLs instead of decrypting data
+    const processedSubjects = result.map((subject) => {
+      let thumbnail_url = null
+
+      if (subject.thumbnail) {
+        // Return higher quality thumbnail URL instead of base64 data for much faster responses
+        thumbnail_url = `/api/media/${subject.thumbnail}/image?size=md`
       }
 
       return {
@@ -161,9 +131,9 @@ export default defineEventHandler(async (event) => {
         created_at: subject.createdAt,
         updated_at: subject.updatedAt,
         has_thumbnail: subject.has_thumbnail,
-        thumbnail_data
+        thumbnail_url
       }
-    }))
+    })
     
     logger.info(`✅ Found ${processedSubjects.length} subjects (${totalCount} total)`)
 

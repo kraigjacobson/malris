@@ -53,8 +53,8 @@
         <!-- Image Only (only show when displayImages is true) -->
         <div v-if="displayImages" class="aspect-square bg-gray-100 dark:bg-gray-700">
           <img
-            v-if="subject.has_thumbnail && subject.thumbnail_data"
-            :src="`data:image/jpeg;base64,${subject.thumbnail_data}`"
+            v-if="subject.has_thumbnail && subject.thumbnail_url"
+            :src="subject.thumbnail_url"
             :alt="subject.name"
             class="w-full h-full object-cover object-top"
             loading="lazy"

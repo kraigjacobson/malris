@@ -6,6 +6,7 @@ interface Subject {
   name: string
   has_thumbnail?: boolean
   thumbnail_data?: string | null
+  thumbnail_url?: string | null
   tags?: any
   created_at?: Date
   updated_at?: Date
