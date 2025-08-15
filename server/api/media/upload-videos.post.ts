@@ -1,14 +1,15 @@
 import { getDb } from '~/server/utils/database'
-import { mediaRecords } from '~/server/utils/schema'
-import { encryptMediaData } from '~/server/utils/encryption'
-import { createHash } from 'crypto'
+import { mediaRecords, categories, mediaRecordCategories } from '~/server/utils/schema'
+import { storeMedia } from '~/server/services/hybridMediaStorage'
 import { eq, and } from 'drizzle-orm'
-import { writeFile, unlink, mkdir } from 'fs/promises'
+import { unlink, mkdir, readFile } from 'fs/promises'
+import { createWriteStream } from 'fs'
 import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { logger } from '~/server/utils/logger'
+import busboy from 'busboy'
 
 const execAsync = promisify(exec)
 
@@ -18,23 +19,9 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB per file
 
 export default defineEventHandler(async (event) => {
   try {
-    const formData = await readMultipartFormData(event)
+    // Parse multipart form data using streaming approach
+    const { videoFiles, uploadCategories, uploadPurpose } = await parseMultipartStream(event)
     
-    if (!formData || formData.length === 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'No files provided'
-      })
-    }
-
-    // Filter video files and validate batch size
-    const videoFiles = formData.filter(file => 
-      file.name === 'videos' && 
-      file.filename && 
-      file.data &&
-      file.type?.startsWith('video/')
-    )
-
     if (videoFiles.length === 0) {
       throw createError({
         statusCode: 400,
@@ -75,7 +62,7 @@ export default defineEventHandler(async (event) => {
           logger.info(`🎬 Processing video ${i + 1}/${videoFiles.length}: ${file.filename}`)
 
           // Validate file size
-          if (file.data.length > MAX_FILE_SIZE) {
+          if (file.size > MAX_FILE_SIZE) {
             errors.push({
               filename: file.filename,
               error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`
@@ -83,9 +70,8 @@ export default defineEventHandler(async (event) => {
             continue
           }
 
-          // Create temporary file for ffmpeg processing
-          const tempVideoPath = path.join(tempDir, `video_${i}_${Date.now()}.tmp`)
-          await writeFile(tempVideoPath, file.data)
+          // File is already saved to temp path by streaming parser
+          const tempVideoPath = file.tempPath
 
           // Get video metadata using ffmpeg
           const metadata = await getVideoMetadata(tempVideoPath)
@@ -120,51 +106,37 @@ export default defineEventHandler(async (event) => {
 
           // Generate thumbnail
           const thumbnailBuffer = await generateThumbnail(tempVideoPath)
+
+          // Store thumbnail using hybrid storage
+          const thumbnailResult = await storeMedia(thumbnailBuffer, {
+            filename: `${path.parse(baseFilename).name}_thumb.jpg`,
+            type: 'image',
+            purpose: 'thumbnail'
+          })
+
+          // Read video file from disk for storage
+          const videoBuffer = await readFile(tempVideoPath)
           
-          // Calculate checksums
-          const videoChecksum = createHash('sha256').update(file.data).digest('hex')
-          const thumbnailChecksum = createHash('sha256').update(thumbnailBuffer).digest('hex')
+          // Store video using hybrid storage
+          const videoResult = await storeMedia(videoBuffer, {
+            filename: baseFilename,
+            type: 'video',
+            purpose: uploadPurpose
+          })
 
-          // Encrypt video data
-          const encryptedVideoData = encryptMediaData(file.data, encryptionKey)
-          const encryptedThumbnailData = encryptMediaData(thumbnailBuffer, encryptionKey)
+          const thumbnailUuid = thumbnailResult.uuid
+          const videoUuid = videoResult.uuid
 
-          // Create thumbnail media record first
-          const thumbnailRecord = await db
-            .insert(mediaRecords)
-            .values({
-              filename: `${path.parse(baseFilename).name}_thumb.jpg`,
-              type: 'image',
-              purpose: 'thumbnail',
-              fileSize: thumbnailBuffer.length,
-              originalSize: thumbnailBuffer.length,
-              width: 320, // Standard thumbnail width
-              height: Math.round((320 * metadata.height) / metadata.width),
-              metadata: {
-                generated_from: baseFilename,
-                thumbnail_type: 'video_frame'
-              },
-              encryptedData: encryptedThumbnailData,
-              checksum: thumbnailChecksum,
-              tagsConfirmed: false
-            })
-            .returning({ uuid: mediaRecords.uuid })
-
-          const thumbnailUuid = thumbnailRecord[0].uuid
-
-          // Create video media record
-          const videoRecord = await db
-            .insert(mediaRecords)
-            .values({
-              filename: baseFilename,
-              type: 'video',
-              purpose: 'dest',
-              fileSize: file.data.length,
-              originalSize: file.data.length,
+          // Update the video record with additional metadata using direct database query
+          // since storeMedia doesn't handle all the custom fields we need
+          // NOTE: Don't overwrite the metadata field - it contains encryption chunk metadata!
+          await db
+            .update(mediaRecords)
+            .set({
               width: metadata.width,
               height: metadata.height,
               duration: metadata.duration,
-              metadata: {
+              tags: {
                 codec: metadata.codec,
                 format: metadata.format,
                 bitrate: metadata.bitrate,
@@ -172,15 +144,72 @@ export default defineEventHandler(async (event) => {
                 container: metadata.container
               },
               thumbnailUuid: thumbnailUuid,
-              encryptedData: encryptedVideoData,
-              checksum: videoChecksum,
               tagsConfirmed: false
             })
-            .returning({ uuid: mediaRecords.uuid })
+            .where(eq(mediaRecords.uuid, videoUuid))
+
+          // Update the thumbnail record with dimensions
+          await db
+            .update(mediaRecords)
+            .set({
+              width: 320,
+              height: Math.round((320 * metadata.height) / metadata.width),
+              tags: {
+                generated_from: baseFilename,
+                thumbnail_type: 'video_frame'
+              },
+              tagsConfirmed: false
+            })
+            .where(eq(mediaRecords.uuid, thumbnailUuid))
+
+          // Handle categories if provided
+          if (uploadCategories.length > 0) {
+            // Get or create categories
+            const categoryIds = []
+            
+            for (const categoryName of uploadCategories) {
+              // Check if category exists
+              const existingCategory = await db
+                .select()
+                .from(categories)
+                .where(eq(categories.name, categoryName.toLowerCase()))
+                .limit(1)
+              
+              let categoryId
+              if (existingCategory.length > 0) {
+                categoryId = existingCategory[0].id
+              } else {
+                // Create new category
+                const newCategory = await db
+                  .insert(categories)
+                  .values({
+                    name: categoryName.toLowerCase(),
+                    color: '#98D8C8' // Default color
+                  })
+                  .returning({ id: categories.id })
+                
+                categoryId = newCategory[0].id
+              }
+              
+              categoryIds.push(categoryId)
+            }
+            
+            // Create media-category relationships
+            if (categoryIds.length > 0) {
+              await db
+                .insert(mediaRecordCategories)
+                .values(
+                  categoryIds.map(categoryId => ({
+                    mediaRecordUuid: videoUuid,
+                    categoryId: categoryId
+                  }))
+                )
+            }
+          }
 
           results.push({
             filename: baseFilename,
-            video_uuid: videoRecord[0].uuid,
+            video_uuid: videoUuid,
             thumbnail_uuid: thumbnailUuid,
             metadata: metadata
           })
@@ -226,6 +255,98 @@ export default defineEventHandler(async (event) => {
     })
   }
 })
+
+/**
+ * Parse multipart form data using streaming approach to handle large files
+ */
+async function parseMultipartStream(event: any): Promise<{
+  videoFiles: Array<{ filename: string; tempPath: string; size: number; type: string }>
+  uploadCategories: string[]
+  uploadPurpose: string
+}> {
+  return new Promise((resolve, reject) => {
+    const videoFiles: Array<{ filename: string; tempPath: string; size: number; type: string }> = []
+    let uploadCategories: string[] = []
+    let uploadPurpose = 'dest'
+    
+    const tempDir = path.join(os.tmpdir(), `video-upload-stream-${Date.now()}`)
+    
+    // Create temp directory
+    mkdir(tempDir, { recursive: true }).then(() => {
+      const bb = busboy({
+        headers: event.node.req.headers,
+        limits: {
+          fileSize: MAX_FILE_SIZE,
+          files: MAX_BATCH_SIZE
+        }
+      })
+      
+      bb.on('file', (name, file, info) => {
+        const { filename, mimeType } = info
+        
+        if (name === 'videos' && filename && mimeType?.startsWith('video/')) {
+          const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
+          const writeStream = createWriteStream(tempPath)
+          let fileSize = 0
+          
+          file.on('data', (chunk) => {
+            fileSize += chunk.length
+            if (fileSize > MAX_FILE_SIZE) {
+              file.destroy()
+              writeStream.destroy()
+              unlink(tempPath).catch(() => {}) // Clean up
+              return
+            }
+          })
+          
+          file.on('end', () => {
+            videoFiles.push({
+              filename,
+              tempPath,
+              size: fileSize,
+              type: mimeType
+            })
+          })
+          
+          file.on('error', (err) => {
+            logger.error('File stream error:', err)
+            writeStream.destroy()
+            unlink(tempPath).catch(() => {}) // Clean up
+          })
+          
+          file.pipe(writeStream)
+        } else {
+          // Skip non-video files
+          file.resume()
+        }
+      })
+      
+      bb.on('field', (name, value) => {
+        if (name === 'categories') {
+          try {
+            uploadCategories = JSON.parse(value)
+          } catch (e) {
+            logger.warn('Failed to parse categories:', e)
+          }
+        } else if (name === 'purpose') {
+          uploadPurpose = value
+        }
+      })
+      
+      bb.on('close', () => {
+        resolve({ videoFiles, uploadCategories, uploadPurpose })
+      })
+      
+      bb.on('error', (err) => {
+        logger.error('Busboy error:', err)
+        reject(err)
+      })
+      
+      // Pipe the request to busboy
+      event.node.req.pipe(bb)
+    }).catch(reject)
+  })
+}
 
 // Helper function to get video metadata using ffprobe command
 async function getVideoMetadata(videoPath: string): Promise<any> {

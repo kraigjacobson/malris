@@ -58,12 +58,15 @@ export default defineEventHandler(async (event) => {
         [uuid]
       )
       
-      // Decrypt the file data using proper Fernet decryption
+      // Decrypt the file data using hybrid media storage system
       let fileData: Buffer
       try {
-        const { decryptMediaData } = await import('~/server/utils/encryption')
-        const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY || 'default_key'
-        fileData = decryptMediaData(record.encrypted_data, encryptionKey)
+        const { retrieveMedia } = await import('~/server/services/hybridMediaStorage')
+        const result = await retrieveMedia(uuid)
+        if (!result) {
+          throw new Error('Media data not found')
+        }
+        fileData = result
       } catch (error: any) {
         logger.error("Decryption error:", error)
         throw createError({

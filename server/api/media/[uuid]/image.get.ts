@@ -1,7 +1,5 @@
-import { getDb } from '~/server/utils/database'
-import { mediaRecords } from '~/server/utils/schema'
-import { eq } from 'drizzle-orm'
-import { decryptMediaData, getContentType } from '~/server/utils/encryption'
+import { getContentType } from '~/server/utils/encryption'
+import { retrieveMedia, getMediaInfo } from '~/server/services/hybridMediaStorage'
 import sharp from 'sharp'
 import { logger } from '~/server/utils/logger'
 
@@ -32,60 +30,41 @@ export default defineEventHandler(async (event) => {
 
     logger.info('🖼️ Serving image for UUID:', uuid, 'size:', size)
 
-    // Get database connection
-    const db = getDb()
+    // Get media info first
+    const mediaInfo = await getMediaInfo(uuid)
     
-    // Fetch media record from database
-    const mediaRecord = await db
-      .select()
-      .from(mediaRecords)
-      .where(eq(mediaRecords.uuid, uuid))
-      .limit(1)
-
-    if (!mediaRecord || mediaRecord.length === 0) {
+    if (!mediaInfo) {
       logger.error(`🖼️ Media record not found for UUID: ${uuid}`)
       throw createError({
         statusCode: 404,
         statusMessage: 'Media not found'
       })
     }
-
-    const record = mediaRecord[0]
     
     // Verify it's an image or video (for thumbnails)
-    if (!['image', 'video'].includes(record.type)) {
+    if (!['image', 'video'].includes(mediaInfo.type)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Media type not supported for image endpoint'
       })
     }
 
-    // Check if encrypted data exists
-    if (!record.encryptedData) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Media data not found'
-      })
-    }
-
-    // Get encryption key from environment
-    const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-    if (!encryptionKey) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Media encryption not configured'
-      })
-    }
-
-    // Decrypt the data
-    let decryptedData: Buffer
+    // Retrieve and decrypt the data using hybrid storage
+    let decryptedData: Buffer | null
     try {
-      decryptedData = decryptMediaData(record.encryptedData, encryptionKey)
+      decryptedData = await retrieveMedia(uuid)
     } catch (error) {
       logger.error('Decryption error:', error)
       throw createError({
         statusCode: 500,
         statusMessage: 'Failed to decrypt media data'
+      })
+    }
+
+    if (!decryptedData) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Media data not found'
       })
     }
     
@@ -146,7 +125,7 @@ export default defineEventHandler(async (event) => {
     }
     
     // Determine content type - always JPEG for processed images
-    const contentType = size === 'full' ? getContentType(record.filename, 'image/jpeg') : 'image/jpeg'
+    const contentType = size === 'full' ? getContentType(mediaInfo.filename, 'image/jpeg') : 'image/jpeg'
     
     // Set response headers for inline display
     setHeader(event, 'content-type', contentType)

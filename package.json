@@ -8,7 +8,13 @@
     "dev:mobile": "nuxt dev --host 0.0.0.0",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "cleanup:lobs": "node scripts/cleanup-large-objects.js",
+    "migrate:bytea": "node scripts/migrate-large-bytea.js",
+    "migrate:bytea:dry": "node scripts/migrate-large-bytea.js --dry-run",
+    "convert:encryption": "node scripts/convert-fernet-to-aes-gcm.js",
+    "convert:encryption:dry": "node scripts/convert-fernet-to-aes-gcm.js --dry-run",
+    "convert:encryption:single": "node scripts/convert-fernet-to-aes-gcm.js --uuid"
   },
   "dependencies": {
     "@nuxt/eslint": "1.4.1",

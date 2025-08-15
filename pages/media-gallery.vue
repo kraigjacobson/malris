@@ -14,16 +14,21 @@
             Search Filters
           </h2>
           <div class="flex gap-2 items-center">
-            <!-- Upload Videos Button -->
-            <UButton
-              color="green"
-              variant="outline"
-              size="xs"
-              @click="openUploadModal"
+            <!-- Upload Videos Dropdown -->
+            <UDropdownMenu
+              :items="uploadMenuItems"
+              :ui="{ content: 'w-48' }"
             >
-              <UIcon name="i-heroicons-arrow-up-tray" />
-              <span class="hidden sm:inline">Upload Videos</span>
-            </UButton>
+              <UButton
+                color="green"
+                variant="outline"
+                size="xs"
+                trailing-icon="i-heroicons-chevron-down"
+              >
+                <UIcon name="i-heroicons-arrow-up-tray" />
+                <span class="hidden sm:inline">Upload</span>
+              </UButton>
+            </UDropdownMenu>
             <!-- Slideshow Button -->
             <UButton
               color="primary"
@@ -287,10 +292,13 @@
               class="w-full h-full object-cover object-top"
               muted
               loop
-              preload="metadata"
+              preload="none"
               playsinline
               webkit-playsinline
+              :data-video-id="media.uuid"
+              disablePictureInPicture
             >
+              <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
               Your browser does not support the video tag.
             </video>
             
@@ -370,10 +378,13 @@
                   class="w-full h-full object-cover object-top rounded"
                   muted
                   loop
-                  preload="metadata"
+                  preload="none"
                   playsinline
                   webkit-playsinline
+                  :data-video-id="media.uuid"
+                  disablePictureInPicture
                 >
+                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
                   Your browser does not support the video tag.
                 </video>
                 
@@ -518,16 +529,20 @@
             <!-- Video Display (only show when displayImages is true) -->
             <div v-else-if="selectedMedia.type === 'video' && settingsStore.displayImages" class="max-w-full">
               <video
-                ref="modalVideo"
-                :src="`/api/stream/${selectedMedia.uuid}`"
+                :ref="modalVideo"
                 :poster="selectedMedia.thumbnail ? selectedMedia.thumbnail : (selectedMedia.thumbnail_uuid ? `/api/media/${selectedMedia.thumbnail_uuid}/image?size=sm` : undefined)"
                 controls
-                autoplay
                 muted
                 loop
                 class="w-full h-auto max-h-[80vh] rounded"
                 preload="metadata"
+                playsinline
+                webkit-playsinline
+                :data-video-id="selectedMedia.uuid"
+                disablePictureInPicture
+                crossorigin="anonymous"
               >
+                <source :src="`/api/stream/${selectedMedia.uuid}`" type="video/mp4">
                 Your browser does not support the video tag.
               </video>
             </div>
@@ -713,7 +728,9 @@
         <div class="p-3 sm:p-6">
           <!-- Header -->
           <div class="flex justify-between items-center mb-3 sm:mb-6">
-            <h3 class="text-base sm:text-lg font-semibold">Upload Destination Videos</h3>
+            <h3 class="text-base sm:text-lg font-semibold">
+              Upload {{ uploadMode === 'single' ? 'Video File' : 'Destination Videos' }}
+            </h3>
             <UButton
               variant="ghost"
               icon="i-heroicons-x-mark"
@@ -726,13 +743,15 @@
           <!-- File Selection -->
           <div v-if="!isUploading && uploadedFiles.length === 0">
             <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
-              <UIcon name="i-heroicons-folder" class="text-4xl text-gray-400 mb-4" />
+              <UIcon :name="uploadMode === 'single' ? 'i-heroicons-document-plus' : 'i-heroicons-folder'" class="text-4xl text-gray-400 mb-4" />
               <p class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Select Video Folder
+                {{ uploadMode === 'single' ? 'Select Video File' : 'Select Video Folder' }}
               </p>
               <p class="text-sm text-gray-500 mb-4">
-                Choose a folder containing destination videos to upload
+                {{ uploadMode === 'single' ? 'Choose a single video file to upload' : 'Choose a folder containing destination videos to upload' }}
               </p>
+              
+              <!-- Hidden file inputs -->
               <input
                 ref="folderInput"
                 type="file"
@@ -743,13 +762,79 @@
                 class="hidden"
                 @change="handleFolderSelection"
               >
-              <UButton
-                color="primary"
-                @click="$refs.folderInput?.click()"
+              <input
+                ref="singleFileInput"
+                type="file"
+                accept="video/*"
+                class="hidden"
+                @change="handleSingleFileSelection"
               >
-                <UIcon name="i-heroicons-folder-open" class="mr-2" />
-                Choose Folder
-              </UButton>
+              
+              <!-- Upload buttons -->
+              <div class="flex gap-2 justify-center">
+                <UButton
+                  v-if="uploadMode === 'folder'"
+                  color="primary"
+                  @click="folderInput?.click()"
+                >
+                  <UIcon name="i-heroicons-folder-open" class="mr-2" />
+                  Choose Folder
+                </UButton>
+                <UButton
+                  v-if="uploadMode === 'single'"
+                  color="primary"
+                  @click="singleFileInput?.click()"
+                >
+                  <UIcon name="i-heroicons-document-plus" class="mr-2" />
+                  Choose File
+                </UButton>
+                
+                <!-- Switch mode button -->
+                <UButton
+                  variant="outline"
+                  @click="switchUploadMode"
+                >
+                  <UIcon :name="uploadMode === 'single' ? 'i-heroicons-folder' : 'i-heroicons-document'" class="mr-2" />
+                  {{ uploadMode === 'single' ? 'Upload Folder' : 'Upload Single File' }}
+                </UButton>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Configuration -->
+          <div v-if="selectedFiles.length === 0 && !isUploading">
+            <div class="space-y-4">
+              <!-- Purpose Selection -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Purpose
+                </label>
+                <USelectMenu
+                  v-model="uploadConfig.purpose"
+                  :items="uploadPurposeOptions"
+                  placeholder="Select purpose..."
+                  class="w-full"
+                />
+              </div>
+
+              <!-- Category Selection -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Categories (Optional)
+                </label>
+                <UInputMenu
+                  v-model="uploadConfig.categories"
+                  multiple
+                  creatable
+                  :items="availableCategories"
+                  :loading="loadingCategories"
+                  placeholder="Select or create categories..."
+                  class="w-full"
+                />
+                <p class="text-xs text-gray-500 mt-1">
+                  Select from existing categories or type to create new ones
+                </p>
+              </div>
             </div>
           </div>
 
@@ -757,10 +842,10 @@
           <div v-if="selectedFiles.length > 0 && !isUploading">
             <div class="mb-4">
               <h4 class="text-md font-medium text-gray-900 dark:text-white mb-2">
-                Selected Videos ({{ selectedFiles.length }})
+                Selected {{ uploadMode === 'single' ? 'Video' : 'Videos' }} ({{ selectedFiles.length }})
               </h4>
               <p class="text-sm text-gray-500">
-                Total size: {{ formatFileSize(totalSize) }}
+                {{ uploadMode === 'single' ? 'File size:' : 'Total size:' }} {{ formatFileSize(totalSize) }}
               </p>
             </div>
             
@@ -772,7 +857,7 @@
                     Ready to upload {{ selectedFiles.length }} video{{ selectedFiles.length === 1 ? '' : 's' }}
                   </p>
                   <p class="text-xs text-gray-500">
-                    {{ formatFileSize(totalSize) }} total • Will be processed in batches of 5
+                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ' • Will be processed in batches of 5' : '' }}
                   </p>
                 </div>
                 <UIcon name="i-heroicons-video-camera" class="text-2xl text-gray-400" />
@@ -878,7 +963,6 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
-import { nextTick } from 'vue'
 
 // Device detection
 const { isMobile } = useDevice()
@@ -890,6 +974,11 @@ definePageMeta({
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
+
+// Template refs
+const folderInput = ref(null)
+const singleFileInput = ref(null)
+const modalVideo = ref(null)
 
 // Reactive data
 const filters = ref({
@@ -910,6 +999,7 @@ const unconfirmedMediaResults = ref([])
 
 // Video upload functionality
 const isUploadModalOpen = ref(false)
+const uploadMode = ref('folder') // 'single' or 'folder'
 const selectedFiles = ref([])
 const isUploading = ref(false)
 const uploadComplete = ref(false)
@@ -920,6 +1010,16 @@ const uploadProgress = ref({
 })
 const uploadResults = ref([])
 const uploadedFiles = ref([])
+
+// Upload configuration
+const uploadConfig = ref({
+  purpose: { label: 'Destination', value: 'dest' },
+  categories: []
+})
+
+// Categories management
+const availableCategories = ref([])
+const loadingCategories = ref(false)
 
 // Completion filters with defaults for media gallery (min=0, max=null)
 const completionFilters = ref({
@@ -1050,7 +1150,34 @@ const limitOptions = [
   { label: '500 results', value: 500 }
 ]
 
+// Upload purpose options
+const uploadPurposeOptions = [
+  { label: 'Source', value: 'source' },
+  { label: 'Destination', value: 'dest' },
+  { label: 'Intermediate', value: 'intermediate' },
+  { label: 'Backup', value: 'backup' },
+  { label: 'Output', value: 'output' }
+]
 
+// Upload menu items
+const uploadMenuItems = [
+  [{
+    label: 'Upload Single File',
+    icon: 'i-heroicons-document-plus',
+    onSelect: (_e) => {
+      console.log('Single file upload selected')
+      openUploadModal('single')
+    }
+  }],
+  [{
+    label: 'Upload Folder',
+    icon: 'i-heroicons-folder-open',
+    onSelect: (_e) => {
+      console.log('Folder upload selected')
+      openUploadModal('folder')
+    }
+  }]
+]
 
 // Search cancellation
 const searchController = ref(null)
@@ -1450,21 +1577,22 @@ const openModal = async (media) => {
   selectedMedia.value = media
   isModalOpen.value = true
   
-  // If it's a video, ensure it loads and plays
+  // If it's a video, try to autoplay after modal opens
   if (media.type === 'video') {
     await nextTick()
-    // Wait a bit for the modal to fully render
     setTimeout(() => {
-      const modalVideo = $refs.modalVideo || document.querySelector('video[controls]')
+      const modalVideoEl = modalVideo.value || document.querySelector('video[controls]')
       
-      if (modalVideo) {
-        // The src is already set in the template, just load and play
-        modalVideo.load()
-        modalVideo.play().catch(error => {
-          console.error('Modal video autoplay failed:', error)
+      if (modalVideoEl) {
+        console.log('🎬 Modal video ready, attempting autoplay')
+        
+        // The source is already set in the template, just try to play
+        modalVideoEl.load()
+        modalVideoEl.play().catch(error => {
+          console.log('Modal autoplay prevented (normal):', error.message)
         })
       }
-    }, 200)
+    }, 300)
   }
 }
 
@@ -1488,36 +1616,51 @@ const handleVideoHover = async (videoId, isHovering) => {
       const targetVideo = videoContainer.querySelector('video')
       
       if (targetVideo) {
-        try {
-          // Clear any existing play promise to avoid conflicts
-          if (targetVideo._playPromise) {
-            await targetVideo._playPromise.catch(() => {})
-          }
-          
-          // Set the video source dynamically using Nuxt streaming endpoint
-          const videoSrc = `/api/stream/${videoId}`
-
-          // Ensure video is properly configured for mobile autoplay
-          targetVideo.muted = true
-          targetVideo.playsInline = true
-          targetVideo.autoplay = true
-          targetVideo.setAttribute('webkit-playsinline', 'true')
-          targetVideo.setAttribute('playsinline', 'true')
-          
-          // Set the source
-          targetVideo.src = videoSrc
-          
-          // Load the video first
-          targetVideo.load()
-          
-          // Let autoplay handle the video start for mobile compatibility
-          // Manual play() calls often fail on mobile browsers
-          console.log('Video hover: autoplay enabled, letting browser handle playback')
-          
-        } catch (error) {
-          console.error('Video setup failed:', error)
+        console.log('🎬 Hover video ready, attempting autoplay')
+        
+        // Remove poster to show video content
+        const originalPoster = targetVideo.poster
+        targetVideo.removeAttribute('poster')
+        
+        // Store original poster for restoration
+        targetVideo.dataset.originalPoster = originalPoster
+        
+        // Ensure the video has a proper src attribute set from the source element
+        const sourceElement = targetVideo.querySelector('source')
+        if (sourceElement && sourceElement.src && !targetVideo.src) {
+          targetVideo.src = sourceElement.src
+          console.log('🔧 Set video src from source element:', sourceElement.src)
         }
+        
+        // Add event listeners for debugging
+        const onLoadedData = () => {
+          console.log('✅ Video loadeddata - ready to play')
+          // Try to play once data is loaded
+          targetVideo.play().catch(error => {
+            console.log('❌ Autoplay prevented:', error.message)
+          })
+        }
+        const onCanPlay = () => console.log('▶️ Video canplay')
+        const onError = (e) => {
+          console.error('❌ Video error:', e.target.error)
+          // Restore poster on error
+          if (targetVideo.dataset.originalPoster) {
+            targetVideo.poster = targetVideo.dataset.originalPoster
+          }
+        }
+        
+        targetVideo.addEventListener('loadeddata', onLoadedData, { once: true })
+        targetVideo.addEventListener('canplay', onCanPlay, { once: true })
+        targetVideo.addEventListener('error', onError, { once: true })
+        
+        // Load the video
+        targetVideo.load()
+        
+      } else {
+        console.error('❌ No video element found in container')
       }
+    } else {
+      console.error('❌ No video container found for UUID:', videoId)
     }
   } else {
     // Only clear hoveredVideoId if this video was the one being hovered
@@ -1525,30 +1668,18 @@ const handleVideoHover = async (videoId, isHovering) => {
       hoveredVideoId.value = null
     }
     
-    // Find and pause the specific video immediately
+    // Find and stop the specific video
     const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
     if (videoContainer) {
       const targetVideo = videoContainer.querySelector('video')
-      if (targetVideo && targetVideo.src) {
-        // Wait for any pending play promise before pausing
-        if (targetVideo._playPromise) {
-          targetVideo._playPromise.then(() => {
-            targetVideo.pause()
-            targetVideo.currentTime = 0
-          }).catch(() => {
-            // Play was rejected, safe to pause
-            targetVideo.pause()
-            targetVideo.currentTime = 0
-          })
-        } else {
-          targetVideo.pause()
-          targetVideo.currentTime = 0
-        }
+      if (targetVideo) {
+        targetVideo.pause()
+        targetVideo.currentTime = 0
         
-        // Remove the src to stop downloading
-        targetVideo.removeAttribute('src')
-        targetVideo.load()
-        targetVideo._playPromise = null
+        // Restore poster image
+        if (targetVideo.dataset.originalPoster) {
+          targetVideo.poster = targetVideo.dataset.originalPoster
+        }
       }
     }
   }
@@ -2158,9 +2289,11 @@ watch(isModalOpen, (isOpen) => {
 })
 
 // Video upload methods
-const openUploadModal = () => {
+const openUploadModal = async (mode = 'folder') => {
+  uploadMode.value = mode
   isUploadModalOpen.value = true
   resetUploadState()
+  await loadCategories()
 }
 
 const closeUploadModal = () => {
@@ -2181,6 +2314,11 @@ const resetUploadState = () => {
   uploadedFiles.value = []
 }
 
+const switchUploadMode = () => {
+  uploadMode.value = uploadMode.value === 'single' ? 'folder' : 'single'
+  selectedFiles.value = [] // Clear selection when switching modes
+}
+
 const handleFolderSelection = (event) => {
   const files = Array.from(event.target.files || [])
   
@@ -2199,6 +2337,35 @@ const handleFolderSelection = (event) => {
     color: 'green',
     timeout: 3000
   })
+}
+
+const handleSingleFileSelection = (event) => {
+  const files = Array.from(event.target.files || [])
+  
+  // Filter for video files only
+  const videoFiles = files.filter(file =>
+    file.type.startsWith('video/') &&
+    file.size > 0
+  )
+  
+  selectedFiles.value = videoFiles
+  
+  const toast = useToast()
+  if (videoFiles.length > 0) {
+    toast.add({
+      title: 'File Selected',
+      description: `Selected "${videoFiles[0].name}" (${formatFileSize(videoFiles[0].size)})`,
+      color: 'green',
+      timeout: 3000
+    })
+  } else {
+    toast.add({
+      title: 'No Valid Files',
+      description: 'Please select a valid video file',
+      color: 'red',
+      timeout: 3000
+    })
+  }
 }
 
 const clearSelection = () => {
@@ -2226,7 +2393,7 @@ const startUpload = async () => {
   uploadResults.value = []
   
   const toast = useToast()
-  const BATCH_SIZE = 5 // Process 5 videos at a time
+  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : 5 // Process single files individually, folders in batches of 5
   
   // Process files in batches
   for (let i = 0; i < selectedFiles.value.length; i += BATCH_SIZE) {
@@ -2239,8 +2406,22 @@ const startUpload = async () => {
         formData.append('videos', file)
       })
       
+      // Add upload configuration
+      const purposeValue = typeof uploadConfig.value.purpose === 'object' ? uploadConfig.value.purpose.value : uploadConfig.value.purpose
+      formData.append('purpose', purposeValue)
+      
+      // Add categories (extract values from objects if needed)
+      const categoryValues = uploadConfig.value.categories.map(cat =>
+        typeof cat === 'object' ? cat.value || cat.label : cat
+      )
+      formData.append('categories', JSON.stringify(categoryValues))
+      
       // Update progress
-      uploadProgress.value.currentFile = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`
+      if (uploadMode.value === 'single') {
+        uploadProgress.value.currentFile = `Uploading ${batch[0].name}...`
+      } else {
+        uploadProgress.value.currentFile = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`
+      }
       
       // Upload batch
       const response = await $fetch('/api/media/upload-videos', {
@@ -2328,6 +2509,34 @@ const refreshAfterUpload = async () => {
     color: 'green',
     timeout: 3000
   })
+}
+
+// Categories management methods
+const loadCategories = async () => {
+  loadingCategories.value = true
+  try {
+    const response = await $fetch('/api/categories')
+    if (response.success) {
+      // Transform categories for UInputMenu format
+      availableCategories.value = response.categories.map(cat => ({
+        label: cat.name,
+        value: cat.name,
+        id: cat.id,
+        color: cat.color
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to load categories:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Categories Load Error',
+      description: 'Failed to load categories. You can still create new ones.',
+      color: 'yellow',
+      timeout: 3000
+    })
+  } finally {
+    loadingCategories.value = false
+  }
 }
 
 // Initialize settings on mount (but don't auto-search)

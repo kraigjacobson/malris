@@ -1,7 +1,9 @@
 /**
- * Upload images for a subject using Drizzle ORM
+ * Upload images for a subject using hybrid storage system
  * Handles multiple image uploads and associates them with a subject
  */
+import { storeMedia } from '~/server/services/hybridMediaStorage'
+
 export default defineEventHandler(async (event) => {
   try {
     const formData = await readMultipartFormData(event)
@@ -73,40 +75,28 @@ export default defineEventHandler(async (event) => {
           continue
         }
 
-        // Encrypt the file data before storing - following the same pattern as other uploads
-        const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-        if (!encryptionKey) {
-          throw createError({
-            statusCode: 500,
-            statusMessage: "Media encryption key not configured"
-          })
-        }
-
-        const { encryptMediaData } = await import('~/server/utils/encryption')
-        const encryptedData = encryptMediaData(fileData, encryptionKey)
-
-        // Insert media record using Drizzle - following the same pattern as jobs creation
-        const newMediaRecord = await db.insert(mediaRecords).values({
+        // Store image using hybrid storage system
+        const imageResult = await storeMedia(fileData, {
           filename,
           type: 'image',
           purpose: 'source',
-          fileSize: fileData.length,
-          originalSize: fileData.length,
-          subjectUuid,
-          encryptedData: encryptedData,
-          checksum
-        }).returning({
-          uuid: mediaRecords.uuid,
-          filename: mediaRecords.filename
+          subjectUuid
         })
 
-        if (newMediaRecord.length > 0) {
-          uploadedFiles.push({
-            uuid: newMediaRecord[0].uuid,
-            filename: newMediaRecord[0].filename,
-            size: fileData.length
+        // Update the record with subject association
+        await db
+          .update(mediaRecords)
+          .set({
+            subjectUuid,
+            tagsConfirmed: false
           })
-        }
+          .where(eq(mediaRecords.uuid, imageResult.uuid))
+
+        uploadedFiles.push({
+          uuid: imageResult.uuid,
+          filename,
+          size: fileData.length
+        })
       }
     }
 

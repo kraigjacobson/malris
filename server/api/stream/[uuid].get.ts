@@ -1,8 +1,6 @@
-import { getDb } from '~/server/utils/database'
-import { mediaRecords } from '~/server/utils/schema'
-import { eq } from 'drizzle-orm'
-import { decryptMediaData, getContentType } from '~/server/utils/encryption'
+import { getContentType } from '~/server/utils/encryption'
 import { logger } from '~/server/utils/logger'
+import { streamMedia, getMediaInfo } from '~/server/services/hybridMediaStorage'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -15,106 +13,97 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Get media record from database
-    const db = getDb()
-    const mediaRecord = await db
-      .select()
-      .from(mediaRecords)
-      .where(eq(mediaRecords.uuid, uuid))
-      .limit(1)
-
-    if (!mediaRecord.length) {
+    // Get media info first
+    const mediaInfo = await getMediaInfo(uuid)
+    logger.info(`Media info for ${uuid}:`, JSON.stringify(mediaInfo, null, 2))
+    
+    if (!mediaInfo) {
       throw createError({
         statusCode: 404,
         statusMessage: 'Media not found'
       })
     }
 
-    const record = mediaRecord[0]
-
     // Validate that this is a video file
-    if (record.type !== 'video') {
+    if (mediaInfo.type !== 'video') {
       throw createError({
         statusCode: 400,
         statusMessage: 'Only video files can be streamed'
       })
     }
 
-    // Check if encrypted data exists
-    if (!record.encryptedData) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Media record has no encrypted data'
-      })
-    }
-
-    // Get encryption key from environment
-    const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-    if (!encryptionKey) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Media encryption not configured'
-      })
-    }
-
-    // Decrypt the data
-    let decryptedData: Buffer
-    try {
-      decryptedData = decryptMediaData(record.encryptedData, encryptionKey)
-    } catch (error) {
-      logger.error('Decryption error:', error)
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Failed to decrypt media data'
-      })
-    }
-
-    // Update access tracking
-    await db
-      .update(mediaRecords)
-      .set({
-        accessCount: (record.accessCount || 0) + 1,
-        lastAccessed: new Date()
-      })
-      .where(eq(mediaRecords.uuid, uuid))
-
     // Determine content type
-    const contentType = getContentType(record.filename, 'video/mp4')
+    const contentType = getContentType(mediaInfo.filename, 'video/mp4')
+    
+    // Set content type header immediately for all requests (including HEAD)
+    setHeader(event, 'Content-Type', contentType)
+    setHeader(event, 'Accept-Ranges', 'bytes')
+    
+    // Handle HEAD requests
+    if (getMethod(event) === 'HEAD') {
+      setHeader(event, 'Content-Length', mediaInfo.fileSize)
+      return null
+    }
 
     // Handle range requests for video streaming
     const range = getHeader(event, 'range')
-    const fileSize = decryptedData.length
+    const fileSize = mediaInfo.fileSize
+    
+    logger.info(`File size: ${fileSize}`)
 
-    if (range) {
-      // Parse range header
-      const parts = range.replace(/bytes=/, '').split('-')
-      const start = parseInt(parts[0], 10)
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-      const chunkSize = (end - start) + 1
-
-      // Validate range
-      if (start >= fileSize || end >= fileSize) {
-        setResponseStatus(event, 416) // Range Not Satisfiable
-        setHeader(event, 'Content-Range', `bytes */${fileSize}`)
-        return 'Range Not Satisfiable'
+    // Always serve full file for now - disable range requests to avoid chunk alignment issues
+    {
+      // Handle full file request or bytes=0- request
+      logger.info(`Streaming full file for UUID: ${uuid}`)
+      const streamResult = await streamMedia(uuid)
+      
+      if (!streamResult) {
+        logger.error(`Stream result is null for full file UUID: ${uuid}`)
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Failed to stream media data'
+        })
       }
 
-      // Set partial content headers
-      setResponseStatus(event, 206) // Partial Content
-      setHeader(event, 'Content-Range', `bytes ${start}-${end}/${fileSize}`)
-      setHeader(event, 'Accept-Ranges', 'bytes')
-      setHeader(event, 'Content-Length', chunkSize)
-      setHeader(event, 'Content-Type', contentType)
+      if (!streamResult.buffer || streamResult.buffer.length === 0) {
+        logger.error(`Stream result has no data for UUID: ${uuid}`)
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'No media data available'
+        })
+      }
 
-      // Return the requested chunk
-      return decryptedData.subarray(start, end + 1)
-    } else {
-      // Return full file
-      setHeader(event, 'Content-Length', fileSize)
+      if (!streamResult.totalSize || streamResult.totalSize <= 0) {
+        logger.error(`Stream result has invalid total size for UUID: ${uuid}: ${streamResult.totalSize}`)
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Invalid media size'
+        })
+      }
+
+      logger.info(`Full file stream result: ${streamResult.buffer.length} bytes returned, total size: ${streamResult.totalSize}`)
+      
+      // Validate that we got video data (check first few bytes for video signatures)
+      const firstBytes = streamResult.buffer.slice(0, 8)
+      logger.info(`First 8 bytes: ${Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ')}`)
+
+      // For bytes=0- requests, return as partial content
+      if (range === 'bytes=0-') {
+        setResponseStatus(event, 206) // Partial Content
+        setHeader(event, 'Content-Range', `bytes 0-${streamResult.totalSize - 1}/${streamResult.totalSize}`)
+        setHeader(event, 'Content-Length', streamResult.totalSize)
+      } else {
+        // For no range header, return as full content
+        setHeader(event, 'Content-Length', streamResult.totalSize)
+      }
+      
       setHeader(event, 'Content-Type', contentType)
       setHeader(event, 'Accept-Ranges', 'bytes')
+      setHeader(event, 'Access-Control-Allow-Origin', '*')
+      setHeader(event, 'Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+      setHeader(event, 'Access-Control-Allow-Headers', 'Range')
 
-      return decryptedData
+      return streamResult.buffer
     }
 
   } catch (error) {
