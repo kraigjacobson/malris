@@ -52,6 +52,33 @@
       </template>
 
       <div v-show="!filtersCollapsed" class="space-y-3 sm:space-y-4">
+        <!-- UUID Search (priority filter) -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Media UUID (Direct Lookup)
+          </label>
+          <UInput
+            v-model="mediaUuid"
+            placeholder="Enter media record UUID to find specific record..."
+            class="w-full"
+            :ui="{ trailing: 'pe-1' }"
+          >
+            <template v-if="mediaUuid?.length" #trailing>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="sm"
+                icon="i-heroicons-x-mark"
+                aria-label="Clear UUID input"
+                @click="mediaUuid = ''"
+              />
+            </template>
+          </UInput>
+          <p v-if="mediaUuid" class="text-xs text-blue-600 dark:text-blue-400 mt-1">
+            When UUID is set, all other filters are ignored
+          </p>
+        </div>
+
         <!-- Media Type and Purpose on same line -->
         <div class="grid grid-cols-2 gap-3 sm:gap-4">
           <!-- Media Type Filter -->
@@ -60,10 +87,11 @@
               Media Type
             </label>
             <USelectMenu
-              v-model="filters.media_type"
+              v-model="mediaType"
               :items="mediaTypeOptions"
               placeholder="All types"
               class="w-full"
+              :disabled="!!mediaUuid"
             />
           </div>
 
@@ -73,10 +101,11 @@
               Purpose
             </label>
             <USelectMenu
-              v-model="filters.purpose"
+              v-model="purpose"
               :items="purposeOptions"
               placeholder="All purposes"
               class="w-full"
+              :disabled="!!mediaUuid"
             />
           </div>
         </div>
@@ -89,6 +118,7 @@
             <SubjectSearch
               v-model="selectedSubject"
               placeholder="Subject..."
+              :disabled="!!mediaUuid"
               @select="handleSubjectSelection"
             />
           </div>
@@ -100,84 +130,41 @@
                 v-model="selectedTags"
                 placeholder="Tags..."
                 class="w-full"
+                :disabled="!!mediaUuid"
               />
             </div>
           </div>
         </div>
 
-        <!-- Third row for Tag Confirmation -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          <!-- Tags Confirmed Filter -->
-          <div>
-            <div class="flex items-center space-x-3">
-              <UCheckbox
-                v-model="showUnconfirmedOnly"
-                label="Only show unconfirmed tags"
-                :ui="{
-                  label: 'text-sm text-gray-700 dark:text-gray-300'
-                }"
-              />
-            </div>
-          </div>
-          
-          <!-- Completion Filters (only show for videos) -->
-          <div v-if="filters.media_type?.value === 'video'">
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Min Completions
-                </label>
-                <UInput
-                  v-model.number="completionFilters.min_completions"
-                  type="number"
-                  placeholder="0"
-                  min="0"
-                  class="w-full"
-                  size="sm"
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Max Completions
-                </label>
-                <UInput
-                  v-model.number="completionFilters.max_completions"
-                  type="number"
-                  placeholder="No limit"
-                  min="0"
-                  class="w-full"
-                  size="sm"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Sort Options and Limit -->
-      <div v-show="!filtersCollapsed" class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
-        <div>
+      <div v-show="!filtersCollapsed" class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+        <div class="flex-1 min-w-0">
           <USelectMenu
-            v-model="sortOptions.sort_by"
+            v-model="sortBy"
             :items="sortByOptions"
             placeholder="Sort by..."
             class="w-full"
+            :disabled="!!mediaUuid"
           />
         </div>
-        <div>
+        <div class="w-24 flex-shrink-0">
           <USelectMenu
-            v-model="sortOptions.sort_order"
+            v-model="sortOrder"
             :items="sortOrderOptions"
-            placeholder="Sort order..."
+            placeholder="Order..."
             class="w-full"
+            :disabled="!!mediaUuid"
           />
         </div>
-        <div>
-          <USelectMenu
-            v-model="pagination.limit"
+        <div class="w-20 flex-shrink-0">
+          <USelect
+            v-model="paginationLimit"
             :items="limitOptions"
-            placeholder="Results per page..."
+            placeholder="Limit..."
             class="w-full"
+            :disabled="!!mediaUuid"
           />
         </div>
       </div>
@@ -203,7 +190,7 @@
           <span class="sm:hidden">Cancel</span>
         </UButton>
         <UButton variant="outline" size="sm" @click="clearFilters">
-          Clear
+          Clear Results
         </UButton>
       </div>
     </UCard>
@@ -475,6 +462,45 @@
             <div class="flex items-center gap-1 sm:gap-2 shrink-0">
               <span class="text-xs sm:text-sm text-gray-500 hidden sm:inline">{{ currentMediaIndex + 1 }} / {{ allMediaResults.length }}</span>
               <UButton
+                v-if="selectedMedia.type === 'video' && !isEditingMode"
+                variant="solid"
+                icon="i-heroicons-pencil-square"
+                color="primary"
+                size="xs"
+                @click="enterEditMode"
+              >
+                Edit
+              </UButton>
+              <UButton
+                v-if="!isEditingMode"
+                variant="outline"
+                icon="i-heroicons-tag"
+                color="blue"
+                size="xs"
+                @click="openTagEditModal(selectedMedia)"
+              >
+                Tags
+              </UButton>
+              <UButton
+                v-if="isEditingMode"
+                variant="solid"
+                color="green"
+                size="xs"
+                :loading="isSavingEdits"
+                @click="confirmSaveEdits"
+              >
+                Save
+              </UButton>
+              <UButton
+                v-if="isEditingMode"
+                variant="outline"
+                size="xs"
+                @click="confirmCancelEdits"
+              >
+                Cancel
+              </UButton>
+              <UButton
+                v-if="!isEditingMode"
                 variant="solid"
                 icon="i-heroicons-trash"
                 color="error"
@@ -486,7 +512,7 @@
                 variant="ghost"
                 icon="i-heroicons-x-mark"
                 size="xs"
-                @click="isModalOpen = false"
+                @click="closeModal"
               />
             </div>
           </div>
@@ -528,23 +554,67 @@
 
             <!-- Video Display (only show when displayImages is true) -->
             <div v-else-if="selectedMedia.type === 'video' && settingsStore.displayImages" class="max-w-full">
-              <video
-                :ref="modalVideo"
-                :poster="selectedMedia.thumbnail ? selectedMedia.thumbnail : (selectedMedia.thumbnail_uuid ? `/api/media/${selectedMedia.thumbnail_uuid}/image?size=sm` : undefined)"
-                controls
-                muted
-                loop
-                class="w-full h-auto max-h-[80vh] rounded"
-                preload="metadata"
-                playsinline
-                webkit-playsinline
-                :data-video-id="selectedMedia.uuid"
-                disablePictureInPicture
-                crossorigin="anonymous"
-              >
-                <source :src="`/api/stream/${selectedMedia.uuid}`" type="video/mp4">
-                Your browser does not support the video tag.
-              </video>
+              <div class="relative">
+                <video
+                  :ref="modalVideo"
+                  :poster="selectedMedia.thumbnail ? selectedMedia.thumbnail : (selectedMedia.thumbnail_uuid ? `/api/media/${selectedMedia.thumbnail_uuid}/image?size=sm` : undefined)"
+                  controls
+                  muted
+                  loop
+                  class="w-full h-auto max-h-[80vh] rounded"
+                  preload="metadata"
+                  playsinline
+                  webkit-playsinline
+                  :data-video-id="selectedMedia.uuid"
+                  disablePictureInPicture
+                  crossorigin="anonymous"
+                  @loadedmetadata="onVideoLoaded"
+                  @timeupdate="onTimeUpdate"
+                >
+                  <source :src="`/api/stream/${selectedMedia.uuid}`" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+                
+                <!-- Custom Crop overlay (only visible in edit mode) -->
+                <div
+                  v-if="isEditingMode && showCropOverlay"
+                  class="absolute inset-0 cursor-crosshair"
+                  style="z-index: 20;"
+                  @mousedown="startCropDrag"
+                  @mousemove="updateCropDrag"
+                  @mouseup="endCropDrag"
+                  @mouseleave="endCropDrag"
+                >
+                  <!-- Dark overlay -->
+                  <div class="absolute inset-0" :ui="{opacity:50}"/>
+                  
+                  <!-- Crop selection rectangle -->
+                  <div
+                    class="absolute border-2 border-white shadow-lg"
+                    :style="{
+                      left: cropOverlayStyle.left + 'px',
+                      top: cropOverlayStyle.top + 'px',
+                      width: cropOverlayStyle.width + 'px',
+                      height: cropOverlayStyle.height + 'px'
+                    }"
+                  >
+                    <!-- Clear area inside crop -->
+                    <div class="absolute inset-0 bg-transparent"></div>
+                    
+                    <!-- Corner handles -->
+                    <div class="absolute -top-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-nw-resize" @mousedown.stop="startResize('nw')"></div>
+                    <div class="absolute -top-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-ne-resize" @mousedown.stop="startResize('ne')"></div>
+                    <div class="absolute -bottom-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-sw-resize" @mousedown.stop="startResize('sw')"></div>
+                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-se-resize" @mousedown.stop="startResize('se')"></div>
+                    
+                    <!-- Edge handles -->
+                    <div class="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-n-resize" @mousedown.stop="startResize('n')"></div>
+                    <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-s-resize" @mousedown.stop="startResize('s')"></div>
+                    <div class="absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border border-gray-400 cursor-w-resize" @mousedown.stop="startResize('w')"></div>
+                    <div class="absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border border-gray-400 cursor-e-resize" @mousedown.stop="startResize('e')"></div>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <!-- Video placeholder when displayImages is false -->
@@ -555,8 +625,229 @@
               </div>
             </div>
 
+            <!-- Video Editing Controls (only visible in edit mode) -->
+            <div v-if="isEditingMode && selectedMedia.type === 'video'" class="space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Trim Controls -->
+                <UCard>
+                  <template #header>
+                    <h4 class="font-semibold text-gray-900 dark:text-white">Trim Video</h4>
+                  </template>
+                  
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Time (seconds)</label>
+                      <div class="flex gap-2">
+                        <UInput
+                          v-model.number="editSettings.trimStart"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          :max="videoDuration"
+                          placeholder="0.0"
+                          class="flex-1"
+                          size="sm"
+                        />
+                        <UButton
+                          size="sm"
+                          variant="outline"
+                          @click="setCurrentTimeAsStart"
+                        >
+                          Current
+                        </UButton>
+                      </div>
+                      <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimStart || 0) }}</p>
+                    </div>
+                    
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Time (seconds)</label>
+                      <div class="flex gap-2">
+                        <UInput
+                          v-model.number="editSettings.trimEnd"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          :max="videoDuration"
+                          :placeholder="videoDuration?.toString() || ''"
+                          class="flex-1"
+                          size="sm"
+                        />
+                        <UButton
+                          size="sm"
+                          variant="outline"
+                          @click="setCurrentTimeAsEnd"
+                        >
+                          Current
+                        </UButton>
+                      </div>
+                      <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimEnd || videoDuration || 0) }}</p>
+                    </div>
+                    
+                    <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                      New Duration: {{ formatTime((editSettings.trimEnd || videoDuration || 0) - (editSettings.trimStart || 0)) }}
+                    </div>
+                  </div>
+                </UCard>
+
+                <!-- Crop Controls -->
+                <UCard>
+                  <template #header>
+                    <div class="flex justify-between items-center">
+                      <h4 class="font-semibold text-gray-900 dark:text-white">Crop Video</h4>
+                      <USwitch
+                        v-model="showCropOverlay"
+                        label="Show Overlay"
+                      />
+                    </div>
+                  </template>
+                  
+                  <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">X Position</label>
+                        <UInput
+                          v-model.number="editSettings.crop.x"
+                          type="number"
+                          min="0"
+                          :max="videoWidth"
+                          size="sm"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Y Position</label>
+                        <UInput
+                          v-model.number="editSettings.crop.y"
+                          type="number"
+                          min="0"
+                          :max="videoHeight"
+                          size="sm"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Width</label>
+                        <UInput
+                          v-model.number="editSettings.crop.width"
+                          type="number"
+                          min="1"
+                          :max="videoWidth"
+                          size="sm"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Height</label>
+                        <UInput
+                          v-model.number="editSettings.crop.height"
+                          type="number"
+                          min="1"
+                          :max="videoHeight"
+                          size="sm"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                      <UButton
+                        size="sm"
+                        variant="outline"
+                        @click="resetCrop"
+                      >
+                        Reset
+                      </UButton>
+                      <UButton
+                        size="sm"
+                        variant="outline"
+                        @click="centerCrop"
+                      >
+                        Center
+                      </UButton>
+                    </div>
+                  </div>
+                </UCard>
+
+                <!-- Frame Management -->
+                <UCard>
+                  <template #header>
+                    <h4 class="font-semibold text-gray-900 dark:text-white">Frame Operations</h4>
+                  </template>
+                  
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current Time</label>
+                      <p class="text-lg font-mono text-gray-900 dark:text-white">{{ formatTime(currentTime) }}</p>
+                      <p class="text-xs text-gray-500">Frame: {{ Math.floor(currentTime * (videoFPS || 30)) }}</p>
+                    </div>
+                    
+                    <div class="space-y-2">
+                      <UButton
+                        size="sm"
+                        color="red"
+                        variant="outline"
+                        block
+                        @click="deleteCurrentFrame"
+                      >
+                        Delete Current Frame
+                      </UButton>
+                      
+                      <UButton
+                        size="sm"
+                        variant="outline"
+                        block
+                        @click="deleteFrameRange"
+                      >
+                        Delete Frame Range
+                      </UButton>
+                    </div>
+                    
+                    <!-- Deleted frames list -->
+                    <div v-if="editSettings.deletedFrames.length > 0" class="mt-4">
+                      <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Deleted Frames ({{ editSettings.deletedFrames.length }})
+                      </h5>
+                      <div class="max-h-32 overflow-y-auto space-y-1">
+                        <div
+                          v-for="(frame, index) in editSettings.deletedFrames"
+                          :key="index"
+                          class="flex justify-between items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-2 rounded"
+                        >
+                          <span>{{ formatTime(frame.time) }}</span>
+                          <UButton
+                            size="xs"
+                            variant="ghost"
+                            icon="i-heroicons-x-mark"
+                            @click="restoreFrame(index)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </UCard>
+              </div>
+
+              <!-- Operations Summary -->
+              <div v-if="hasEditOperations" class="mt-6">
+                <UCard>
+                  <template #header>
+                    <h4 class="font-semibold text-gray-900 dark:text-white">Edit Summary</h4>
+                  </template>
+                  
+                  <div class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    <div v-if="editSettings.trimStart || editSettings.trimEnd">
+                      <strong>Trim:</strong> {{ formatTime(editSettings.trimStart || 0) }} - {{ formatTime(editSettings.trimEnd || videoDuration || 0) }}
+                    </div>
+                    <div v-if="hasCropChanges">
+                      <strong>Crop:</strong> {{ editSettings.crop.width }}×{{ editSettings.crop.height }} at ({{ editSettings.crop.x }}, {{ editSettings.crop.y }})
+                    </div>
+                    <div v-if="editSettings.deletedFrames.length > 0">
+                      <strong>Deleted Frames:</strong> {{ editSettings.deletedFrames.length }} frames removed
+                    </div>
+                  </div>
+                </UCard>
+              </div>
+            </div>
+
             <!-- Media Details Accordion -->
-            <UAccordion :items="mediaDetailsItems">
+            <UAccordion v-if="!isEditingMode" :items="mediaDetailsItems">
               <template #details>
                 <div class="space-y-3 text-left">
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
@@ -714,9 +1005,9 @@
       v-model="isTagEditModalOpen"
       :media="selectedMediaForTagEdit"
       :current-index="tagEditCurrentIndex"
-      :total-count="unconfirmedMediaResults.length"
-      :has-next="tagEditCurrentIndex < unconfirmedMediaResults.length - 1"
-      :show-skip-button="showUnconfirmedOnly"
+      :total-count="1"
+      :has-next="false"
+      :show-skip-button="false"
       @save="handleTagSave"
       @skip="handleTagSkip"
       @close="closeTagEditModal"
@@ -963,6 +1254,7 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+import { useMediaGalleryFilters } from '~/composables/useMediaGalleryFilters'
 
 // Device detection
 const { isMobile } = useDevice()
@@ -972,13 +1264,34 @@ definePageMeta({
   title: 'Media Gallery'
 })
 
-// Initialize settings store
+// Initialize stores and composables
 const settingsStore = useSettingsStore()
+const {
+  filters: _persistentFilters,
+  loadFilters,
+  resetFilters: _resetFilters,
+  mediaType,
+  purpose,
+  selectedTags,
+  sortBy,
+  sortOrder,
+  paginationLimit,
+  viewMode,
+  filtersCollapsed,
+  subjectUuid,
+  mediaUuid
+} = useMediaGalleryFilters()
 
 // Template refs
 const folderInput = ref(null)
 const singleFileInput = ref(null)
 const modalVideo = ref(null)
+// Custom crop overlay state
+const isDragging = ref(false)
+const isResizing = ref(false)
+const resizeHandle = ref('')
+const dragStart = ref({ x: 0, y: 0 })
+const cropStart = ref({ x: 0, y: 0, width: 0, height: 0 })
 
 // Reactive data
 const filters = ref({
@@ -987,15 +1300,10 @@ const filters = ref({
   subject_uuid: ''
 })
 
-// Tag search functionality
-const selectedTags = ref([])
-
 // Tag editing functionality
-const showUnconfirmedOnly = ref(false)
 const isTagEditModalOpen = ref(false)
 const selectedMediaForTagEdit = ref(null)
 const tagEditCurrentIndex = ref(-1)
-const unconfirmedMediaResults = ref([])
 
 // Video upload functionality
 const isUploadModalOpen = ref(false)
@@ -1021,24 +1329,37 @@ const uploadConfig = ref({
 const availableCategories = ref([])
 const loadingCategories = ref(false)
 
-// Completion filters with defaults for media gallery (min=0, max=null)
-const completionFilters = ref({
-  min_completions: 0,
-  max_completions: null
+// Video editing state
+const isEditingMode = ref(false)
+const isSavingEdits = ref(false)
+const showCropOverlay = ref(false)
+const currentTime = ref(0)
+const videoDuration = ref(0)
+const videoWidth = ref(0)
+const videoHeight = ref(0)
+const videoFPS = ref(30)
+
+// Edit settings
+const editSettings = ref({
+  trimStart: null,
+  trimEnd: null,
+  crop: {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0
+  },
+  deletedFrames: []
 })
+
 
 // Subject selection state
 const selectedSubject = ref(null)
 
-const sortOptions = ref({
-  sort_by: 'created_at',
-  sort_order: 'desc'
-})
 
 const mediaResults = ref([])
 const isLoading = ref(false)
 const hasSearched = ref(false)
-const viewMode = ref('grid')
 const selectedMedia = ref(null)
 const deletingIds = ref([])
 const isModalOpen = ref(false)
@@ -1065,8 +1386,7 @@ const slideshowOffset = ref(0) // Current offset for pagination
 const slideshowBatchSize = ref(10) // Number of videos to fetch per batch
 const slideshowTotalCount = ref(0) // Total number of videos available from API
 
-// Search filters collapse state
-const filtersCollapsed = ref(false)
+// Filters collapsed state is now handled by the composable
 
 // Loading state to prevent multiple simultaneous loads
 const isLoadingVideo = ref(false)
@@ -1100,6 +1420,21 @@ const mediaDetailsItems = computed(() => {
   }]
 })
 
+// Video editing computed properties
+const hasCropChanges = computed(() => {
+  const crop = editSettings.value.crop
+  return crop.x !== 0 || crop.y !== 0 ||
+         crop.width !== videoWidth.value ||
+         crop.height !== videoHeight.value
+})
+
+const hasEditOperations = computed(() => {
+  return editSettings.value.trimStart ||
+         editSettings.value.trimEnd ||
+         hasCropChanges.value ||
+         editSettings.value.deletedFrames.length > 0
+})
+
 // Upload computed properties
 const totalSize = computed(() => {
   return selectedFiles.value.reduce((total, file) => total + file.size, 0)
@@ -1123,8 +1458,8 @@ const purposeOptions = [
 
 const sortByOptions = [
   { label: 'Random', value: 'random' },
-  { label: 'Created Date', value: 'created_at' },
-  { label: 'Updated Date', value: 'updated_at' },
+  { label: 'Created', value: 'created_at' },
+  { label: 'Updated', value: 'updated_at' },
   { label: 'Filename', value: 'filename' },
   { label: 'File Size', value: 'file_size' },
   { label: 'Type', value: 'type' },
@@ -1132,22 +1467,20 @@ const sortByOptions = [
   { label: 'Status', value: 'status' },
   { label: 'Width', value: 'width' },
   { label: 'Height', value: 'height' },
-  { label: 'Duration', value: 'duration' },
-  { label: 'Last Accessed', value: 'last_accessed' },
-  { label: 'Access Count', value: 'access_count' }
+  { label: 'Duration', value: 'duration' }
 ]
 
 const sortOrderOptions = [
-  { label: 'Ascending', value: 'asc' },
-  { label: 'Descending', value: 'desc' }
+  { label: 'Asc', value: 'asc' },
+  { label: 'Desc', value: 'desc' }
 ]
 
 const limitOptions = [
-  { label: '25 results', value: 25 },
-  { label: '50 results', value: 50 },
-  { label: '100 results', value: 100 },
-  { label: '200 results', value: 200 },
-  { label: '500 results', value: 500 }
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+  { label: '200', value: 200 },
+  { label: '500', value: 500 }
 ]
 
 // Upload purpose options
@@ -1182,6 +1515,8 @@ const uploadMenuItems = [
 // Search cancellation
 const searchController = ref(null)
 
+// No longer needed - composable handles saving automatically
+
 // Methods
 const searchMedia = async () => {
   isLoading.value = true
@@ -1198,108 +1533,118 @@ const searchMedia = async () => {
   try {
     const params = new URLSearchParams()
     
-    // Extract values from objects if needed
-    const mediaType = typeof filters.value.media_type === 'object' ? filters.value.media_type.value : filters.value.media_type
-    const purpose = typeof filters.value.purpose === 'object' ? filters.value.purpose.value : filters.value.purpose
-    
-    if (mediaType) params.append('media_type', mediaType)
-    if (purpose) params.append('purpose', purpose)
-    if (filters.value.subject_uuid) params.append('subject_uuid', filters.value.subject_uuid)
-    
-    // Add selected tags from UInputTags component
-    if (selectedTags.value.length > 0) {
-      params.append('tags', selectedTags.value.join(','))
-    }
-    // Always use partial match mode (API only supports this)
-    params.append('tag_match_mode', 'partial')
-    
-    // Add completion filters (only for video searches)
-    if (mediaType === 'video') {
-      if (completionFilters.value.min_completions != null) {
-        params.append('min_completions', completionFilters.value.min_completions.toString())
+    // If UUID is provided, ignore all other filters and search by UUID only
+    if (mediaUuid.value && mediaUuid.value.trim()) {
+      params.append('uuid', mediaUuid.value.trim())
+      params.append('include_thumbnails', 'true')
+      
+      const response = await useApiFetch(`media/search?${params.toString()}`, {
+        signal: searchController.value.signal
+      })
+      
+      // For UUID search, we expect either 1 result or 0 results
+      const allResults = response.results || []
+      mediaResults.value = allResults
+      
+      // Update pagination for UUID search (should be 1 or 0 results)
+      pagination.value = {
+        total: allResults.length,
+        limit: 1,
+        offset: 0,
+        has_more: false
       }
-      if (completionFilters.value.max_completions != null) {
-        params.append('max_completions', completionFilters.value.max_completions.toString())
-      }
-    }
-    
-    // Add tags_confirmed filter
-    if (showUnconfirmedOnly.value) {
-      params.append('tags_confirmed', 'false')
-    }
-    
-    // Handle limit - extract value if it's an object
-    const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
-    params.append('limit', limit.toString())
-    params.append('offset', ((currentPage.value - 1) * limit).toString())
-    
-    // Add sort parameters
-    const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
-    const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
-    
-    if (sortBy) {
-      params.append('sort_by', sortBy)
-      // For random sorting, order doesn't matter but API expects it
-      if (sortBy === 'random') {
-        params.append('sort_order', 'asc')
-      } else if (sortOrder) {
-        params.append('sort_order', sortOrder)
-      }
-    }
-    
-    params.append('include_thumbnails', 'true')
-
-    const response = await useApiFetch(`media/search?${params.toString()}`, {
-      signal: searchController.value.signal
-    })
-    
-    const allResults = response.results || []
-    
-    // Filter results based on media type selection
-    mediaResults.value = allResults.filter(media => {
-      // If searching specifically for images, exclude thumbnails to avoid duplicates
-      if (mediaType === 'image') {
-        return media.type === 'image' && media.purpose !== 'thumbnail'
-      }
-      // If searching specifically for videos, only include videos
-      if (mediaType === 'video') {
-        return media.type === 'video'
-      }
-      // For general searches, exclude thumbnails to avoid duplicates
-      return media.purpose !== 'thumbnail'
-    })
-    
-    // Log any videos without thumbnails but don't filter them out
-    mediaResults.value.forEach(media => {
-      if (media.type === 'video' && !media.thumbnail_uuid) {
-        console.warn(`Video ${media.uuid} (${media.filename}) has no thumbnail_uuid`)
-      }
-    })
-    
-    // Update pagination info based on API response
-    const currentLimit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
-    const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
-    
-    // Check if there are more results by seeing if we got a full page
-    const hasMore = response.count === currentLimit
-    
-    // For pagination display, we need to estimate total based on current results
-    // If we have a full page, assume there might be more
-    if (hasMore) {
-      // Estimate total as at least current offset + current count + 1 (to show next page)
-      pagination.value.total = currentOffset + response.count + 1
+      
     } else {
-      // This is the last page, so total is offset + actual count
-      pagination.value.total = currentOffset + response.count
+      // Normal search with all filters
+      // Extract values from objects if needed
+      const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
+      const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
+      
+      if (mediaTypeValue) params.append('media_type', mediaTypeValue)
+      if (purposeValue) params.append('purpose', purposeValue)
+      if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
+      
+      // Add selected tags from UInputTags component
+      if (selectedTags.value.length > 0) {
+        params.append('tags', selectedTags.value.join(','))
+      }
+      // Always use partial match mode (API only supports this)
+      params.append('tag_match_mode', 'partial')
+      
+      
+      
+      // Handle limit - extract value if it's an object
+      const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+      params.append('limit', limit.toString())
+      params.append('offset', ((currentPage.value - 1) * limit).toString())
+      
+      // Add sort parameters
+      const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
+      const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
+      
+      if (sortByValue) {
+        params.append('sort_by', sortByValue)
+        // For random sorting, order doesn't matter but API expects it
+        if (sortByValue === 'random') {
+          params.append('sort_order', 'asc')
+        } else if (sortOrderValue) {
+          params.append('sort_order', sortOrderValue)
+        }
+      }
+      
+      params.append('include_thumbnails', 'true')
+
+      const response = await useApiFetch(`media/search?${params.toString()}`, {
+        signal: searchController.value.signal
+      })
+      
+      const allResults = response.results || []
+      
+      // Filter results based on media type selection
+      mediaResults.value = allResults.filter(media => {
+        // If searching specifically for images, exclude thumbnails to avoid duplicates
+        if (mediaType === 'image') {
+          return media.type === 'image' && media.purpose !== 'thumbnail'
+        }
+        // If searching specifically for videos, only include videos
+        if (mediaType === 'video') {
+          return media.type === 'video'
+        }
+        // For general searches, exclude thumbnails to avoid duplicates
+        return media.purpose !== 'thumbnail'
+      })
+      
+      // Log any videos without thumbnails but don't filter them out
+      mediaResults.value.forEach(media => {
+        if (media.type === 'video' && !media.thumbnail_uuid) {
+          console.warn(`Video ${media.uuid} (${media.filename}) has no thumbnail_uuid`)
+        }
+      })
+      
+      // Update pagination info based on API response
+      const currentLimit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+      const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
+      
+      // Check if there are more results by seeing if we got a full page
+      const hasMore = response.count === currentLimit
+      
+      // For pagination display, we need to estimate total based on current results
+      // If we have a full page, assume there might be more
+      if (hasMore) {
+        // Estimate total as at least current offset + current count + 1 (to show next page)
+        pagination.value.total = currentOffset + response.count + 1
+      } else {
+        // This is the last page, so total is offset + actual count
+        pagination.value.total = currentOffset + response.count
+      }
+      
+      pagination.value = {
+        ...pagination.value,
+        limit: currentLimit,
+        offset: currentOffset,
+        has_more: hasMore
+      }
     }
-    
-    pagination.value = {
-      ...pagination.value,
-      limit: currentLimit,
-      offset: currentOffset,
-      has_more: hasMore
-    }
-    
     
   } catch (err) {
     // Don't show error if search was cancelled
@@ -1350,45 +1695,15 @@ const cancelSearch = () => {
 }
 
 const clearFilters = () => {
-  // Preserve the current media type selection
-  const currentMediaType = filters.value.media_type
-  
-  filters.value = {
-    media_type: currentMediaType, // Keep the currently selected media type
-    purpose: { label: 'Output', value: 'output' }, // Reset to output purpose
-    subject_uuid: ''
-  }
-  
-  // Clear tag search fields
-  selectedTags.value = []
-  
-  // Reset completion filters to defaults
-  completionFilters.value = {
-    min_completions: 0,
-    max_completions: null
-  }
-  
-  // Clear unconfirmed tags filter
-  showUnconfirmedOnly.value = false
-  
-  // Clear subject selection
-  selectedSubject.value = null
-  
-  sortOptions.value = {
-    sort_by: { label: 'Random', value: 'random' },
-    sort_order: { label: 'Ascending', value: 'asc' }
-  }
-  pagination.value.limit = 25
-  currentPage.value = 1
-  
-  // Clear results and reset to initial state
+  // Only clear the search results, not the filter settings
   mediaResults.value = []
   hasSearched.value = false
+  currentPage.value = 1
   
   // Reset pagination
   pagination.value = {
     total: 0,
-    limit: 25,
+    limit: paginationLimit,
     offset: 0,
     has_more: false
   }
@@ -1399,9 +1714,9 @@ const handleSubjectSelection = (selected) => {
   
   // Update filters
   if (selected && selected.value) {
-    filters.value.subject_uuid = selected.value // Use the UUID
+    subjectUuid.value = selected.value // Use the UUID
   } else {
-    filters.value.subject_uuid = ''
+    subjectUuid.value = ''
   }
   
   // Close mobile keyboard by blurring the input
@@ -1568,12 +1883,6 @@ const deleteMedia = async (uuid) => {
 }
 
 const openModal = async (media) => {
-  // If we're in unconfirmed tags mode, open tag edit modal instead
-  if (showUnconfirmedOnly.value) {
-    openTagEditModal(media)
-    return
-  }
-  
   selectedMedia.value = media
   isModalOpen.value = true
   
@@ -1744,10 +2053,8 @@ const handleVideoHover = async (videoId, isHovering) => {
 
 // Tag editing methods
 const openTagEditModal = (media) => {
-  const currentIndex = mediaResults.value.findIndex(m => m.uuid === media.uuid)
   selectedMediaForTagEdit.value = media
-  tagEditCurrentIndex.value = currentIndex
-  unconfirmedMediaResults.value = mediaResults.value.filter(m => !m.tags_confirmed)
+  tagEditCurrentIndex.value = 0
   isTagEditModalOpen.value = true
 }
 
@@ -1759,8 +2066,7 @@ const handleTagSave = async (data) => {
     await useApiFetch(`media/${data.uuid}/tags`, {
       method: 'PUT',
       body: {
-        tags: data.tags,
-        tags_confirmed: true
+        tags: data.tags
       }
     })
     
@@ -1768,19 +2074,18 @@ const handleTagSave = async (data) => {
     const mediaIndex = mediaResults.value.findIndex(m => m.uuid === data.uuid)
     if (mediaIndex !== -1) {
       mediaResults.value[mediaIndex].tags = { tags: data.tags }
-      mediaResults.value[mediaIndex].tags_confirmed = true
     }
     
     // Show success message
     toast.add({
       title: 'Tags Updated',
-      description: 'Tags have been saved and confirmed.',
+      description: 'Tags have been saved.',
       color: 'green',
       timeout: 2000
     })
     
-    // Load next unconfirmed media or refresh search
-    await loadNextUnconfirmedMedia()
+    // Close the modal
+    closeTagEditModal()
     
   } catch (error) {
     console.error('Failed to save tags:', error)
@@ -1794,56 +2099,8 @@ const handleTagSave = async (data) => {
 }
 
 const handleTagSkip = async () => {
-  await loadNextUnconfirmedMedia()
-}
-
-const loadNextUnconfirmedMedia = async () => {
-  // Filter current results for unconfirmed media
-  const unconfirmed = mediaResults.value.filter(m => !m.tags_confirmed)
-  
-  if (unconfirmed.length > 0) {
-    // Find next unconfirmed media
-    const currentIndex = unconfirmed.findIndex(m => m.uuid === selectedMediaForTagEdit.value?.uuid)
-    const nextIndex = currentIndex + 1
-    
-    if (nextIndex < unconfirmed.length) {
-      // Load next unconfirmed media
-      selectedMediaForTagEdit.value = unconfirmed[nextIndex]
-      tagEditCurrentIndex.value = nextIndex
-    } else {
-      // No more unconfirmed media, refresh search
-      await refreshSearchForUnconfirmed()
-    }
-  } else {
-    // No unconfirmed media left, refresh search
-    await refreshSearchForUnconfirmed()
-  }
-}
-
-const refreshSearchForUnconfirmed = async () => {
-  // Close modal first
-  isTagEditModalOpen.value = false
-  
-  // Run search again to get fresh batch of unconfirmed media
-  if (showUnconfirmedOnly.value) {
-    await searchMedia()
-    
-    // If we have new results, open the first one
-    const unconfirmed = mediaResults.value.filter(m => !m.tags_confirmed)
-    if (unconfirmed.length > 0) {
-      setTimeout(() => {
-        openTagEditModal(unconfirmed[0])
-      }, 500)
-    } else {
-      const toast = useToast()
-      toast.add({
-        title: 'All Done!',
-        description: 'No more unconfirmed media found.',
-        color: 'green',
-        timeout: 3000
-      })
-    }
-  }
+  // Just close the modal since we don't have unconfirmed workflow anymore
+  closeTagEditModal()
 }
 
 const closeTagEditModal = () => {
@@ -2183,12 +2440,12 @@ const loadSlideshowBatch = async () => {
     const params = new URLSearchParams()
     
     // Extract values from objects if needed
-    const mediaType = typeof filters.value.media_type === 'object' ? filters.value.media_type.value : filters.value.media_type
-    const purpose = typeof filters.value.purpose === 'object' ? filters.value.purpose.value : filters.value.purpose
+    const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
+    const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
     
-    if (mediaType) params.append('media_type', mediaType)
-    if (purpose) params.append('purpose', purpose)
-    if (filters.value.subject_uuid) params.append('subject_uuid', filters.value.subject_uuid)
+    if (mediaTypeValue) params.append('media_type', mediaTypeValue)
+    if (purposeValue) params.append('purpose', purposeValue)
+    if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
     
     // Add selected tags
     if (selectedTags.value.length > 0) {
@@ -2196,29 +2453,16 @@ const loadSlideshowBatch = async () => {
     }
     params.append('tag_match_mode', 'partial')
     
-    // Add completion filters (only for video searches)
-    if (mediaType === 'video') {
-      if (completionFilters.value.min_completions != null) {
-        params.append('min_completions', completionFilters.value.min_completions.toString())
-      }
-      if (completionFilters.value.max_completions != null) {
-        params.append('max_completions', completionFilters.value.max_completions.toString())
-      }
-    }
     
-    // Add tags_confirmed filter
-    if (showUnconfirmedOnly.value) {
-      params.append('tags_confirmed', 'false')
-    }
     
     // Use the same sort options as the media gallery
-    const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
-    const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
+    const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
+    const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
     
-    if (sortBy) {
-      params.append('sort_by', sortBy)
-      if (sortOrder) {
-        params.append('sort_order', sortOrder)
+    if (sortByValue) {
+      params.append('sort_by', sortByValue)
+      if (sortOrderValue) {
+        params.append('sort_order', sortOrderValue)
       }
     }
     
@@ -2596,9 +2840,356 @@ const loadCategories = async () => {
   }
 }
 
-// Initialize settings on mount (but don't auto-search)
+// Video editing methods
+
+const exitEditMode = () => {
+  isEditingMode.value = false
+  showCropOverlay.value = false
+  resetEditSettings()
+}
+
+const resetEditSettings = () => {
+  editSettings.value = {
+    trimStart: null,
+    trimEnd: null,
+    crop: {
+      x: 0,
+      y: 0,
+      width: videoWidth.value,
+      height: videoHeight.value
+    },
+    deletedFrames: []
+  }
+}
+
+const closeModal = async () => {
+  if (isEditingMode.value && hasEditOperations.value) {
+    await confirmCancelEdits()
+  } else {
+    isModalOpen.value = false
+    exitEditMode()
+  }
+}
+
+const confirmSaveEdits = async () => {
+  const { confirm } = useConfirmDialog()
+  
+  const result = await confirm({
+    title: 'Save Video Edits',
+    message: 'Are you sure you want to save these edits? This will permanently modify the video file and cannot be undone.',
+    confirmLabel: 'Save Changes',
+    cancelLabel: 'Cancel',
+    variant: 'primary'
+  })
+  
+  if (result) {
+    await saveVideoEdits()
+  }
+}
+
+const confirmCancelEdits = async () => {
+  if (!hasEditOperations.value) {
+    exitEditMode()
+    return
+  }
+  
+  const { confirm } = useConfirmDialog()
+  
+  const result = await confirm({
+    title: 'Cancel Video Edits',
+    message: 'Are you sure you want to cancel? All unsaved changes will be lost.',
+    confirmLabel: 'Discard Changes',
+    cancelLabel: 'Keep Editing',
+    variant: 'error'
+  })
+  
+  if (result) {
+    exitEditMode()
+  }
+}
+
+const saveVideoEdits = async () => {
+  if (!selectedMedia.value || !hasEditOperations.value) return
+  
+  isSavingEdits.value = true
+  const toast = useToast()
+  
+  try {
+    const response = await useApiFetch(`media/${selectedMedia.value.uuid}/edit`, {
+      method: 'POST',
+      body: {
+        operations: {
+          trim: editSettings.value.trimStart || editSettings.value.trimEnd ? {
+            start: editSettings.value.trimStart || 0,
+            end: editSettings.value.trimEnd || videoDuration.value
+          } : null,
+          crop: hasCropChanges.value ? editSettings.value.crop : null,
+          deletedFrames: editSettings.value.deletedFrames.length > 0 ? editSettings.value.deletedFrames : null
+        }
+      }
+    })
+    
+    if (response.success) {
+      // Update the media record in our local state
+      const mediaIndex = mediaResults.value.findIndex(m => m.uuid === selectedMedia.value.uuid)
+      if (mediaIndex !== -1) {
+        mediaResults.value[mediaIndex] = {
+          ...mediaResults.value[mediaIndex],
+          ...response.updatedMedia
+        }
+        
+        // Update selected media
+        selectedMedia.value = mediaResults.value[mediaIndex]
+      }
+      
+      toast.add({
+        title: 'Video Saved',
+        description: 'Your video edits have been saved successfully.',
+        color: 'green',
+        timeout: 3000
+      })
+      
+      exitEditMode()
+    }
+    
+  } catch (error) {
+    console.error('Failed to save video edits:', error)
+    toast.add({
+      title: 'Save Failed',
+      description: error.data?.message || 'Failed to save video edits. Please try again.',
+      color: 'red',
+      timeout: 5000
+    })
+  } finally {
+    isSavingEdits.value = false
+  }
+}
+
+const onVideoLoaded = (event) => {
+  const video = event.target
+  videoDuration.value = video.duration
+  videoWidth.value = video.videoWidth
+  videoHeight.value = video.videoHeight
+  
+  // Initialize crop settings to full video size
+  if (isEditingMode.value) {
+    editSettings.value.crop = {
+      x: 0,
+      y: 0,
+      width: video.videoWidth,
+      height: video.videoHeight
+    }
+    
+    // Capture current frame for cropper
+    captureVideoFrame(video)
+  }
+}
+
+const onTimeUpdate = (event) => {
+  currentTime.value = event.target.currentTime
+}
+
+const formatTime = (seconds) => {
+  if (!seconds || seconds <= 0) return '0:00'
+  
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  } else {
+    return `${minutes}:${secs.toString().padStart(2, '0')}`
+  }
+}
+
+const setCurrentTimeAsStart = () => {
+  editSettings.value.trimStart = currentTime.value
+}
+
+const setCurrentTimeAsEnd = () => {
+  editSettings.value.trimEnd = currentTime.value
+}
+
+const resetCrop = () => {
+  editSettings.value.crop = {
+    x: 0,
+    y: 0,
+    width: videoWidth.value,
+    height: videoHeight.value
+  }
+}
+
+const centerCrop = () => {
+  const cropWidth = Math.floor(videoWidth.value * 0.8)
+  const cropHeight = Math.floor(videoHeight.value * 0.8)
+  
+  editSettings.value.crop = {
+    x: Math.floor((videoWidth.value - cropWidth) / 2),
+    y: Math.floor((videoHeight.value - cropHeight) / 2),
+    width: cropWidth,
+    height: cropHeight
+  }
+}
+
+const deleteCurrentFrame = () => {
+  const frameTime = currentTime.value
+  const frameNumber = Math.floor(frameTime * (videoFPS.value || 30))
+  
+  // Check if frame is already deleted
+  const existingFrame = editSettings.value.deletedFrames.find(f =>
+    Math.abs(f.time - frameTime) < 0.1
+  )
+  
+  if (!existingFrame) {
+    editSettings.value.deletedFrames.push({
+      time: frameTime,
+      frame: frameNumber
+    })
+    
+    // Sort by time
+    editSettings.value.deletedFrames.sort((a, b) => a.time - b.time)
+    
+    const toast = useToast()
+    toast.add({
+      title: 'Frame Deleted',
+      description: `Frame at ${formatTime(frameTime)} marked for deletion`,
+      color: 'yellow',
+      timeout: 2000
+    })
+  }
+}
+
+const deleteFrameRange = async () => {
+  // This would open a dialog to select start/end times for frame range deletion
+  const toast = useToast()
+  toast.add({
+    title: 'Feature Coming Soon',
+    description: 'Frame range deletion will be implemented in a future update',
+    color: 'blue',
+    timeout: 3000
+  })
+}
+
+const restoreFrame = (index) => {
+  editSettings.value.deletedFrames.splice(index, 1)
+  
+  const toast = useToast()
+  toast.add({
+    title: 'Frame Restored',
+    description: 'Frame has been restored',
+    color: 'green',
+    timeout: 2000
+  })
+}
+
+
+// Custom crop drag functionality
+const cropOverlayStyle = computed(() => {
+  const crop = editSettings.value.crop
+  const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
+  
+  if (!videoEl) {
+    return { left: 0, top: 0, width: 0, height: 0 }
+  }
+  
+  const videoRect = videoEl.getBoundingClientRect()
+  const scaleX = videoRect.width / videoWidth.value
+  const scaleY = videoRect.height / videoHeight.value
+  
+  return {
+    left: crop.x * scaleX,
+    top: crop.y * scaleY,
+    width: crop.width * scaleX,
+    height: crop.height * scaleY
+  }
+})
+
+const startCropDrag = (event) => {
+  if (isResizing.value) return
+  
+  isDragging.value = true
+  dragStart.value = { x: event.clientX, y: event.clientY }
+  cropStart.value = { ...editSettings.value.crop }
+  event.preventDefault()
+}
+
+const updateCropDrag = (event) => {
+  if (!isDragging.value && !isResizing.value) return
+  
+  const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
+  if (!videoEl) return
+  
+  const videoRect = videoEl.getBoundingClientRect()
+  const scaleX = videoWidth.value / videoRect.width
+  const scaleY = videoHeight.value / videoRect.height
+  
+  if (isDragging.value) {
+    const deltaX = (event.clientX - dragStart.value.x) * scaleX
+    const deltaY = (event.clientY - dragStart.value.y) * scaleY
+    
+    const newX = Math.max(0, Math.min(cropStart.value.x + deltaX, videoWidth.value - cropStart.value.width))
+    const newY = Math.max(0, Math.min(cropStart.value.y + deltaY, videoHeight.value - cropStart.value.height))
+    
+    editSettings.value.crop.x = Math.round(newX)
+    editSettings.value.crop.y = Math.round(newY)
+  }
+  
+  if (isResizing.value) {
+    const deltaX = (event.clientX - dragStart.value.x) * scaleX
+    const deltaY = (event.clientY - dragStart.value.y) * scaleY
+    
+    const handle = resizeHandle.value
+    const newCrop = { ...cropStart.value }
+    
+    if (handle.includes('n')) {
+      newCrop.y = Math.max(0, cropStart.value.y + deltaY)
+      newCrop.height = Math.max(10, cropStart.value.height - deltaY)
+    }
+    if (handle.includes('s')) {
+      newCrop.height = Math.max(10, Math.min(cropStart.value.height + deltaY, videoHeight.value - cropStart.value.y))
+    }
+    if (handle.includes('w')) {
+      newCrop.x = Math.max(0, cropStart.value.x + deltaX)
+      newCrop.width = Math.max(10, cropStart.value.width - deltaX)
+    }
+    if (handle.includes('e')) {
+      newCrop.width = Math.max(10, Math.min(cropStart.value.width + deltaX, videoWidth.value - cropStart.value.x))
+    }
+    
+    editSettings.value.crop = {
+      x: Math.round(newCrop.x),
+      y: Math.round(newCrop.y),
+      width: Math.round(newCrop.width),
+      height: Math.round(newCrop.height)
+    }
+  }
+}
+
+const endCropDrag = () => {
+  isDragging.value = false
+  isResizing.value = false
+  resizeHandle.value = ''
+}
+
+const startResize = (handle) => {
+  isResizing.value = true
+  resizeHandle.value = handle
+  dragStart.value = { x: event.clientX, y: event.clientY }
+  cropStart.value = { ...editSettings.value.crop }
+  event.preventDefault()
+}
+
+// Update enterEditMode to initialize crop area
+const enterEditMode = () => {
+  isEditingMode.value = true
+  resetEditSettings()
+}
+
+// Initialize settings and load filters on mount (but don't auto-search)
 onMounted(async () => {
   await settingsStore.initializeSettings()
+  await loadFilters()
 })
 
 
@@ -2610,3 +3201,42 @@ useHead({
   ]
 })
 </script>
+
+<style scoped>
+/* Custom crop overlay styles */
+.cursor-crosshair {
+  cursor: crosshair;
+}
+
+.cursor-nw-resize {
+  cursor: nw-resize;
+}
+
+.cursor-ne-resize {
+  cursor: ne-resize;
+}
+
+.cursor-sw-resize {
+  cursor: sw-resize;
+}
+
+.cursor-se-resize {
+  cursor: se-resize;
+}
+
+.cursor-n-resize {
+  cursor: n-resize;
+}
+
+.cursor-s-resize {
+  cursor: s-resize;
+}
+
+.cursor-w-resize {
+  cursor: w-resize;
+}
+
+.cursor-e-resize {
+  cursor: e-resize;
+}
+</style>

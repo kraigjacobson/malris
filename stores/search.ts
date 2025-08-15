@@ -20,6 +20,29 @@ export const useSearchStore = defineStore('search', () => {
     sortOptions: { label: 'Name (A-Z)', value: 'name_asc' }
   })
 
+  // Media gallery filters state
+  const mediaGallerySearch = ref({
+    filters: {
+      media_type: { label: 'Videos', value: 'video' },
+      purpose: { label: 'Output', value: 'output' },
+      subject_uuid: ''
+    },
+    selectedTags: [] as string[],
+    completionFilters: {
+      min_completions: 0,
+      max_completions: null as number | null
+    },
+    sortOptions: {
+      sort_by: { label: 'Created Date', value: 'created_at' },
+      sort_order: { label: 'Descending', value: 'desc' }
+    },
+    pagination: {
+      limit: { label: '25 results', value: 25 }
+    },
+    viewMode: 'grid' as 'grid' | 'list',
+    filtersCollapsed: false
+  })
+
   // Initialize from localStorage
   const initializeSearch = async () => {
     try {
@@ -31,6 +54,16 @@ export const useSearchStore = defineStore('search', () => {
       const savedSubjectSearch = await localforage.getItem('subjectSearch')
       if (savedSubjectSearch) {
         subjectSearch.value = { ...subjectSearch.value, ...savedSubjectSearch }
+      }
+
+      const savedMediaGallerySearch = await localforage.getItem('mediaGallerySearch')
+      if (savedMediaGallerySearch && typeof savedMediaGallerySearch === 'object') {
+        console.log('📂 Loading saved media gallery search settings:', savedMediaGallerySearch)
+        // Simply replace the entire object since we know the structure
+        mediaGallerySearch.value = savedMediaGallerySearch as typeof mediaGallerySearch.value
+        console.log('📂 Loaded settings:', mediaGallerySearch.value)
+      } else {
+        console.log('📂 No saved media gallery search settings found, using defaults')
       }
     } catch (error) {
       console.error('Failed to load search settings from localforage:', error)
@@ -59,6 +92,18 @@ export const useSearchStore = defineStore('search', () => {
     }
   }
 
+  // Save media gallery search to localStorage
+  const saveMediaGallerySearch = async () => {
+    try {
+      // Create a serializable copy of the data
+      const serializableData = JSON.parse(JSON.stringify(mediaGallerySearch.value))
+      await localforage.setItem('mediaGallerySearch', serializableData)
+      console.log('💾 Media gallery search settings saved:', serializableData)
+    } catch (error) {
+      console.error('Failed to save media gallery search settings:', error)
+    }
+  }
+
   // Reset video search filters to defaults
   const resetVideoFilters = async () => {
     videoSearch.value = {
@@ -84,15 +129,44 @@ export const useSearchStore = defineStore('search', () => {
     await saveSubjectSearch()
   }
 
+  // Reset media gallery search filters to defaults
+  const resetMediaGalleryFilters = async () => {
+    mediaGallerySearch.value = {
+      filters: {
+        media_type: { label: 'Videos', value: 'video' },
+        purpose: { label: 'Output', value: 'output' },
+        subject_uuid: ''
+      },
+      selectedTags: [],
+      completionFilters: {
+        min_completions: 0,
+        max_completions: null
+      },
+      sortOptions: {
+        sort_by: { label: 'Created Date', value: 'created_at' },
+        sort_order: { label: 'Descending', value: 'desc' }
+      },
+      pagination: {
+        limit: { label: '25 results', value: 25 }
+      },
+      viewMode: 'grid' as 'grid' | 'list',
+      filtersCollapsed: false
+    }
+    await saveMediaGallerySearch()
+  }
+
   // Watch for changes and save automatically
   watch(videoSearch, saveVideoSearch, { deep: true })
   watch(subjectSearch, saveSubjectSearch, { deep: true })
+  watch(mediaGallerySearch, saveMediaGallerySearch, { deep: true })
 
   return {
     videoSearch,
     subjectSearch,
+    mediaGallerySearch,
     initializeSearch,
     resetVideoFilters,
-    resetSubjectFilters
+    resetSubjectFilters,
+    resetMediaGalleryFilters
   }
 })

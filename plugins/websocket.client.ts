@@ -32,8 +32,14 @@ export default defineNuxtPlugin({
       
       document.addEventListener('visibilitychange', handleVisibilityChange)
       
-      // Cleanup on app unmount
-      onBeforeUnmount(() => {
+      // Cleanup when page unloads (proper way for plugins)
+      window.addEventListener('beforeunload', () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        jobsStore.cleanup()
+      })
+      
+      // Also cleanup on page navigation (SPA)
+      window.addEventListener('pagehide', () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         jobsStore.cleanup()
       })
