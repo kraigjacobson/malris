@@ -213,13 +213,25 @@
             <!-- Selected Video Preview - Compact -->
             <div class="flex-shrink-0 mb-3 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div class="flex items-center gap-2">
-                <div v-if="displayImages" class="w-12 h-9 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
+                <div v-if="displayImages" class="w-12 h-9 bg-gray-200 dark:bg-gray-700 overflow-hidden shrink-0 relative">
+                  <!-- Thumbnail Skeleton -->
+                  <USkeleton
+                    v-if="selectedVideo.thumbnail_uuid && !selectedVideoThumbnailLoaded"
+                    class="absolute inset-0 w-full h-full rounded-none"
+                  />
+                  
+                  <!-- Actual Thumbnail -->
                   <img
                     v-if="selectedVideo.thumbnail_uuid"
                     :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=md`"
                     :alt="selectedVideo.filename"
-                    class="w-full h-full object-cover object-top"
+                    class="w-full h-full object-cover object-top transition-opacity duration-300"
+                    :class="{ 'opacity-0': !selectedVideoThumbnailLoaded }"
+                    @load="selectedVideoThumbnailLoaded = true"
+                    @error="selectedVideoThumbnailLoaded = true"
                   />
+                  
+                  <!-- Fallback for videos without thumbnails -->
                   <div v-else class="w-full h-full flex items-center justify-center">
                     <UIcon name="i-heroicons-film-20-solid" class="w-3 h-3 text-gray-400" />
                   </div>
@@ -286,7 +298,7 @@
     <template #footer>
       <div class="flex flex-col gap-3 w-full">
         <!-- Pagination Row -->
-        <div v-if="videoHasSearched && videos.length > 0" class="flex justify-center">
+        <div class="flex justify-center">
           <UPagination
             v-model:page="videoCurrentPage"
             :items-per-page="videoLimit"
@@ -476,6 +488,9 @@ const form = ref({
 const workflowMode = ref(null) // 'subject-first' | 'video-first' | null
 const isSubmitting = ref(false)
 
+// Thumbnail loading states
+const selectedVideoThumbnailLoaded = ref(false)
+
 // Subject-first workflow state
 const selectedSubject = ref(null)
 const selectedVideos = ref([])
@@ -621,6 +636,7 @@ const clearSelectedSubjects = () => {
 // Video selection handlers
 const handleVideoSelection = (video) => {
   selectedVideo.value = video
+  selectedVideoThumbnailLoaded.value = false
   storeVideoTags(video)
   
   // Auto-fill subject search filters with video's hair tags (replace existing tags)
@@ -630,6 +646,7 @@ const handleVideoSelection = (video) => {
 
 const clearSelectedVideo = () => {
   selectedVideo.value = null
+  selectedVideoThumbnailLoaded.value = false
   setVideoTags([])
   // Clear subject search tags when no video is selected
   searchStore.subjectSearch.selectedTags = []

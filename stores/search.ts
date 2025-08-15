@@ -10,7 +10,7 @@ export const useSearchStore = defineStore('search', () => {
       max_duration: null as number | null
     },
     sortOptions: { label: 'Random', value: 'random' },
-    limitOptions: { label: '50', value: 50 }
+    limitOptions: { label: '48', value: 48 }
   })
 
   // Subject search filters state
@@ -37,7 +37,7 @@ export const useSearchStore = defineStore('search', () => {
       sort_order: { label: 'Descending', value: 'desc' }
     },
     pagination: {
-      limit: { label: '25 results', value: 25 }
+      limit: { label: '24 results', value: 24 }
     },
     viewMode: 'grid' as 'grid' | 'list',
     filtersCollapsed: false
@@ -114,7 +114,7 @@ export const useSearchStore = defineStore('search', () => {
         max_duration: null
       },
       sortOptions: { label: 'Random', value: 'random' },
-      limitOptions: { label: '50', value: 50 }
+      limitOptions: { label: '48', value: 48 }
     }
     await saveVideoSearch()
   }
@@ -147,7 +147,7 @@ export const useSearchStore = defineStore('search', () => {
         sort_order: { label: 'Descending', value: 'desc' }
       },
       pagination: {
-        limit: { label: '25 results', value: 25 }
+        limit: { label: '24 results', value: 24 }
       },
       viewMode: 'grid' as 'grid' | 'list',
       filtersCollapsed: false

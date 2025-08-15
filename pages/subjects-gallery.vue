@@ -347,7 +347,8 @@ const sortOrderOptions = [
 const limitOptions = [
   { label: '16 per page', value: 16 },
   { label: '32 per page', value: 32 },
-  { label: '48 per page', value: 48 }
+  { label: '48 per page', value: 48 },
+  { label: '64 per page', value: 64 }
 ]
 
 // const tagSearchModeOptions = [

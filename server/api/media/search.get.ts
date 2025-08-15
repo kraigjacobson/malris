@@ -196,7 +196,6 @@ export default defineEventHandler(async (event) => {
             
             if (thumbnailUuid) {
               result.thumbnail = `/api/media/${thumbnailUuid}/image?size=md`
-              logger.info(`✅ Set thumbnail URL for video ${result.uuid}`)
             } else {
               logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
             }
@@ -205,7 +204,6 @@ export default defineEventHandler(async (event) => {
           // Handle image data directly - images use their own data as thumbnail
           else if (result.type === 'image') {
             result.thumbnail = `/api/media/${result.uuid}/image?size=md`
-            logger.info(`✅ Set thumbnail URL for image ${result.uuid}`)
           }
           
           // Clean up internal fields
@@ -670,7 +668,6 @@ export default defineEventHandler(async (event) => {
           
           if (thumbnailUuid) {
             result.thumbnail = `/api/media/${thumbnailUuid}/image?size=thumbnail`
-            logger.info(`✅ Set thumbnail URL for video ${result.uuid}`)
           } else {
             logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
           }
@@ -679,7 +676,6 @@ export default defineEventHandler(async (event) => {
         // Handle image data directly - images use their own data as thumbnail
         else if (result.type === 'image') {
           result.thumbnail = `/api/media/${result.uuid}/image?size=thumbnail`
-          logger.info(`✅ Set thumbnail URL for image ${result.uuid}`)
         }
         
         // Clean up internal fields

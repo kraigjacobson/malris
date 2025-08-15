@@ -28,8 +28,6 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const size = query.size || 'md'
 
-    logger.info('🖼️ Serving image for UUID:', uuid, 'size:', size)
-
     // Get media info first
     const mediaInfo = await getMediaInfo(uuid)
     

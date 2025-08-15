@@ -106,10 +106,10 @@ const sortOptionsItems = [
 
 // Limit options
 const limitOptionsItems = [
-  { label: '25', value: 25 },
-  { label: '50', value: 50 },
-  { label: '100', value: 100 },
-  { label: '200', value: 200 },
-  { label: '500', value: 500 }
+  { label: '24', value: 24 },
+  { label: '48', value: 48 },
+  { label: '96', value: 96 },
+  { label: '192', value: 192 },
+  { label: '480', value: 480 }
 ]
 </script>

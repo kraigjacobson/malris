@@ -1,8 +1,15 @@
 <template>
   <div>
     <!-- Loading State -->
-    <div v-if="loading && mediaResults.length === 0" class="flex justify-center py-8">
-      <UIcon name="i-heroicons-arrow-path" class="animate-spin text-2xl" />
+    <div v-if="loading && mediaResults.length === 0">
+      <!-- Skeleton Grid -->
+      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
+        <USkeleton
+          v-for="i in 24"
+          :key="`skeleton-${i}`"
+          class="aspect-[3/4] w-full"
+        />
+      </div>
     </div>
 
     <!-- Results -->
@@ -39,11 +46,20 @@
             v-if="media.type === 'image' && settingsStore.displayImages"
             class="aspect-[3/4] relative"
           >
+            <!-- Image Skeleton -->
+            <USkeleton
+              v-if="!imageLoadStates[media.uuid]"
+              class="absolute inset-0 w-full h-full"
+            />
+            
+            <!-- Actual Image -->
             <img
               :src="getImageUrl(media, 'md')"
               :alt="media.filename"
-              class="w-full h-full object-cover object-top"
+              class="w-full h-full object-cover object-top transition-opacity duration-300"
+              :class="{ 'opacity-0': !imageLoadStates[media.uuid] }"
               loading="lazy"
+              @load="handleImageLoad(media.uuid)"
               @error="handleImageError"
             />
           </div>
@@ -57,11 +73,26 @@
             @mouseenter="handleVideoHover(media.uuid, true)"
             @mouseleave="handleVideoHover(media.uuid, false)"
           >
+            <!-- Video Skeleton (shows while poster is loading) -->
+            <USkeleton
+              v-if="!videoLoadStates[media.uuid] && getVideoPosterUrl(media)"
+              class="absolute inset-0 w-full h-full z-10"
+            />
+            
+            <!-- Hidden image to detect poster load -->
+            <img
+              v-if="getVideoPosterUrl(media)"
+              :src="getVideoPosterUrl(media)"
+              class="hidden"
+              @load="handleVideoLoad(media.uuid)"
+              @error="handleVideoLoad(media.uuid)"
+            />
+            
             <!-- Video element -->
             <video
               :ref="`video-${media.uuid}`"
               :poster="getVideoPosterUrl(media)"
-              class="w-full h-full object-cover object-top"
+              class="w-full h-full object-cover object-top relative z-20"
               muted
               loop
               preload="metadata"
@@ -101,9 +132,24 @@
               />
             </div>
           </div>
+          
+          <!-- Placeholder when displayImages is false -->
+          <div
+            v-else
+            class="aspect-[3/4] relative bg-gray-200 dark:bg-gray-700 flex items-center justify-center"
+          >
+            <div class="text-center">
+              <UIcon
+                :name="media.type === 'video' ? 'i-heroicons-film' : 'i-heroicons-photo'"
+                class="w-8 h-8 text-gray-400 dark:text-gray-500 mb-1"
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400 truncate px-1">
+                {{ media.filename }}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
-
     </div>
 
     <!-- No Results -->
@@ -167,6 +213,9 @@ const settingsStore = useSettingsStore()
 // Video hover state
 const hoveredVideoId = ref(null)
 
+// Loading states for skeletons
+const imageLoadStates = ref({})
+const videoLoadStates = ref({})
 
 // Status dialog state
 const showStatusDialog = ref(false)
@@ -306,6 +355,15 @@ const handleVideoHover = async (videoId, isHovering) => {
   }
 }
 
+// Handle image loading states
+const handleImageLoad = (uuid) => {
+  imageLoadStates.value[uuid] = true
+}
+
+const handleVideoLoad = (uuid) => {
+  videoLoadStates.value[uuid] = true
+}
+
 const handleImageError = (event) => {
   console.error('❌ Image failed to load:', {
     src: event.target.src,
@@ -345,6 +403,12 @@ const cleanupVideos = () => {
     }
   })
 }
+
+// Reset loading states when media results change
+watch(() => props.mediaResults, () => {
+  imageLoadStates.value = {}
+  videoLoadStates.value = {}
+}, { deep: true })
 
 // Helper methods for safe URL generation
 const getImageUrl = (media, size = 'md') => {

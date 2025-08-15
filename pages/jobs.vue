@@ -670,11 +670,11 @@ const itemsPerPage = ref(25)
 
 // Limit options for dropdown
 const limitOptions = [
-  { label: '25', value: 25 },
-  { label: '50', value: 50 },
-  { label: '100', value: 100 },
-  { label: '200', value: 200 },
-  { label: '500', value: 500 }
+  { label: '24', value: 24 },
+  { label: '48', value: 48 },
+  { label: '96', value: 96 },
+  { label: '192', value: 192 },
+  { label: '480', value: 480 }
 ]
 
 // Local reactive filter state
@@ -707,7 +707,7 @@ const sourceTypeOptions = [
 ]
 
 // Direct API call function to replace store method
-const fetchJobsDirectly = async (page = 1, limit = 25, status = '', subjectUuid = '', sourceType = 'all') => {
+const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid = '', sourceType = 'all') => {
   try {
     isLoading.value = true
     

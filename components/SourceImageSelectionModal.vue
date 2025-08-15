@@ -462,11 +462,11 @@ const { isDeletingJob, deleteJob } = useJobActions()
 
 // Limit options for dropdowns
 const limitOptions = [
-  { label: '25 results', value: 25 },
-  { label: '50 results', value: 50 },
-  { label: '100 results', value: 100 },
-  { label: '200 results', value: 200 },
-  { label: '500 results', value: 500 }
+  { label: '24 results', value: 24 },
+  { label: '48 results', value: 48 },
+  { label: '96 results', value: 96 },
+  { label: '192 results', value: 192 },
+  { label: '480 results', value: 480 }
 ]
 
 // Computed

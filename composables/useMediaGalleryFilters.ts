@@ -30,7 +30,7 @@ const defaultFilters: MediaGalleryFilters = {
     sort_order: { label: 'Descending', value: 'desc' }
   },
   pagination: {
-    limit: { label: '25 results', value: 25 }
+    limit: { label: '24 results', value: 24 }
   },
   viewMode: 'grid',
   filtersCollapsed: false
