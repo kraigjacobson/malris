@@ -129,20 +129,27 @@ export async function decryptChunkRange(
     // Each encrypted chunk has: IV (16) + AuthTag (16) + Data
     const chunkOverhead = 32 // IV + AuthTag
     
+    // When we have partial encrypted data (from range requests), we need to adjust our indexing
+    let bufferOffset = 0
+    
     for (let chunkIndex = startChunk; chunkIndex <= endChunk; chunkIndex++) {
       if (chunkIndex >= metadata.totalChunks) break
       
       // Calculate encrypted chunk size
       const isLastChunk = chunkIndex === metadata.totalChunks - 1
-      const originalChunkSize = isLastChunk 
+      const originalChunkSize = isLastChunk
         ? metadata.fileSize - (chunkIndex * metadata.chunkSize)
         : metadata.chunkSize
       const encryptedChunkSize = originalChunkSize + chunkOverhead
       
-      // Extract this chunk from the encrypted data
-      const chunkStart = chunkIndex * (metadata.chunkSize + chunkOverhead)
+      // Extract this chunk from the encrypted data using buffer offset
+      const chunkStart = bufferOffset
       const chunkEnd = chunkStart + encryptedChunkSize
       const encryptedChunk = encryptedData.slice(chunkStart, chunkEnd)
+      
+      if (encryptedChunk.length < chunkOverhead) {
+        throw new Error(`Insufficient encrypted data for chunk ${chunkIndex}: got ${encryptedChunk.length} bytes, need at least ${chunkOverhead}`)
+      }
       
       // Extract IV, AuthTag, and encrypted data
       const iv = encryptedChunk.slice(0, 16)
@@ -160,6 +167,9 @@ export async function decryptChunkRange(
       decipher.final()
       
       decryptedChunks.push(decrypted)
+      
+      // Move to next chunk in the buffer
+      bufferOffset += encryptedChunkSize
     }
     
     // Concatenate all decrypted chunks

@@ -1584,7 +1584,35 @@ const openModal = async (media) => {
       const modalVideoEl = modalVideo.value || document.querySelector('video[controls]')
       
       if (modalVideoEl) {
-        console.log('🎬 Modal video ready, attempting autoplay')
+        console.log('🎬 Modal video ready, attempting autoplay for:', {
+          uuid: media.uuid,
+          src: modalVideoEl.src || modalVideoEl.querySelector('source')?.src,
+          preload: modalVideoEl.preload,
+          crossOrigin: modalVideoEl.crossOrigin
+        })
+        
+        // Add event listeners for debugging
+        const onModalLoadStart = () => console.log('🌐 Modal video loadstart')
+        const onModalProgress = () => console.log('📊 Modal video progress')
+        const onModalLoadedMetadata = () => console.log('📋 Modal video loadedmetadata')
+        const onModalLoadedData = () => console.log('✅ Modal video loadeddata')
+        const onModalCanPlay = () => console.log('▶️ Modal video canplay')
+        const onModalError = (e) => {
+          console.error('❌ Modal video error:', {
+            code: e.target.error?.code,
+            message: e.target.error?.message,
+            src: e.target.src,
+            networkState: e.target.networkState,
+            readyState: e.target.readyState
+          })
+        }
+        
+        modalVideoEl.addEventListener('loadstart', onModalLoadStart, { once: true })
+        modalVideoEl.addEventListener('progress', onModalProgress)
+        modalVideoEl.addEventListener('loadedmetadata', onModalLoadedMetadata, { once: true })
+        modalVideoEl.addEventListener('loadeddata', onModalLoadedData, { once: true })
+        modalVideoEl.addEventListener('canplay', onModalCanPlay, { once: true })
+        modalVideoEl.addEventListener('error', onModalError, { once: true })
         
         // The source is already set in the template, just try to play
         modalVideoEl.load()
@@ -1618,11 +1646,10 @@ const handleVideoHover = async (videoId, isHovering) => {
       if (targetVideo) {
         console.log('🎬 Hover video ready, attempting autoplay')
         
-        // Remove poster to show video content
+        // Keep poster visible during loading - don't remove it yet
         const originalPoster = targetVideo.poster
-        targetVideo.removeAttribute('poster')
         
-        // Store original poster for restoration
+        // Store original poster for potential restoration
         targetVideo.dataset.originalPoster = originalPoster
         
         // Ensure the video has a proper src attribute set from the source element
@@ -1635,6 +1662,8 @@ const handleVideoHover = async (videoId, isHovering) => {
         // Add event listeners for debugging
         const onLoadedData = () => {
           console.log('✅ Video loadeddata - ready to play')
+          // Now remove poster since video is ready
+          targetVideo.removeAttribute('poster')
           // Try to play once data is loaded
           targetVideo.play().catch(error => {
             console.log('❌ Autoplay prevented:', error.message)
@@ -1643,15 +1672,43 @@ const handleVideoHover = async (videoId, isHovering) => {
         const onCanPlay = () => console.log('▶️ Video canplay')
         const onError = (e) => {
           console.error('❌ Video error:', e.target.error)
+          console.error('❌ Video error details:', {
+            code: e.target.error?.code,
+            message: e.target.error?.message,
+            src: e.target.src,
+            networkState: e.target.networkState,
+            readyState: e.target.readyState
+          })
           // Restore poster on error
           if (targetVideo.dataset.originalPoster) {
             targetVideo.poster = targetVideo.dataset.originalPoster
           }
         }
         
+        // Add more detailed logging for network events
+        const onLoadStart = () => console.log('🌐 Video loadstart - browser started loading')
+        const onProgress = () => console.log('📊 Video progress - downloading')
+        const onLoadedMetadata = () => console.log('📋 Video loadedmetadata - metadata loaded')
+        const onSuspend = () => console.log('⏸️ Video suspend - loading suspended')
+        const onStalled = () => console.log('🚫 Video stalled - loading stalled')
+        const onAbort = () => console.log('🛑 Video abort - loading aborted')
+        
         targetVideo.addEventListener('loadeddata', onLoadedData, { once: true })
         targetVideo.addEventListener('canplay', onCanPlay, { once: true })
         targetVideo.addEventListener('error', onError, { once: true })
+        targetVideo.addEventListener('loadstart', onLoadStart, { once: true })
+        targetVideo.addEventListener('progress', onProgress)
+        targetVideo.addEventListener('loadedmetadata', onLoadedMetadata, { once: true })
+        targetVideo.addEventListener('suspend', onSuspend, { once: true })
+        targetVideo.addEventListener('stalled', onStalled, { once: true })
+        targetVideo.addEventListener('abort', onAbort, { once: true })
+        
+        console.log('🎬 Starting video load for:', {
+          uuid: videoId,
+          src: targetVideo.src || sourceElement?.src,
+          preload: targetVideo.preload,
+          crossOrigin: targetVideo.crossOrigin
+        })
         
         // Load the video
         targetVideo.load()

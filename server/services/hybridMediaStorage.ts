@@ -305,13 +305,26 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
     `, [uuid])
     
     if (record.rows.length === 0) {
-      logger.error(`No record found for UUID: ${uuid}`)
+      logger.error(`❌ No record found for UUID: ${uuid}`)
       return null
     }
     
     const { storage_type, encrypted_data, large_object_oid, file_size, encryption_method, metadata } = record.rows[0]
     
-    logger.info(`Processing ${storage_type} storage for UUID: ${uuid}, encryption: ${encryption_method}, LOB OID: ${large_object_oid}`)
+    const isRangeRequest = range !== undefined
+    const storageTypeLabel = storage_type === 'lob' ? 'LOB' : 'BYTEA'
+    
+    logger.info(`🎥 StreamMedia for ${uuid}:`)
+    logger.info(`   Storage: ${storageTypeLabel} (${storage_type})`)
+    logger.info(`   File size: ${file_size} bytes`)
+    logger.info(`   Encryption: ${encryption_method}`)
+    logger.info(`   LOB OID: ${large_object_oid || 'N/A'}`)
+    logger.info(`   Range request: ${isRangeRequest ? `${range!.start}-${range!.end} (${range!.size} bytes)` : 'FULL FILE'}`)
+    
+    if (isRangeRequest) {
+      const percentOfFile = ((range!.size / file_size) * 100).toFixed(1)
+      logger.info(`   Request size: ${range!.size} bytes (${percentOfFile}% of file)`)
+    }
     
     // Update access tracking
     await client.query(
@@ -325,41 +338,86 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
       // For BYTEA, we still need to load everything (but this should be small files)
       const encryptedBuffer = encrypted_data
       
+      logger.info(`🔄 BYTEA streaming for ${uuid}`)
+      
       if ((encryption_method === 'aes-gcm-unified' || encryption_method === 'chunk-based') && metadata) {
         const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
-        if (range) {
-          const decryptedData = await decryptChunkRange(encryptedBuffer, chunkMetadata, encryptionKey, range.start, range.end)
-          return {
-            buffer: decryptedData,
-            totalSize: chunkMetadata.fileSize,
-            storageType: 'bytea'
+        logger.info(`📊 BYTEA chunk metadata: ${JSON.stringify(chunkMetadata)}`)
+        
+        try {
+          if (range) {
+            logger.info(`🔓 BYTEA decrypting range ${range.start}-${range.end}`)
+            
+            // Calculate which encrypted chunks we need for this range (same logic as LOB)
+            const chunkOverhead = 32 // IV + AuthTag per chunk
+            const encryptedChunkSize = chunkMetadata.chunkSize + chunkOverhead
+            
+            // Calculate which decrypted chunks contain our range
+            const startChunk = Math.floor(range.start / chunkMetadata.chunkSize)
+            const endChunk = Math.floor(range.end / chunkMetadata.chunkSize)
+            
+            // Map to encrypted chunk positions in the BYTEA data
+            const encryptedStart = startChunk * encryptedChunkSize
+            const encryptedEnd = Math.min((endChunk + 1) * encryptedChunkSize - 1, file_size - 1)
+            
+            logger.info(`📊 BYTEA Chunk calculation:`)
+            logger.info(`   Chunk size: ${chunkMetadata.chunkSize} bytes`)
+            logger.info(`   Encrypted chunk size: ${encryptedChunkSize} bytes`)
+            logger.info(`   Start chunk: ${startChunk}, End chunk: ${endChunk}`)
+            logger.info(`   Encrypted range: ${encryptedStart}-${encryptedEnd}`)
+            logger.info(`   Total encrypted buffer size: ${encryptedBuffer.length}`)
+            
+            // Extract only the encrypted chunks we need
+            const relevantEncryptedData = encryptedBuffer.slice(encryptedStart, encryptedEnd + 1)
+            logger.info(`📖 Extracted ${relevantEncryptedData.length} bytes of encrypted data for range`)
+            
+            const decryptedData = await decryptChunkRange(relevantEncryptedData, chunkMetadata, encryptionKey, range.start, range.end)
+            logger.info(`✅ BYTEA range decryption successful: ${decryptedData.length} bytes`)
+            return {
+              buffer: decryptedData,
+              totalSize: chunkMetadata.fileSize,
+              storageType: 'bytea'
+            }
+          } else {
+            logger.info(`🔓 BYTEA decrypting full file`)
+            const decryptedData = await decryptChunked(encryptedBuffer, chunkMetadata, encryptionKey)
+            logger.info(`✅ BYTEA full decryption successful: ${decryptedData.length} bytes`)
+            return {
+              buffer: decryptedData,
+              totalSize: chunkMetadata.fileSize,
+              storageType: 'bytea'
+            }
           }
-        } else {
-          const decryptedData = await decryptChunked(encryptedBuffer, chunkMetadata, encryptionKey)
-          return {
-            buffer: decryptedData,
-            totalSize: chunkMetadata.fileSize,
-            storageType: 'bytea'
-          }
+        } catch (decryptError) {
+          logger.error(`❌ BYTEA decryption failed for ${uuid}:`, decryptError)
+          throw decryptError
         }
       } else {
         // Legacy Fernet full-file decryption
-        const { decryptMediaData } = await import('~/server/utils/encryption')
-        const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
-        
-        if (range) {
-          const rangedData = decryptedData.subarray(range.start, range.end + 1)
-          return {
-            buffer: rangedData,
-            totalSize: file_size,
-            storageType: 'bytea'
+        logger.info(`🔓 BYTEA using legacy Fernet decryption`)
+        try {
+          const { decryptMediaData } = await import('~/server/utils/encryption')
+          const decryptedData = decryptMediaData(encryptedBuffer, encryptionKey)
+          
+          if (range) {
+            const rangedData = decryptedData.subarray(range.start, range.end + 1)
+            logger.info(`✅ BYTEA legacy range extraction successful: ${rangedData.length} bytes`)
+            return {
+              buffer: rangedData,
+              totalSize: file_size,
+              storageType: 'bytea'
+            }
+          } else {
+            logger.info(`✅ BYTEA legacy full decryption successful: ${decryptedData.length} bytes`)
+            return {
+              buffer: decryptedData,
+              totalSize: file_size,
+              storageType: 'bytea'
+            }
           }
-        } else {
-          return {
-            buffer: decryptedData,
-            totalSize: file_size,
-            storageType: 'bytea'
-          }
+        } catch (legacyError) {
+          logger.error(`❌ BYTEA legacy decryption failed for ${uuid}:`, legacyError)
+          throw legacyError
         }
       }
     } else {
@@ -368,18 +426,40 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
         const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
         
         if (range) {
+          // Efficient range streaming: only read and decrypt the chunks we need
+          logger.info(`🔄 LOB Range Streaming: ${range.start}-${range.end} from OID ${large_object_oid}`)
+          const startTime = Date.now()
+          
           // Calculate which encrypted chunks we need for this range
           const chunkOverhead = 32 // IV + AuthTag per chunk
           const encryptedChunkSize = chunkMetadata.chunkSize + chunkOverhead
           
+          // Calculate which decrypted chunks contain our range
           const startChunk = Math.floor(range.start / chunkMetadata.chunkSize)
           const endChunk = Math.floor(range.end / chunkMetadata.chunkSize)
           
+          // Map to encrypted chunk positions
           const encryptedStart = startChunk * encryptedChunkSize
-          const encryptedEnd = (endChunk + 1) * encryptedChunkSize - 1
+          const encryptedEnd = Math.min((endChunk + 1) * encryptedChunkSize - 1, file_size - 1)
           
+          logger.info(`📊 Chunk calculation:`)
+          logger.info(`   Chunk size: ${chunkMetadata.chunkSize} bytes`)
+          logger.info(`   Encrypted chunk size: ${encryptedChunkSize} bytes`)
+          logger.info(`   Start chunk: ${startChunk}, End chunk: ${endChunk}`)
+          logger.info(`   Encrypted range: ${encryptedStart}-${encryptedEnd}`)
+          
+          logger.info(`📖 Reading encrypted chunks ${startChunk}-${endChunk} (bytes ${encryptedStart}-${encryptedEnd})`)
+          const readStartTime = Date.now()
           const encryptedBuffer = await readLargeObjectRange(client, large_object_oid, encryptedStart, encryptedEnd)
+          const readTime = Date.now() - readStartTime
+          logger.info(`✅ Read ${encryptedBuffer.length} encrypted bytes in ${readTime}ms`)
+          
+          logger.info(`🔓 Decrypting range...`)
+          const decryptStartTime = Date.now()
           const decryptedData = await decryptChunkRange(encryptedBuffer, chunkMetadata, encryptionKey, range.start, range.end)
+          const decryptTime = Date.now() - decryptStartTime
+          logger.info(`✅ Decrypted to ${decryptedData.length} bytes in ${decryptTime}ms`)
+          logger.info(`🚀 Total LOB range streaming time: ${Date.now() - startTime}ms`)
           
           return {
             buffer: decryptedData,
@@ -387,13 +467,20 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
             storageType: 'lob'
           }
         } else {
-          logger.info(`Reading full large object ${large_object_oid} with file size ${file_size}`)
+          // For full file requests, still read everything (but this should be rare for large videos)
+          logger.info(`🔄 Reading full LOB ${large_object_oid} with file size ${file_size}`)
+          const startTime = Date.now()
           const encryptedBuffer = await readLargeObject(client, large_object_oid, file_size)
-          logger.info(`Read ${encryptedBuffer.length} encrypted bytes from large object`)
+          const readTime = Date.now() - startTime
+          logger.info(`✅ Read ${encryptedBuffer.length} encrypted bytes from LOB in ${readTime}ms`)
           
           try {
+            logger.info(`🔓 Decrypting full file...`)
+            const decryptStartTime = Date.now()
             const decryptedData = await decryptChunked(encryptedBuffer, chunkMetadata, encryptionKey)
-            logger.info(`Decrypted to ${decryptedData.length} bytes`)
+            const decryptTime = Date.now() - decryptStartTime
+            logger.info(`✅ Decrypted to ${decryptedData.length} bytes in ${decryptTime}ms`)
+            logger.info(`🚀 Total LOB full streaming time: ${Date.now() - startTime}ms`)
             
             return {
               buffer: decryptedData,
@@ -401,7 +488,7 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
               storageType: 'lob'
             }
           } catch (decryptError) {
-            logger.error(`Decryption failed for LOB ${large_object_oid}:`, decryptError)
+            logger.error(`❌ Decryption failed for LOB ${large_object_oid}:`, decryptError)
             throw decryptError
           }
         }
@@ -548,13 +635,14 @@ export async function getMediaInfo(uuid: string): Promise<{
   type: string
   storageType: 'bytea' | 'lob'
   fileSize: number
+  encryptedSize: number
 } | null> {
   const { getDbClient } = await import('~/server/utils/database')
   const client = await getDbClient()
   
   try {
     const record = await client.query(`
-      SELECT filename, type, storage_type, file_size
+      SELECT filename, type, storage_type, file_size, original_size, metadata
       FROM media_records WHERE uuid = $1
     `, [uuid])
     
@@ -563,11 +651,25 @@ export async function getMediaInfo(uuid: string): Promise<{
     }
     
     const row = record.rows[0]
+    
+    // For encrypted files, use original_size (decrypted size) for fileSize
+    // and file_size (encrypted size) for encryptedSize
+    let actualFileSize = parseInt(row.original_size || row.file_size, 10)
+    
+    // If we have metadata with fileSize, use that as it's the most accurate
+    if (row.metadata) {
+      const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata
+      if (metadata.fileSize) {
+        actualFileSize = metadata.fileSize
+      }
+    }
+    
     return {
       filename: row.filename,
       type: row.type,
       storageType: row.storage_type,
-      fileSize: parseInt(row.file_size, 10)
+      fileSize: actualFileSize, // This is now the decrypted file size
+      encryptedSize: parseInt(row.file_size, 10) // This is the encrypted file size
     }
   } catch (error) {
     logger.error(`Failed to get media info ${uuid}:`, error)
