@@ -529,22 +529,29 @@ const imageTransformStyle = computed(() => {
   }
 })
 
+// Sort jobs by updated_at in descending order (latest first)
+const sortedNeedInputJobs = computed(() => {
+  return props.needInputJobs
+    .slice() // Create a copy to avoid mutating the original
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+})
+
 // Job navigation computed properties
-const hasMultipleJobs = computed(() => props.needInputJobs.length > 1)
+const hasMultipleJobs = computed(() => sortedNeedInputJobs.value.length > 1)
 const currentJobInfo = computed(() => {
-  if (props.needInputJobs.length === 0) return null
+  if (sortedNeedInputJobs.value.length === 0) return null
   return {
     current: currentJobIndex.value + 1,
-    total: props.needInputJobs.length
+    total: sortedNeedInputJobs.value.length
   }
 })
 
 // Check if we can go to the next job that needs input
 const canGoToNextJob = computed(() => {
-  if (props.needInputJobs.length <= 1) return false
+  if (sortedNeedInputJobs.value.length <= 1) return false
   
   // Check if there are any other jobs besides the current one that need input
-  const otherJobs = props.needInputJobs.filter(job => job.id !== props.job?.id)
+  const otherJobs = sortedNeedInputJobs.value.filter(job => job.id !== props.job?.id)
   return otherJobs.length > 0
 })
 
@@ -564,14 +571,14 @@ const goToPreviousJob = () => {
 }
 
 const goToNextJob = () => {
-  if (props.needInputJobs.length > 1) {
-    if (currentJobIndex.value < props.needInputJobs.length - 1) {
+  if (sortedNeedInputJobs.value.length > 1) {
+    if (currentJobIndex.value < sortedNeedInputJobs.value.length - 1) {
       currentJobIndex.value++
     } else {
       // Wrap to first job
       currentJobIndex.value = 0
     }
-    const newJob = props.needInputJobs[currentJobIndex.value]
+    const newJob = sortedNeedInputJobs.value[currentJobIndex.value]
     emit('jobChanged', newJob)
   }
 }
@@ -1329,7 +1336,7 @@ watch(() => props.job, (newJob) => {
     loadImagesForJob(newJob)
     
     // Update current job index based on the new job
-    const jobIndex = props.needInputJobs.findIndex(job => job.id === newJob.id)
+    const jobIndex = sortedNeedInputJobs.value.findIndex(job => job.id === newJob.id)
     if (jobIndex !== -1) {
       currentJobIndex.value = jobIndex
     }
