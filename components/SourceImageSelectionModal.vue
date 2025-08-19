@@ -89,10 +89,20 @@
               <!-- Image/Video Container with Fixed Height -->
               <div ref="imageContainer"
                 class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800"
-                style="height: 384px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;"
-                @wheel.prevent="handleWheel" @mousedown.prevent="handleMouseDown" @touchstart.prevent="handleTouchStart"
-                @touchmove.prevent="handleTouchMove" @touchend.prevent="handleTouchEnd" @gesturestart.prevent
-                @gesturechange.prevent @gestureend.prevent>
+                style="height: 384px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background-color: #1f2937 !important;"
+                @wheel.prevent.stop="handleWheel"
+                @mousedown.prevent.stop="handleMouseDown"
+                @touchstart.capture.prevent.stop="handleTouchStart"
+                @touchmove.capture.prevent.stop="handleTouchMove"
+                @touchend.capture.prevent.stop="handleTouchEnd"
+                @gesturestart.prevent.stop
+                @gesturechange.prevent.stop
+                @gestureend.prevent.stop
+                @click="handleContainerClick"
+                @pointerdown.prevent.stop="handlePointerDown"
+                @pointermove.prevent.stop="handlePointerMove"
+                @pointerup.prevent.stop="handlePointerUp"
+                @mouseover="handleMouseOver">
                 
                 <!-- Video Player (when showing video) -->
                 <video v-if="showingVideo && job?.dest_media_uuid"
@@ -108,21 +118,12 @@
                 
                 <!-- Image Display (when not showing video) -->
                 <template v-else>
-                  <!-- Previous/Fallback Image (stays visible during transitions) -->
-                  <img v-if="lastLoadedImage"
-                    :src="getImageUrl(lastLoadedImage)"
-                    :alt="lastLoadedImage.filename"
-                    class="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-200 ease-out select-none"
-                    :style="imageTransformStyle"
-                    @dragstart.prevent />
-                  
-                  <!-- Current Image (fades in when loaded) -->
+                  <!-- Single Image Element -->
                   <img ref="zoomableImage"
                     v-if="currentImage"
                     :src="getImageUrl(currentImage)"
                     :alt="currentImage.filename"
-                    class="absolute inset-0 w-full h-full object-cover object-top transition-all duration-200 ease-out select-none"
-                    :class="{ 'opacity-0': isCurrentImageLoading, 'opacity-100': !isCurrentImageLoading }"
+                    class="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
                     :style="imageTransformStyle"
                     :key="currentImage.uuid"
                     @load="onImageLoad"
@@ -139,7 +140,7 @@
 
               <!-- Left Arrow Overlay -->
               <div v-if="sourceImages.length > 1"
-                class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                class="absolute left-0 top-0 w-16 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto z-10"
                 @click="goToPreviousImage">
                 <UIcon name="i-heroicons-chevron-left"
                   class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
@@ -147,7 +148,7 @@
 
               <!-- Right Arrow Overlay -->
               <div v-if="sourceImages.length > 1"
-                class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                class="absolute right-0 top-0 w-16 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto z-10"
                 @click="goToNextImage">
                 <UIcon name="i-heroicons-chevron-right"
                   class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
@@ -479,7 +480,6 @@ const currentImage = computed(() => {
   // Get the currently selected source image
   const selectedSourceImage = sourceImages.value[currentImageIndex.value]
   if (!selectedSourceImage) {
-    console.log('🚨 [currentImage] No selected source image at index:', currentImageIndex.value)
     return null
   }
 
@@ -490,32 +490,6 @@ const currentImage = computed(() => {
 
   // For now, take the first one, but log if there are multiple
   const correspondingOutputImage = allCorrespondingOutputs[0]
-
-  console.log('🖼️ [currentImage] COMPUTED RESULT:', {
-    currentImageIndex: currentImageIndex.value,
-    selectedSourceImage: {
-      uuid: selectedSourceImage.uuid,
-      filename: selectedSourceImage.filename,
-      created_at: selectedSourceImage.created_at
-    },
-    allCorrespondingOutputs: allCorrespondingOutputs.map(img => ({
-      uuid: img.uuid,
-      filename: img.filename,
-      source_media_uuid_ref: img.source_media_uuid_ref
-    })),
-    selectedOutput: correspondingOutputImage ? {
-      uuid: correspondingOutputImage.uuid,
-      filename: correspondingOutputImage.filename,
-      source_media_uuid_ref: correspondingOutputImage.source_media_uuid_ref,
-      created_at: correspondingOutputImage.created_at
-    } : null,
-    multipleOutputsForSameSource: allCorrespondingOutputs.length > 1,
-    outputCount: allCorrespondingOutputs.length
-  })
-
-  if (!correspondingOutputImage) {
-    console.log('🚨 [currentImage] No corresponding output image found for source:', selectedSourceImage.uuid)
-  }
 
   return correspondingOutputImage || null
 })
@@ -758,7 +732,6 @@ const loadDestinationVideo = async (destMediaUuid) => {
     console.log('🎬 Loading destination video:', destMediaUuid)
     const response = await useApiFetch(`media/${destMediaUuid}`)
     destVideo.value = response
-    console.log('🎬 Destination video loaded:', response)
   } catch (error) {
     console.error('Failed to load destination video:', error)
     destVideo.value = null
@@ -795,6 +768,12 @@ const closeModal = () => {
   preloadedImages.value.clear()
   preloadQueue.value = []
   isPreloading.value = false
+  
+  // Clear image URL cache
+  imageUrlCache.value.clear()
+  
+  // Reset zoom state when closing modal
+  resetZoom()
 }
 
 // Image loading event handlers
@@ -824,7 +803,6 @@ const preloadImage = (imageData) => {
     const img = new Image()
     img.onload = () => {
       preloadedImages.value.set(imageData.uuid, img)
-      console.log('✅ Preloaded image:', imageData.filename)
       resolve(imageData)
     }
     img.onerror = () => {
@@ -948,24 +926,55 @@ const handleKeydown = (event) => {
 
 // Global event prevention for mobile zoom (but allow our image container)
 const preventGlobalZoom = (event) => {
-  if (event.touches && event.touches.length > 1) {
-    // Check if the touch is inside our image container
-    if (imageContainer.value && imageContainer.value.contains(event.target)) {
-      // Allow our custom zoom to handle it
-      return
-    }
-    // Block zoom everywhere else
-    event.preventDefault()
-    event.stopPropagation()
+  console.log('🔥 [GLOBAL DEBUG] preventGlobalZoom called', {
+    touchCount: event.touches?.length,
+    target: event.target,
+    imageContainer: imageContainer.value,
+    contains: imageContainer.value?.contains(event.target),
+    targetClasses: event.target?.className
+  })
+  
+  // Don't prevent single touches at all - let them through
+  if (!event.touches || event.touches.length <= 1) {
+    console.log('🔥 [GLOBAL DEBUG] Single or no touch, allowing')
+    return
   }
-}
-
-const preventGlobalGesture = (event) => {
-  // Check if the gesture is inside our image container
-  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+  
+  // For multi-touch, check if it's inside our image container or its children
+  if (imageContainer.value && (
+    imageContainer.value.contains(event.target) ||
+    event.target === imageContainer.value
+  )) {
+    console.log('🔥 [GLOBAL DEBUG] Multi-touch inside image container, allowing')
     // Allow our custom zoom to handle it
     return
   }
+  
+  console.log('🔥 [GLOBAL DEBUG] Multi-touch outside image container, preventing')
+  // Block zoom everywhere else
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+const preventGlobalGesture = (event) => {
+  console.log('🔥 [GLOBAL DEBUG] preventGlobalGesture called', {
+    target: event.target,
+    imageContainer: imageContainer.value,
+    contains: imageContainer.value?.contains(event.target),
+    targetClasses: event.target?.className
+  })
+  
+  // Check if the gesture is inside our image container or its children
+  if (imageContainer.value && (
+    imageContainer.value.contains(event.target) ||
+    event.target === imageContainer.value
+  )) {
+    console.log('🔥 [GLOBAL DEBUG] Gesture inside image container, allowing')
+    // Allow our custom zoom to handle it
+    return
+  }
+  
+  console.log('🔥 [GLOBAL DEBUG] Gesture outside image container, preventing')
   // Block gestures everywhere else
   event.preventDefault()
   event.stopPropagation()
@@ -974,6 +983,34 @@ const preventGlobalGesture = (event) => {
 // Add global keyboard event listener when modal opens
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
+  
+  // Debug: Check if imageContainer ref is working
+  console.log('🔥 [MOUNT DEBUG] Component mounted', {
+    imageContainer: imageContainer.value,
+    containerExists: !!imageContainer.value
+  })
+  
+  // Add a timeout to check after Vue has had time to render
+  setTimeout(() => {
+    console.log('🔥 [MOUNT DEBUG] After timeout', {
+      imageContainer: imageContainer.value,
+      containerExists: !!imageContainer.value,
+      containerTagName: imageContainer.value?.tagName,
+      containerClasses: imageContainer.value?.className
+    })
+    
+    // Try to manually add event listeners as a test
+    if (imageContainer.value) {
+      console.log('🔥 [MOUNT DEBUG] Adding manual event listeners')
+      imageContainer.value.addEventListener('touchstart', (e) => {
+        console.log('🔥 [MANUAL DEBUG] Manual touchstart triggered!', e)
+      }, { passive: false })
+      
+      imageContainer.value.addEventListener('click', (e) => {
+        console.log('🔥 [MANUAL DEBUG] Manual click triggered!', e)
+      })
+    }
+  }, 1000)
 })
 
 onUnmounted(() => {
@@ -1111,26 +1148,22 @@ const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
 }
 
-// Helper methods for safe URL generation
-const getImageUrl = (image, size = 'md') => {
+// Helper methods for safe URL generation - memoized to prevent repeated calls
+const imageUrlCache = ref(new Map())
+
+const getImageUrl = (image, size = 'original') => {
   if (!image || !image.uuid) {
-    console.log('⚠️ getImageUrl: Invalid image:', image)
     return ''
   }
 
-  // Remove cache-busting for smoother transitions
+  const cacheKey = `${image.uuid}-${size}`
+  if (imageUrlCache.value.has(cacheKey)) {
+    return imageUrlCache.value.get(cacheKey)
+  }
+
+  // Use 'original' size to get uncropped images for main display
   const url = `/api/media/${image.uuid}/image?size=${size}`
-  
-  // Check if image is preloaded for faster access
-  const isPreloaded = preloadedImages.value.has(image.uuid)
-  console.log('🔗 [SourceImageModal] Generated image URL:', url, 'for image:', {
-    uuid: image.uuid,
-    filename: image.filename,
-    purpose: image.purpose,
-    source_media_uuid_ref: image.source_media_uuid_ref,
-    currentImageIndex: currentImageIndex.value,
-    preloaded: isPreloaded
-  })
+  imageUrlCache.value.set(cacheKey, url)
   return url
 }
 
@@ -1139,7 +1172,6 @@ const getThumbnailUrl = (image) => {
 
   // Always use the main image UUID with thumbnail size for consistent performance
   const url = `/api/media/${image.uuid}/image?size=thumbnail`
-  console.log('🔗 [SourceImageModal] Generated thumbnail URL:', url, 'for image:', image.uuid)
   return url
 }
 
@@ -1187,7 +1219,7 @@ const handleWheel = (event) => {
 }
 
 const handleMouseDown = (event) => {
-  if (!currentImage.value || sharedZoomState.value.scale <= 1) return
+  if (!currentImage.value) return
 
   event.preventDefault()
   isDragging.value = true
@@ -1220,94 +1252,242 @@ const handleMouseUp = () => {
 }
 
 const getTouchDistance = (touches) => {
-  if (touches.length < 2) return 0
+  if (touches.length < 2) {
+    console.log('🔥 [TOUCH DEBUG] getTouchDistance: Less than 2 touches')
+    return 0
+  }
 
   const touch1 = touches[0]
   const touch2 = touches[1]
 
-  return Math.sqrt(
+  const distance = Math.sqrt(
     Math.pow(touch2.clientX - touch1.clientX, 2) +
     Math.pow(touch2.clientY - touch1.clientY, 2)
   )
+
+  console.log('🔥 [TOUCH DEBUG] getTouchDistance calculated', {
+    touch1: { x: touch1.clientX, y: touch1.clientY },
+    touch2: { x: touch2.clientX, y: touch2.clientY },
+    distance
+  })
+
+  return distance
 }
 
 const handleTouchStart = (event) => {
-  if (!currentImage.value) return
+  console.log('🔥 [TOUCH DEBUG] handleTouchStart called', {
+    currentImage: !!currentImage.value,
+    touchCount: event.touches.length,
+    currentScale: sharedZoomState.value.scale,
+    touches: Array.from(event.touches).map(t => ({ x: t.clientX, y: t.clientY })),
+    target: event.target,
+    currentTarget: event.currentTarget
+  })
 
-  // Aggressively prevent default behavior
+  // ALWAYS prevent default and stop propagation first, regardless of conditions
   event.preventDefault()
   event.stopPropagation()
+  event.stopImmediatePropagation()
+
+  if (!currentImage.value) {
+    console.log('🔥 [TOUCH DEBUG] No current image, but still preventing default')
+    return
+  }
 
   if (event.touches.length === 1) {
-    // Single touch - start dragging if zoomed
-    if (sharedZoomState.value.scale > 1) {
-      isDragging.value = true
-      const touch = event.touches[0]
-      dragStart.value = { x: touch.clientX, y: touch.clientY }
-    }
+    // Single touch - always start tracking for potential zoom/pan
+    const touch = event.touches[0]
+    dragStart.value = { x: touch.clientX, y: touch.clientY }
+    isDragging.value = true
+    console.log('🔥 [TOUCH DEBUG] Started single touch drag', {
+      scale: sharedZoomState.value.scale,
+      startPos: dragStart.value
+    })
   } else if (event.touches.length === 2) {
     // Two touches - start zooming
     isZooming.value = true
     isDragging.value = false
     lastTouchDistance.value = getTouchDistance(event.touches)
+    console.log('🔥 [TOUCH DEBUG] Started two touch zoom', {
+      distance: lastTouchDistance.value,
+      currentScale: sharedZoomState.value.scale
+    })
   }
 }
 
 const handleTouchMove = (event) => {
-  if (!currentImage.value) return
+  console.log('🔥 [TOUCH DEBUG] handleTouchMove called', {
+    currentImage: !!currentImage.value,
+    touchCount: event.touches.length,
+    isDragging: isDragging.value,
+    isZooming: isZooming.value,
+    currentScale: sharedZoomState.value.scale
+  })
 
-  // Aggressively prevent default behavior
+  // ALWAYS prevent default and stop propagation first
   event.preventDefault()
   event.stopPropagation()
+  event.stopImmediatePropagation()
 
-  if (event.touches.length === 1 && isDragging.value) {
-    // Single touch drag
+  if (!currentImage.value) {
+    console.log('🔥 [TOUCH DEBUG] No current image in move, but still preventing default')
+    return
+  }
+
+  if (event.touches.length === 1) {
+    // Single touch - handle both drag and potential zoom start
     const touch = event.touches[0]
     const deltaX = touch.clientX - dragStart.value.x
     const deltaY = touch.clientY - dragStart.value.y
 
-    const currentState = sharedZoomState.value
-    const newTranslateX = currentState.translateX + deltaX / currentState.scale
-    const newTranslateY = currentState.translateY + deltaY / currentState.scale
+    console.log('🔥 [TOUCH DEBUG] Single touch move', {
+      touchPos: { x: touch.clientX, y: touch.clientY },
+      dragStart: dragStart.value,
+      delta: { x: deltaX, y: deltaY },
+      isDragging: isDragging.value,
+      scale: sharedZoomState.value.scale
+    })
 
-    const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
-    updateSharedZoom(constrained)
+    if (isDragging.value) {
+      // Dragging while zoomed
+      const currentState = sharedZoomState.value
+      const newTranslateX = currentState.translateX + deltaX / currentState.scale
+      const newTranslateY = currentState.translateY + deltaY / currentState.scale
 
-    dragStart.value = { x: touch.clientX, y: touch.clientY }
-  } else if (event.touches.length === 2 && isZooming.value) {
-    // Two touch zoom
-    const currentDistance = getTouchDistance(event.touches)
-    const distanceRatio = currentDistance / lastTouchDistance.value
+      const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
+      console.log('🔥 [TOUCH DEBUG] Updating zoom state for drag', {
+        before: currentState,
+        after: constrained
+      })
+      updateSharedZoom(constrained)
 
-    const currentState = sharedZoomState.value
-    const newScale = Math.max(0.5, Math.min(5, currentState.scale * distanceRatio))
-
-    updateSharedZoom({ scale: newScale })
-    lastTouchDistance.value = currentDistance
-  }
-}
-
-const handleTouchEnd = (event) => {
-  // Prevent default behavior
-  event.preventDefault()
-  event.stopPropagation()
-
-  if (event.touches.length === 0) {
-    isDragging.value = false
-    isZooming.value = false
-  } else if (event.touches.length === 1) {
-    isZooming.value = false
-    // Continue dragging with remaining touch
-    if (sharedZoomState.value.scale > 1) {
-      isDragging.value = true
-      const touch = event.touches[0]
       dragStart.value = { x: touch.clientX, y: touch.clientY }
+    }
+  } else if (event.touches.length === 2) {
+    // Two touch zoom
+    if (!isZooming.value) {
+      // Start zooming if not already
+      isZooming.value = true
+      isDragging.value = false
+      lastTouchDistance.value = getTouchDistance(event.touches)
+      console.log('🔥 [TOUCH DEBUG] Starting zoom from move event')
+    } else {
+      const currentDistance = getTouchDistance(event.touches)
+      const distanceRatio = currentDistance / lastTouchDistance.value
+
+      console.log('🔥 [TOUCH DEBUG] Two touch zoom', {
+        currentDistance,
+        lastDistance: lastTouchDistance.value,
+        ratio: distanceRatio,
+        currentScale: sharedZoomState.value.scale
+      })
+
+      const currentState = sharedZoomState.value
+      const newScale = Math.max(0.5, Math.min(5, currentState.scale * distanceRatio))
+
+      console.log('🔥 [TOUCH DEBUG] Updating scale', {
+        oldScale: currentState.scale,
+        newScale
+      })
+
+      updateSharedZoom({ scale: newScale })
+      lastTouchDistance.value = currentDistance
     }
   }
 }
 
+const handleTouchEnd = (event) => {
+  console.log('🔥 [TOUCH DEBUG] handleTouchEnd called', {
+    remainingTouches: event.touches.length,
+    isDragging: isDragging.value,
+    isZooming: isZooming.value,
+    currentScale: sharedZoomState.value.scale
+  })
+
+  // ALWAYS prevent default and stop propagation
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+
+  if (event.touches.length === 0) {
+    console.log('🔥 [TOUCH DEBUG] All touches ended, clearing states')
+    isDragging.value = false
+    isZooming.value = false
+  } else if (event.touches.length === 1) {
+    console.log('🔥 [TOUCH DEBUG] One touch remaining')
+    isZooming.value = false
+    isDragging.value = true
+    const touch = event.touches[0]
+    dragStart.value = { x: touch.clientX, y: touch.clientY }
+    console.log('🔥 [TOUCH DEBUG] Continuing drag with remaining touch', dragStart.value)
+  }
+}
+
+// Test function to verify container is receiving events
+const handleContainerClick = (event) => {
+  console.log('🔥 [CONTAINER DEBUG] Container clicked!', {
+    target: event.target,
+    currentTarget: event.currentTarget,
+    imageContainer: imageContainer.value,
+    containerMatches: event.currentTarget === imageContainer.value
+  })
+}
+
+// Most basic event test
+const handleMouseOver = (event) => {
+  console.log('🔥 [BASIC DEBUG] Mouse over container!', {
+    containerExists: !!imageContainer.value,
+    elementTagName: event.currentTarget?.tagName,
+    elementClasses: event.currentTarget?.className
+  })
+}
+
+// Pointer event handlers as fallback
+const handlePointerDown = (event) => {
+  if (event.pointerType === 'mouse') {
+    handleMouseDown(event)
+  } else if (event.pointerType === 'touch') {
+    // Convert pointer event to touch-like event for our existing logic
+    const fakeEvent = {
+      touches: [{ clientX: event.clientX, clientY: event.clientY }],
+      preventDefault: () => event.preventDefault(),
+      stopPropagation: () => event.stopPropagation(),
+      stopImmediatePropagation: () => event.stopImmediatePropagation()
+    }
+    handleTouchStart(fakeEvent)
+  }
+}
+
+const handlePointerMove = (event) => {
+  if (event.pointerType === 'mouse') {
+    handleMouseMove(event)
+  } else if (event.pointerType === 'touch') {
+    const fakeEvent = {
+      touches: [{ clientX: event.clientX, clientY: event.clientY }],
+      preventDefault: () => event.preventDefault(),
+      stopPropagation: () => event.stopPropagation(),
+      stopImmediatePropagation: () => event.stopImmediatePropagation()
+    }
+    handleTouchMove(fakeEvent)
+  }
+}
+
+const handlePointerUp = (event) => {
+  if (event.pointerType === 'mouse') {
+    handleMouseUp(event)
+  } else if (event.pointerType === 'touch') {
+    const fakeEvent = {
+      touches: [],
+      preventDefault: () => event.preventDefault(),
+      stopPropagation: () => event.stopPropagation(),
+      stopImmediatePropagation: () => event.stopImmediatePropagation()
+    }
+    handleTouchEnd(fakeEvent)
+  }
+}
+
 // Watch for job changes to load images
-watch(() => props.job, (newJob) => {
+watch(() => props.job, (newJob, oldJob) => {
   if (newJob && props.modelValue) {
     console.log('⏱️ [SourceImageModal] Job changed, loading images for job:', newJob.id)
     
@@ -1319,6 +1499,11 @@ watch(() => props.job, (newJob) => {
       source_media_uuid: newJob.source_media_uuid,
       allFields: Object.keys(newJob)
     })
+    
+    // Reset zoom state when switching to a different job
+    if (oldJob && oldJob.id !== newJob.id) {
+      resetZoom()
+    }
     
     // CRITICAL FIX: Clear all previous state before loading new job
     outputImages.value = []
@@ -1363,6 +1548,9 @@ watch(() => props.modelValue, (isOpen) => {
     isLoadingSourceImages.value = false
     isSubmittingSource.value = false
     isDeletingImage.value = false
+    
+    // Reset zoom state when modal closes
+    resetZoom()
   }
 })
 
