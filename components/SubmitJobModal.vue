@@ -15,44 +15,34 @@
     </template>
 
     <template #body>
-      <div class="flex flex-col h-[70vh] min-h-[500px]">
-        <!-- Job Type Selection - Compact -->
-        <div class="flex-shrink-0 mb-4">
-          <USelectMenu
-            v-model="form.job_type"
-            :items="jobTypeOptions"
-            placeholder="Select job type..."
-            class="w-full"
-          />
-        </div>
-
+      <div class="flex flex-col h-[75vh] min-h-[600px]">
         <!-- Initial Selection Mode (when no workflow is active) -->
-        <div v-if="!workflowMode && (form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap')" class="flex-shrink-0">
+        <div v-if="!workflowMode" class="flex-shrink-0">
           <div class="text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
-              Choose your workflow to create batch jobs:
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+              Choose your workflow to create batch Face Swap jobs:
             </p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <!-- Subject First Workflow -->
               <UButton
                 variant="outline"
-                size="md"
-                class="h-16 flex flex-col items-center justify-center space-y-1"
+                size="sm"
+                class="h-12 flex flex-col items-center justify-center space-y-1"
                 @click="startSubjectFirstWorkflow"
               >
-                <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5" />
-                <span class="text-sm font-medium">Select Subject First</span>
+                <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium">Select Subject First</span>
               </UButton>
               
               <!-- Video First Workflow -->
               <UButton
                 variant="outline"
-                size="md"
-                class="h-16 flex flex-col items-center justify-center space-y-1"
+                size="sm"
+                class="h-12 flex flex-col items-center justify-center space-y-1"
                 @click="startVideoFirstWorkflow"
               >
-                <UIcon name="i-heroicons-film-20-solid" class="w-5 h-5" />
-                <span class="text-sm font-medium">Select Video First</span>
+                <UIcon name="i-heroicons-film-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium">Select Video First</span>
               </UButton>
             </div>
           </div>
@@ -63,7 +53,7 @@
           <!-- Step 1: Subject Selection -->
           <div v-if="!selectedSubject" class="flex flex-col flex-1 min-h-0">
             <!-- Subject Search - Compact -->
-            <div class="flex-shrink-0 mb-3">
+            <div class="flex-shrink-0 mb-2">
               <SubjectSearch
                 v-model="selectedSubject"
                 placeholder="Search by subject name..."
@@ -73,7 +63,7 @@
             </div>
             
             <!-- Subject Search Filters - Compact -->
-            <div class="flex-shrink-0 mb-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex-shrink-0 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <UInputTags
                 v-model="searchStore.subjectSearch.selectedTags"
                 placeholder="Add tags (e.g., portrait, landscape)"
@@ -99,7 +89,7 @@
           <!-- Step 2: Video Selection (after subject is selected) -->
           <div v-if="selectedSubject" class="flex flex-col flex-1 min-h-0">
             <!-- Selected Subject Preview - Compact -->
-            <div class="flex-shrink-0 mb-3 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex-shrink-0 mb-2 flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div class="flex items-center gap-2">
                 <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shrink-0">
                   <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-white" />
@@ -121,7 +111,7 @@
             </div>
             
             <!-- Video Search Filters - Compact -->
-            <div class="flex-shrink-0 mb-3">
+            <div class="flex-shrink-0 mb-2">
               <VideoSearchFilters
                 @search="searchVideos"
                 @clear="clearVideoFilters"
@@ -130,7 +120,7 @@
             </div>
 
             <!-- Selected Videos Count -->
-            <div v-if="selectedVideos.length > 0" class="flex-shrink-0 mb-3 flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <div v-if="selectedVideos.length > 0" class="flex-shrink-0 mb-2 flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
                 {{ selectedVideos.length }} video{{ selectedVideos.length !== 1 ? 's' : '' }} selected
               </span>
@@ -175,7 +165,7 @@
           <!-- Step 1: Video Selection -->
           <div v-if="!selectedVideo" class="flex flex-col flex-1 min-h-0">
             <!-- Video Search Filters - Compact -->
-            <div class="flex-shrink-0 mb-3">
+            <div class="flex-shrink-0 mb-2">
               <VideoSearchFilters
                 @search="searchVideos"
                 @clear="clearVideoFilters"
@@ -211,7 +201,7 @@
           <!-- Step 2: Subject Selection (after video is selected) -->
           <div v-if="selectedVideo" class="flex flex-col flex-1 min-h-0">
             <!-- Selected Video Preview - Compact -->
-            <div class="flex-shrink-0 mb-3 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex-shrink-0 mb-2 flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div class="flex items-center gap-2">
                 <div v-if="displayImages" class="w-12 h-9 bg-gray-200 dark:bg-gray-700 overflow-hidden shrink-0 relative">
                   <!-- Thumbnail Skeleton -->
@@ -253,7 +243,7 @@
             </div>
             
             <!-- Subject Search Filters - Compact -->
-            <div class="flex-shrink-0 mb-3">
+            <div class="flex-shrink-0 mb-2">
               <SubjectSearchFilters
                 @search="searchSubjects"
                 @clear="clearSubjectFilters"
@@ -262,7 +252,7 @@
             </div>
 
             <!-- Selected Subjects Count -->
-            <div v-if="selectedSubjects.length > 0" class="flex-shrink-0 mb-3 flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <div v-if="selectedSubjects.length > 0" class="flex-shrink-0 mb-2 flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
                 {{ selectedSubjects.length }} subject{{ selectedSubjects.length !== 1 ? 's' : '' }} selected
               </span>
@@ -479,9 +469,9 @@ const isOpen = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-// Reactive form data
+// Hardcoded job type - Face Swap only
 const form = ref({
-  job_type: { label: 'Face Swap', value: 'vid_faceswap' }
+  job_type: 'vid_faceswap'
 })
 
 // Workflow state
@@ -513,10 +503,6 @@ const subjectError = ref(null)
 const subjectCurrentPage = ref(1)
 const subjectHasSearched = ref(false)
 
-// Job type options
-const jobTypeOptions = [
-  { label: 'Face Swap', value: 'vid_faceswap' }
-]
 
 // Computed properties
 const canCreateJobs = computed(() => {
@@ -937,13 +923,6 @@ onMounted(async () => {
   }
 })
 
-// Watch for job type changes
-watch(() => form.value.job_type, (newJobType) => {
-  const jobTypeValue = newJobType?.value || newJobType
-  if (jobTypeValue !== 'vid_faceswap') {
-    resetWorkflow()
-  }
-})
 
 // Watch for modal opening/closing
 watch(() => props.modelValue, (isOpen) => {

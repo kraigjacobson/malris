@@ -1,5 +1,5 @@
-import { eq, ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
-import { subjects, mediaRecords } from '~/server/utils/schema'
+import { ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
+import { subjects } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { logger } from '~/server/utils/logger'
 
@@ -60,6 +60,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Build the query step by step to avoid TypeScript issues
+    // Removed LEFT JOIN with mediaRecords for better performance since we only need thumbnail URLs
     const baseSelect = db
       .select({
         id: subjects.id,
@@ -68,13 +69,9 @@ export default defineEventHandler(async (event) => {
         tags: subjects.tags,
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt,
-        has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
-        encryptedThumbnailData: mediaRecords.encryptedData,
-        encryptionMethod: mediaRecords.encryptionMethod,
-        metadata: mediaRecords.metadata
+        has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`
       })
       .from(subjects)
-      .leftJoin(mediaRecords, eq(subjects.thumbnail, mediaRecords.uuid))
 
     // Apply WHERE conditions if any
     const queryWithWhere = whereConditions.length > 0 
@@ -105,9 +102,9 @@ export default defineEventHandler(async (event) => {
     // Apply pagination
     const result = await queryWithSort.limit(limit).offset(calculatedOffset)
 
-    // Get total count for pagination
+    // Get total count for pagination - use the same WHERE conditions for accuracy
     const countSelect = db.select({ count: sql<number>`count(*)` }).from(subjects)
-    const countQuery = whereConditions.length > 0 
+    const countQuery = whereConditions.length > 0
       ? countSelect.where(and(...whereConditions))
       : countSelect
     const countResult = await countQuery
@@ -120,7 +117,7 @@ export default defineEventHandler(async (event) => {
 
       if (subject.thumbnail) {
         // Return higher quality thumbnail URL instead of base64 data for much faster responses
-        thumbnail_url = `/api/media/${subject.thumbnail}/image?size=md`
+        thumbnail_url = `/api/media/${subject.thumbnail}/image?size=sm`
       }
 
       return {

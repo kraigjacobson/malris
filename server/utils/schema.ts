@@ -75,6 +75,7 @@ export const mediaRecords = pgTable('media_records', {
   sizeThreshold: bigint('size_threshold', { mode: 'number' }).default(104857600), // 100MB threshold
   encryptionMethod: varchar('encryption_method', { length: 20 }).default('full-file').notNull(), // 'full-file' or 'chunk-based'
   chunkSize: integer('chunk_size').default(1048576), // 1MB chunks for chunk-based encryption
+  encryptionMetadata: jsonb('encryption_metadata'), // JSONB field for encryption-specific metadata (ChunkMetadata)
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   lastAccessed: timestamp('last_accessed'),

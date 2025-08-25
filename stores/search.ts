@@ -9,7 +9,8 @@ export const useSearchStore = defineStore('search', () => {
       min_duration: 0,
       max_duration: null as number | null
     },
-    sortOptions: { label: 'Random', value: 'random' },
+    sortType: { label: 'Random', value: 'random' },
+    sortOrder: { label: 'Asc', value: 'asc' },
     limitOptions: { label: '48', value: 48 }
   })
 
@@ -28,6 +29,7 @@ export const useSearchStore = defineStore('search', () => {
       subject_uuid: ''
     },
     selectedTags: [] as string[],
+    onlyShowUntagged: false,
     completionFilters: {
       min_completions: 0,
       max_completions: null as number | null
@@ -113,7 +115,8 @@ export const useSearchStore = defineStore('search', () => {
         min_duration: 0,
         max_duration: null
       },
-      sortOptions: { label: 'Random', value: 'random' },
+      sortType: { label: 'Random', value: 'random' },
+      sortOrder: { label: 'Asc', value: 'asc' },
       limitOptions: { label: '48', value: 48 }
     }
     await saveVideoSearch()
@@ -138,6 +141,7 @@ export const useSearchStore = defineStore('search', () => {
         subject_uuid: ''
       },
       selectedTags: [],
+      onlyShowUntagged: false,
       completionFilters: {
         min_completions: 0,
         max_completions: null

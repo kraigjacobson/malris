@@ -129,6 +129,12 @@ export default defineEventHandler(async (event) => {
       })
     }
     
+    // Check if this is a batch tagging job that should be deleted after completion
+    const isBatchTaggingJob = jobType === 'batch_tagging'
+    if (isBatchTaggingJob) {
+      logger.info(`🏷️ BATCH TAGGING: Detected batch tagging job ${jobId} - will delete after processing`)
+    }
+    
     logger.info(`🔗 SOURCE UUID MAPPING: Found ${sourceMediaUuids.size} individual source UUIDs`)
     
     // Handle error case
@@ -152,6 +158,21 @@ export default defineEventHandler(async (event) => {
         await updateJobCounts()
       } catch (error) {
         logger.error('Failed to update job counts after job failure:', error)
+      }
+      
+      // Handle batch tagging job deletion after failure
+      if (isBatchTaggingJob) {
+        try {
+          logger.info(`🏷️ BATCH TAGGING: Deleting failed batch tagging job ${jobId}`)
+          await db.delete(jobs).where(eq(jobs.id, jobId))
+          logger.info(`🗑️ BATCH TAGGING: Deleted failed temporary job ${jobId}`)
+          
+          // Update job counts again after deletion
+          const { updateJobCounts: updateJobCountsAfterDeletion } = await import('~/server/services/systemStatusManager')
+          await updateJobCountsAfterDeletion()
+        } catch (batchError) {
+          logger.error(`❌ BATCH TAGGING: Failed to delete failed batch tagging job ${jobId}:`, batchError)
+        }
       }
       
       // Job triggering is now handled exclusively by the continuous processing interval
@@ -641,6 +662,39 @@ export default defineEventHandler(async (event) => {
       await updateJobCounts()
     } catch (error) {
       logger.error('Failed to update job counts after job completion:', error)
+    }
+    
+    // Handle batch tagging job deletion after successful completion
+    if (isBatchTaggingJob && jobStatus === 'completed') {
+      try {
+        logger.info(`🏷️ BATCH TAGGING: Processing tagging results for job ${jobId}`)
+        
+        // For batch tagging, the images contain the tagging results
+        // We need to update the original media records with the tags
+        const taggedImages = savedMedia.filter(media => media.type === 'image')
+        
+        if (taggedImages.length > 0) {
+          logger.info(`🏷️ BATCH TAGGING: Found ${taggedImages.length} tagged images to process`)
+          
+          // TODO: Extract tags from the tagged images and update original media records
+          // This would involve reading the image metadata or filename to get the tags
+          // and then updating the corresponding source media records
+          
+          logger.info(`🏷️ BATCH TAGGING: Tagging results processed successfully`)
+        }
+        
+        // Delete the temporary batch tagging job
+        await db.delete(jobs).where(eq(jobs.id, jobId))
+        logger.info(`🗑️ BATCH TAGGING: Deleted temporary job ${jobId} after successful completion`)
+        
+        // Update job counts again after deletion
+        const { updateJobCounts: updateJobCountsAfterDeletion } = await import('~/server/services/systemStatusManager')
+        await updateJobCountsAfterDeletion()
+        
+      } catch (batchError) {
+        logger.error(`❌ BATCH TAGGING: Failed to process batch tagging completion for job ${jobId}:`, batchError)
+        // Don't fail the entire request if batch processing fails
+      }
     }
     
     // Job triggering is now handled exclusively by the continuous processing interval

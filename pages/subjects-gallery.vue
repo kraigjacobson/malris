@@ -77,7 +77,7 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Sort By
           </label>
-          <USelectMenu
+          <USelect
             v-model="sortOptions.sort_by"
             :items="sortByOptions"
             placeholder="Sort by..."
@@ -88,7 +88,7 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Sort Order
           </label>
-          <USelectMenu
+          <USelect
             v-model="sortOptions.sort_order"
             :items="sortOrderOptions"
             placeholder="Sort order..."
@@ -99,7 +99,7 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Results Per Page
           </label>
-          <USelectMenu
+          <USelect
             v-model="pagination.limit"
             :items="limitOptions"
             placeholder="Results per page..."
@@ -257,14 +257,16 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+import { useSubjectsStore } from '~/stores/subjects'
 
 // Page metadata
 definePageMeta({
   title: 'Subjects Gallery'
 })
 
-// Initialize settings store
+// Initialize stores
 const settingsStore = useSettingsStore()
+const subjectsStore = useSubjectsStore()
 
 // Date formatting utility
 const formatDate = (dateString) => {
@@ -374,6 +376,59 @@ const searchSubjects = async () => {
   hasSearched.value = true
 
   try {
+    // First try to get cached data from the store
+    const cachedSubjects = subjectsStore.getCachedFullSubjects(selectedTags.value)
+    
+    if (cachedSubjects && cachedSubjects.length > 0) {
+      console.log('🚀 Using cached subjects data for faster loading')
+      
+      // Filter cached data based on search criteria
+      let filteredSubjects = cachedSubjects
+      
+      // Apply name filter if provided
+      if (searchTerm.value && searchTerm.value.trim()) {
+        const searchLower = searchTerm.value.trim().toLowerCase()
+        filteredSubjects = filteredSubjects.filter(subject =>
+          subject.name.toLowerCase().includes(searchLower)
+        )
+      }
+      
+      // Apply sorting
+      const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
+      const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
+      
+      if (sortBy === 'name') {
+        filteredSubjects.sort((a, b) => {
+          const comparison = a.name.localeCompare(b.name)
+          return sortOrder === 'desc' ? -comparison : comparison
+        })
+      } else if (sortBy === 'created_at') {
+        filteredSubjects.sort((a, b) => {
+          const aDate = new Date(a.created_at || 0).getTime()
+          const bDate = new Date(b.created_at || 0).getTime()
+          const comparison = aDate - bDate
+          return sortOrder === 'desc' ? -comparison : comparison
+        })
+      }
+      
+      // Apply pagination
+      const startIndex = (currentPage.value - 1) * pagination.value.limit
+      const endIndex = startIndex + pagination.value.limit
+      subjectResults.value = filteredSubjects.slice(startIndex, endIndex)
+      
+      // Update pagination info
+      pagination.value = {
+        ...pagination.value,
+        total: filteredSubjects.length,
+        has_more: endIndex < filteredSubjects.length
+      }
+      
+      isLoading.value = false
+      return
+    }
+    
+    // Fallback to API call if no cached data
+    console.log('📡 No cached data available, fetching from API')
     const params = new URLSearchParams()
     
     console.log('🔍 Search term being used:', searchTerm.value)
@@ -492,9 +547,15 @@ watch(currentPage, (newPage, oldPage) => {
   }
 })
 
-// Initialize settings on mount (but don't auto-search)
+// Initialize settings and preload subjects cache on mount
 onMounted(async () => {
   await settingsStore.initializeSettings()
+  
+  // Preload subjects cache in the background for instant search results
+  console.log('🚀 Preloading subjects cache for faster search...')
+  subjectsStore.initializeFullSubjects().catch(error => {
+    console.warn('Failed to preload subjects cache:', error)
+  })
 })
 
 // Page head

@@ -129,14 +129,13 @@ export default defineEventHandler(async (event) => {
 
           // Update the video record with additional metadata using direct database query
           // since storeMedia doesn't handle all the custom fields we need
-          // NOTE: Don't overwrite the metadata field - it contains encryption chunk metadata!
           await db
             .update(mediaRecords)
             .set({
               width: metadata.width,
               height: metadata.height,
               duration: metadata.duration,
-              tags: {
+              metadata: {
                 codec: metadata.codec,
                 format: metadata.format,
                 bitrate: metadata.bitrate,
@@ -154,7 +153,7 @@ export default defineEventHandler(async (event) => {
             .set({
               width: 320,
               height: Math.round((320 * metadata.height) / metadata.width),
-              tags: {
+              metadata: {
                 generated_from: baseFilename,
                 thumbnail_type: 'video_frame'
               },

@@ -1,14 +1,10 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
-    <div class="mb-4 sm:mb-8">
-      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Media
-      </h1>
-    </div>
 
     <!-- Search Filters -->
-    <UCard class="mb-3 sm:mb-6">
-      <template #header>
+    <div class="mb-3 sm:mb-6">
+      <!-- Header always visible -->
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-t-lg px-4 py-3">
         <div class="flex justify-between items-center">
           <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
             Search Filters
@@ -49,9 +45,10 @@
             </UButton>
           </div>
         </div>
-      </template>
+      </div>
 
-      <div v-show="!filtersCollapsed" class="space-y-3 sm:space-y-4">
+      <!-- Content only when not collapsed -->
+      <div v-if="!filtersCollapsed" class="bg-white dark:bg-gray-800 border-x border-b border-gray-200 dark:border-gray-700 rounded-b-lg px-4 py-3 space-y-3 sm:space-y-4">
         <!-- UUID Search (priority filter) -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -86,7 +83,7 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Media Type
             </label>
-            <USelectMenu
+            <USelect
               v-model="mediaType"
               :items="mediaTypeOptions"
               placeholder="All types"
@@ -100,7 +97,7 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Purpose
             </label>
-            <USelectMenu
+            <USelect
               v-model="purpose"
               :items="purposeOptions"
               placeholder="All purposes"
@@ -112,7 +109,6 @@
 
         <!-- Second row for Subject and Tags -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-
           <!-- Subject Filter -->
           <div>
             <SubjectSearch
@@ -132,68 +128,73 @@
                 class="w-full"
                 :disabled="!!mediaUuid"
               />
+              <UCheckbox
+                v-model="onlyShowUntagged"
+                label="Only show untagged"
+                class="text-xs"
+                :disabled="!!mediaUuid"
+              />
             </div>
           </div>
         </div>
 
-      </div>
+        <!-- Sort Options and Limit -->
+        <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+          <div class="flex-1 min-w-0">
+            <USelect
+              v-model="sortBy"
+              :items="sortByOptions"
+              placeholder="Sort by..."
+              class="w-full"
+              :disabled="!!mediaUuid"
+            />
+          </div>
+          <div class="w-24 flex-shrink-0">
+            <USelect
+              v-model="sortOrder"
+              :items="sortOrderOptions"
+              placeholder="Order..."
+              class="w-full"
+              :disabled="!!mediaUuid"
+            />
+          </div>
+          <div class="w-20 flex-shrink-0">
+            <USelect
+              v-model="paginationLimit"
+              :items="limitOptions"
+              placeholder="Limit..."
+              class="w-full"
+              :disabled="!!mediaUuid"
+            />
+          </div>
+        </div>
 
-      <!-- Sort Options and Limit -->
-      <div v-show="!filtersCollapsed" class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
-        <div class="flex-1 min-w-0">
-          <USelectMenu
-            v-model="sortBy"
-            :items="sortByOptions"
-            placeholder="Sort by..."
-            class="w-full"
-            :disabled="!!mediaUuid"
-          />
-        </div>
-        <div class="w-24 flex-shrink-0">
-          <USelectMenu
-            v-model="sortOrder"
-            :items="sortOrderOptions"
-            placeholder="Order..."
-            class="w-full"
-            :disabled="!!mediaUuid"
-          />
-        </div>
-        <div class="w-20 flex-shrink-0">
-          <USelect
-            v-model="paginationLimit"
-            :items="limitOptions"
-            placeholder="Limit..."
-            class="w-full"
-            :disabled="!!mediaUuid"
-          />
+        <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+          <UButton
+            v-if="!isLoading"
+            color="primary"
+            size="sm"
+            @click="searchMedia"
+          >
+            Search
+          </UButton>
+          <UButton
+            v-else
+            color="error"
+            variant="outline"
+            size="sm"
+            @click="cancelSearch"
+          >
+            <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
+            <span class="hidden sm:inline">Cancel Search</span>
+            <span class="sm:hidden">Cancel</span>
+          </UButton>
+          <UButton variant="outline" size="sm" @click="clearFilters">
+            Clear Results
+          </UButton>
         </div>
       </div>
-
-      <div v-show="!filtersCollapsed" class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
-        <UButton
-          v-if="!isLoading"
-          color="primary"
-          size="sm"
-          @click="searchMedia"
-        >
-          Search
-        </UButton>
-        <UButton
-          v-else
-          color="error"
-          variant="outline"
-          size="sm"
-          @click="cancelSearch"
-        >
-          <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
-          <span class="hidden sm:inline">Cancel Search</span>
-          <span class="sm:hidden">Cancel</span>
-        </UButton>
-        <UButton variant="outline" size="sm" @click="clearFilters">
-          Clear Results
-        </UButton>
-      </div>
-    </UCard>
+    </div>
 
     <!-- Loading State -->
     <div v-if="isLoading" class="flex justify-center py-8">
@@ -231,7 +232,7 @@
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-neutral-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow group"
+          class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group"
         >
           <!-- Image Preview -->
           <div
@@ -242,7 +243,7 @@
             <img
               v-if="settingsStore.displayImages"
               :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
-              :alt="media.filename"
+              :alt="media.type"
               class="w-full h-full object-cover object-top"
               loading="lazy"
               @error="handleImageError"
@@ -311,24 +312,6 @@
             </div>
           </div>
 
-          <!-- Media Info -->
-          <div class="p-2 sm:p-3 cursor-pointer" @click="openModal(media)">
-            <h3 class="font-medium text-xs sm:text-sm text-gray-900 dark:text-white truncate">
-              {{ media.filename }}
-            </h3>
-            <p class="text-xs text-gray-500 mt-1 hidden sm:block">
-              {{ media.type }} • {{ media.purpose }}
-            </p>
-            <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 sm:mt-2 hidden sm:flex">
-              <span
-                v-for="tag in media.tags.tags.slice(0, 2)"
-                :key="tag"
-                class="px-1 sm:px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-xs rounded border border-pink-200 dark:border-pink-800"
-              >
-                {{ tag }}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -337,16 +320,16 @@
         <div
           v-for="media in mediaResults"
           :key="media.uuid"
-          class="bg-neutral-800 rounded-lg p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group"
+          class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group"
         >
           <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
-            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 rounded shrink-0 cursor-pointer" @click="openModal(media)">
+            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 shrink-0 cursor-pointer" @click="openModal(media)">
               <img
                 v-if="media.type === 'image' && settingsStore.displayImages"
                 :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
-                :alt="media.filename"
-                class="w-full h-full object-cover object-top rounded"
+                :alt="media.type"
+                class="w-full h-full object-cover object-top"
                 loading="lazy"
                 @error="handleImageError"
               >
@@ -362,7 +345,7 @@
                 <video
                   :ref="`video-list-${media.uuid}`"
                   :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
-                  class="w-full h-full object-cover object-top rounded"
+                  class="w-full h-full object-cover object-top"
                   muted
                   loop
                   preload="none"
@@ -378,7 +361,7 @@
                 <!-- Fallback for videos without thumbnails -->
                 <div
                   v-if="!media.thumbnail_uuid"
-                  class="absolute inset-0 bg-gray-800 flex items-center justify-center rounded"
+                  class="absolute inset-0 bg-gray-800 flex items-center justify-center"
                 >
                   <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
                 </div>
@@ -393,9 +376,6 @@
 
             <!-- Info -->
             <div class="flex-1 min-w-0 cursor-pointer" @click="openModal(media)">
-              <h3 class="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
-                {{ media.filename }}
-              </h3>
               <p class="text-xs sm:text-sm text-gray-500">
                 {{ media.type }} • {{ media.purpose }}<span class="hidden sm:inline"> • {{ formatDate(media.created_at) }}</span>
               </p>
@@ -458,7 +438,7 @@
         <div v-if="selectedMedia" class="p-3 sm:p-6">
           <!-- Header -->
           <div class="flex justify-between items-center mb-3 sm:mb-6">
-            <h3 class="text-base sm:text-lg font-semibold truncate pr-2">{{ selectedMedia.filename }}</h3>
+            <h3 class="text-base sm:text-lg font-semibold truncate pr-2">Media Details</h3>
             <div class="flex items-center gap-1 sm:gap-2 shrink-0">
               <span class="text-xs sm:text-sm text-gray-500 hidden sm:inline">{{ currentMediaIndex + 1 }} / {{ allMediaResults.length }}</span>
               <UButton
@@ -533,7 +513,7 @@
               <img
                 v-if="settingsStore.displayImages"
                 :src="selectedMedia.thumbnail ? selectedMedia.thumbnail : `/api/media/${selectedMedia.uuid}/image?size=lg`"
-                :alt="selectedMedia.filename"
+                :alt="selectedMedia.type"
                 class="w-full h-auto max-h-[80vh] object-contain rounded"
                 @error="handleImageError"
               >
@@ -1005,11 +985,13 @@
       v-model="isTagEditModalOpen"
       :media="selectedMediaForTagEdit"
       :current-index="tagEditCurrentIndex"
-      :total-count="1"
-      :has-next="false"
+      :total-count="allMediaResults.length"
+      :has-next="tagEditCurrentIndex < allMediaResults.length - 1"
+      :has-previous="tagEditCurrentIndex > 0"
       :show-skip-button="false"
       @save="handleTagSave"
       @skip="handleTagSkip"
+      @navigate="handleTagNavigate"
       @close="closeTagEditModal"
     />
 
@@ -1279,7 +1261,8 @@ const {
   viewMode,
   filtersCollapsed,
   subjectUuid,
-  mediaUuid
+  mediaUuid,
+  onlyShowUntagged
 } = useMediaGalleryFilters()
 
 // Template refs
@@ -1447,7 +1430,7 @@ const mediaTypeOptions = [
 ]
 
 const purposeOptions = [
-  { label: 'All Purposes', value: '' },
+  { label: 'All Purposes', value: 'all' },
   { label: 'Source', value: 'source' },
   { label: 'Destination', value: 'dest' },
   { label: 'Intermediate', value: 'intermediate' },
@@ -1561,7 +1544,7 @@ const searchMedia = async () => {
       const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
       
       if (mediaTypeValue) params.append('media_type', mediaTypeValue)
-      if (purposeValue) params.append('purpose', purposeValue)
+      if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
       if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
       
       // Add selected tags from UInputTags component
@@ -1570,6 +1553,11 @@ const searchMedia = async () => {
       }
       // Always use partial match mode (API only supports this)
       params.append('tag_match_mode', 'partial')
+      
+      // Add only show untagged filter
+      if (onlyShowUntagged.value) {
+        params.append('only_untagged', 'true')
+      }
       
       
       
@@ -2054,7 +2042,7 @@ const handleVideoHover = async (videoId, isHovering) => {
 // Tag editing methods
 const openTagEditModal = (media) => {
   selectedMediaForTagEdit.value = media
-  tagEditCurrentIndex.value = 0
+  tagEditCurrentIndex.value = allMediaResults.value.findIndex(m => m.uuid === media.uuid)
   isTagEditModalOpen.value = true
 }
 
@@ -2076,16 +2064,18 @@ const handleTagSave = async (data) => {
       mediaResults.value[mediaIndex].tags = { tags: data.tags }
     }
     
-    // Show success message
-    toast.add({
-      title: 'Tags Updated',
-      description: 'Tags have been saved.',
-      color: 'green',
-      timeout: 2000
-    })
+    // Update the selected media for tag edit if it's the same record
+    if (selectedMediaForTagEdit.value && selectedMediaForTagEdit.value.uuid === data.uuid) {
+      selectedMediaForTagEdit.value.tags = { tags: data.tags }
+    }
     
-    // Close the modal
-    closeTagEditModal()
+    // Show success message (shorter timeout for rapid tagging)
+    toast.add({
+      title: 'Tags Saved',
+      description: `Tags updated for ${data.tags.length} tag${data.tags.length !== 1 ? 's' : ''}`,
+      color: 'green',
+      duration: 500
+    })
     
   } catch (error) {
     console.error('Failed to save tags:', error)
@@ -2093,8 +2083,17 @@ const handleTagSave = async (data) => {
       title: 'Save Failed',
       description: 'Failed to save tags. Please try again.',
       color: 'red',
-      timeout: 5000
+      duration: 1000
     })
+    throw error // Re-throw to prevent navigation on error
+  }
+}
+
+const handleTagNavigate = (direction) => {
+  const newIndex = tagEditCurrentIndex.value + direction
+  if (newIndex >= 0 && newIndex < allMediaResults.value.length) {
+    tagEditCurrentIndex.value = newIndex
+    selectedMediaForTagEdit.value = allMediaResults.value[newIndex]
   }
 }
 
@@ -2166,6 +2165,7 @@ const addVideoEventListeners = (videoElement) => {
     if (isSlideshow.value && !slideshowPaused.value) {
       slideshowNext()
     }
+    // Note: When paused, video.loop = true handles looping automatically
   })
   
   // Check if we need to load next batch when getting close to the end
@@ -2208,7 +2208,7 @@ const createSlideshowVideo = () => {
     slideshowVideo.value.autoplay = true  // Enable autoplay since we're muted
     slideshowVideo.value.muted = true  // Required for mobile autoplay
     slideshowVideo.value.playsInline = true
-    slideshowVideo.value.loop = false  // Don't loop individual videos
+    slideshowVideo.value.loop = false  // Default to no loop, will be set dynamically based on pause state
     slideshowVideo.value.setAttribute('webkit-playsinline', 'true')
     slideshowVideo.value.setAttribute('playsinline', 'true')
     slideshowVideo.value.setAttribute('preload', 'metadata')
@@ -2303,7 +2303,8 @@ const toggleSlideshowPause = () => {
     })
     slideshowPaused.value = false
   } else {
-    slideshowVideo.value.pause()
+    // When pausing, enable loop on current video so it keeps playing
+    slideshowVideo.value.loop = true
     slideshowPaused.value = true
   }
 }
@@ -2372,6 +2373,9 @@ const playCurrentSlideshowVideo = async () => {
     slideshowNextVideo.value.style.zIndex = '5'
     slideshowNextVideo.value.style.display = 'none'
     
+    // Set loop based on pause state
+    slideshowVideo.value.loop = slideshowPaused.value
+    
     // Play the swapped video
     if (!slideshowPaused.value) {
       try {
@@ -2379,20 +2383,29 @@ const playCurrentSlideshowVideo = async () => {
       } catch (playError) {
         console.error('Preloaded video play failed:', playError)
       }
+    } else {
+      // If paused, still try to play since loop is enabled
+      try {
+        await slideshowVideo.value.play()
+      } catch (playError) {
+        console.error('Paused video play failed:', playError)
+      }
     }
   } else {
     // Fallback to normal loading if preload didn't work
     slideshowVideo.value.pause()
     slideshowVideo.value.src = streamUrl
+    
+    // Set loop based on pause state
+    slideshowVideo.value.loop = slideshowPaused.value
+    
     slideshowVideo.value.load()
     
-    // Try to play if not paused
-    if (!slideshowPaused.value) {
-      try {
-        await slideshowVideo.value.play()
-      } catch (playError) {
-        console.error('Video play failed:', playError)
-      }
+    // Try to play regardless of pause state (loop will handle paused behavior)
+    try {
+      await slideshowVideo.value.play()
+    } catch (playError) {
+      console.error('Video play failed:', playError)
     }
   }
 }
@@ -2444,7 +2457,7 @@ const loadSlideshowBatch = async () => {
     const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
     
     if (mediaTypeValue) params.append('media_type', mediaTypeValue)
-    if (purposeValue) params.append('purpose', purposeValue)
+    if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
     if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
     
     // Add selected tags

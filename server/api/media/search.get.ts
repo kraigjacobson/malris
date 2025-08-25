@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
       status,
       exclude_statuses,
       tags,
+      only_untagged,
       filename_pattern,
       subject_uuid,
       exclude_subject_uuid,
@@ -408,6 +409,13 @@ export default defineEventHandler(async (event) => {
         // Use AND logic - all tags must be found
         conditions.push(and(...tagConditions))
       }
+    }
+
+    // Only show untagged filter - records with no tags or empty tags array
+    if (only_untagged === 'true' || only_untagged === true) {
+      conditions.push(
+        sql`(${mediaRecords.tags} IS NULL OR ${mediaRecords.tags}->'tags' IS NULL OR jsonb_array_length(${mediaRecords.tags}->'tags') = 0)`
+      )
     }
 
     // Handle pagination

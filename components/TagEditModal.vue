@@ -1,12 +1,12 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ width: 'sm:max-w-2xl' }">
+  <UModal v-model:open="isOpen" :ui="{ width: 'sm:max-w-4xl' }">
     <template #body>
       <div v-if="media" class="p-3 sm:p-6">
         <!-- Header -->
         <div class="flex justify-between items-center mb-3 sm:mb-6">
-          <h3 class="text-base sm:text-lg font-semibold truncate pr-2">Edit Tags</h3>
+          <h3 class="text-base sm:text-lg font-semibold truncate pr-2">Rapid Tag Editor</h3>
           <div class="flex items-center gap-1 sm:gap-2 shrink-0">
-            <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-xs sm:text-sm text-gray-500 hidden sm:inline">
+            <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-xs sm:text-sm text-neutral-500 hidden sm:inline">
               {{ currentIndex + 1 }} / {{ totalCount }}
             </span>
             <UButton
@@ -18,105 +18,139 @@
           </div>
         </div>
 
-        <div class="space-y-4">
-          <!-- Image Display -->
-          <div class="flex justify-center">
-            <div class="max-w-md">
-              <img
-                v-if="media.type === 'image'"
-                :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
-                :alt="media.filename"
-                class="w-full h-auto max-h-96 object-contain rounded-lg shadow-md"
-                @error="handleImageError"
-              >
-              <div v-else-if="media.type === 'video'" class="relative">
-                <video
-                  v-if="media.thumbnail_uuid"
-                  :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Media Display -->
+          <div class="space-y-4">
+            <div class="flex justify-center">
+              <div class="max-w-md w-full">
+                <img
+                  v-if="media.type === 'image'"
+                  :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
+                  :alt="media.filename"
                   class="w-full h-auto max-h-96 object-contain rounded-lg shadow-md"
-                  controls
-                  preload="metadata"
+                  @error="handleImageError"
                 >
-                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
-                  Your browser does not support the video tag.
-                </video>
-                <div v-else class="w-full h-64 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                  <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400" />
+                <div v-else-if="media.type === 'video'" class="relative">
+                  <video
+                    v-if="media.thumbnail_uuid"
+                    :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
+                    class="w-full h-auto max-h-96 object-contain rounded-lg shadow-md"
+                    controls
+                    preload="metadata"
+                  >
+                    <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
+                  <div v-else class="w-full h-64 bg-neutral-100 dark:bg-neutral-800 rounded-lg flex items-center justify-center">
+                    <UIcon name="i-heroicons-play-circle" class="text-6xl text-neutral-400" />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Media Info -->
-          <div class="text-center">
-            <h4 class="font-medium text-gray-900 dark:text-white truncate">{{ media.filename }}</h4>
-            <p class="text-sm text-gray-500">{{ media.type }} • {{ media.purpose }}</p>
-          </div>
+            <!-- Media Info -->
+            <div class="text-center">
+              <h4 class="font-medium text-neutral-900 dark:text-white truncate">{{ media.filename }}</h4>
+              <p class="text-sm text-neutral-500">{{ media.type }} • {{ media.purpose }}</p>
+            </div>
 
-          <!-- Hair Tags Input -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Hair Tags
-            </label>
-            <UInputTags
-              v-model="hairTags"
-              placeholder="Add hair tags (e.g., long_hair, blonde_hair, twintails)"
-              class="w-full"
-              :ui="{
-                input: 'w-full',
-                tag: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800'
-              }"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              Hair-related tags (containing "hair" or common hair styles)
-            </p>
-          </div>
-
-          <!-- Other Tags Input -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Other Tags
-            </label>
-            <UInputTags
-              v-model="otherTags"
-              placeholder="Add other tags (e.g., 1girl, anime, school_uniform)"
-              class="w-full"
-              :ui="{
-                input: 'w-full',
-                tag: 'bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-800'
-              }"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              All other tags (non-hair related)
-            </p>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="flex justify-between gap-3">
-            <UButton
-              variant="outline"
-              color="gray"
-              @click="closeModal"
-            >
-              Cancel
-            </UButton>
-            
-            <div class="flex gap-2">
+            <!-- Navigation Buttons -->
+            <div class="flex justify-between items-center">
               <UButton
-                v-if="showSkipButton"
+                :disabled="!hasPrevious"
                 variant="outline"
-                color="yellow"
-                @click="skipCurrent"
+                icon="i-heroicons-chevron-left"
+                @click="navigatePrevious"
               >
-                Skip
+                Previous
               </UButton>
+              
               <UButton
                 color="primary"
                 :loading="isSaving"
                 @click="saveTags"
               >
-                Save & {{ hasNext ? 'Next' : 'Close' }}
+                Save
               </UButton>
+
+              <UButton
+                :disabled="!hasNext"
+                variant="outline"
+                trailing-icon="i-heroicons-chevron-right"
+                @click="navigateNext"
+              >
+                Next
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Tag Selection Panel -->
+          <div class="space-y-6">
+            <!-- Quick Tags -->
+            <div>
+              <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Quick Tags</h5>
+              <div class="space-y-2">
+                <!-- Hair Color Row -->
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    v-for="tag in hairColorTags"
+                    :key="tag"
+                    variant="solid"
+                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
+                    size="sm"
+                    @click="toggleTag(tag)"
+                  >
+                    {{ formatTagDisplay(tag) }}
+                  </UButton>
+                </div>
+                
+                <!-- Age/Body Type Row -->
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    v-for="tag in ageBodyTags"
+                    :key="tag"
+                    variant="solid"
+                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
+                    size="sm"
+                    @click="toggleTag(tag)"
+                  >
+                    {{ formatTagDisplay(tag) }}
+                  </UButton>
+                </div>
+                
+                <!-- Action/Other Row -->
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    v-for="tag in actionTags"
+                    :key="tag"
+                    variant="solid"
+                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
+                    size="sm"
+                    @click="toggleTag(tag)"
+                  >
+                    {{ formatTagDisplay(tag) }}
+                  </UButton>
+                </div>
+              </div>
+            </div>
+
+            <!-- Current Tags Display -->
+            <div>
+              <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Current Tags</h5>
+              <UInputTags
+                v-model="selectedTags"
+                :ui="{ trailing: 'pe-1' }"
+              >
+                <template #trailing>
+                  <UButton
+                    v-if="selectedTags.length > 0"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-heroicons-x-mark"
+                    @click="clearAllTags"
+                  />
+                </template>
+              </UInputTags>
             </div>
           </div>
         </div>
@@ -155,6 +189,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  hasPrevious: {
+    type: Boolean,
+    default: false
+  },
   showSkipButton: {
     type: Boolean,
     default: false
@@ -162,7 +200,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update:modelValue', 'save', 'skip', 'close'])
+const emit = defineEmits(['update:modelValue', 'save', 'skip', 'close', 'navigate'])
 
 // Reactive data
 const isOpen = computed({
@@ -170,49 +208,32 @@ const isOpen = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-const hairTags = ref([])
-const otherTags = ref([])
+const selectedTags = ref([])
+const originalTags = ref([])
 const isSaving = ref(false)
 const settingsStore = useSettingsStore()
 
-// Helper function to check if a tag is hair-related
-const isHairTag = (tag) => {
-  const lowerTag = tag.toLowerCase()
-  return lowerTag.includes('black_hair') ||
-         lowerTag.includes('blonde_hair') ||
-         lowerTag.includes('brown_hair') ||
-         lowerTag.includes('curly_hair') ||
-         lowerTag.includes('grey_hair') ||
-         lowerTag.includes('orange_hair') ||
-         lowerTag.includes('red_hair') ||
-         lowerTag.includes('ginger_hair') ||
-         lowerTag.includes('braid') ||
-         lowerTag.includes('bangs')
-}
+// Predefined quick tags organized by category
+const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair', 'braid', 'bangs']
+const ageBodyTags = ['teen', 'milf', 'chub']
+const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34']
+
+// Computed to check if tags have changed
+const hasChanges = computed(() => {
+  if (selectedTags.value.length !== originalTags.value.length) return true
+  return !selectedTags.value.every(tag => originalTags.value.includes(tag))
+})
 
 // Watch for media changes to update tags
 watch(() => props.media, (newMedia) => {
   if (newMedia) {
     // Extract tags from the media object
     const tags = newMedia.tags?.tags || []
-    
-    // Separate hair tags from other tags
-    const hairRelated = []
-    const otherRelated = []
-    
-    tags.forEach(tag => {
-      if (isHairTag(tag)) {
-        hairRelated.push(tag)
-      } else {
-        otherRelated.push(tag)
-      }
-    })
-    
-    hairTags.value = [...hairRelated]
-    otherTags.value = [...otherRelated]
+    selectedTags.value = [...tags]
+    originalTags.value = [...tags]
   } else {
-    hairTags.value = []
-    otherTags.value = []
+    selectedTags.value = []
+    originalTags.value = []
   }
 }, { immediate: true })
 
@@ -223,26 +244,57 @@ const handleImageError = (event) => {
   event.target.style.display = 'none'
 }
 
+const formatTagDisplay = (tag) => {
+  // Convert underscores to spaces and capitalize
+  return tag.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+}
+
+const toggleTag = (tag) => {
+  const index = selectedTags.value.indexOf(tag)
+  if (index > -1) {
+    selectedTags.value.splice(index, 1)
+  } else {
+    selectedTags.value.push(tag)
+  }
+}
+
+const clearAllTags = () => {
+  selectedTags.value = []
+}
+
+const navigatePrevious = async () => {
+  if (hasChanges.value) {
+    await saveTags()
+  }
+  emit('navigate', -1)
+}
+
+const navigateNext = async () => {
+  if (hasChanges.value) {
+    await saveTags()
+  }
+  emit('navigate', 1)
+}
+
 const saveTags = async () => {
   if (!props.media) return
+  
+  // Only save if there are changes
+  if (!hasChanges.value) return
   
   isSaving.value = true
   
   try {
-    // Concatenate hair tags and other tags
-    const allTags = [...hairTags.value, ...otherTags.value]
-    
     await emit('save', {
       uuid: props.media.uuid,
-      tags: allTags
+      tags: selectedTags.value
     })
+    
+    // Update original tags after successful save
+    originalTags.value = [...selectedTags.value]
   } finally {
     isSaving.value = false
   }
-}
-
-const skipCurrent = () => {
-  emit('skip')
 }
 
 const closeModal = () => {

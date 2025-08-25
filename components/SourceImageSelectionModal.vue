@@ -532,14 +532,14 @@ const canGoToNextJob = computed(() => {
 // Methods
 // Job navigation methods
 const goToPreviousJob = () => {
-  if (props.needInputJobs.length > 1) {
+  if (sortedNeedInputJobs.value.length > 1) {
     if (currentJobIndex.value > 0) {
       currentJobIndex.value--
     } else {
       // Wrap to last job
-      currentJobIndex.value = props.needInputJobs.length - 1
+      currentJobIndex.value = sortedNeedInputJobs.value.length - 1
     }
-    const newJob = props.needInputJobs[currentJobIndex.value]
+    const newJob = sortedNeedInputJobs.value[currentJobIndex.value]
     emit('jobChanged', newJob)
   }
 }
@@ -817,18 +817,17 @@ const startPreloading = async () => {
   if (isPreloading.value || preloadQueue.value.length === 0) return
   
   isPreloading.value = true
-  console.log('🚀 Starting progressive image preloading for', preloadQueue.value.length, 'images')
+  console.log('🚀 Starting fast image preloading for', preloadQueue.value.length, 'images')
   
-  // Preload images one by one to avoid overwhelming the browser
-  for (const imageData of preloadQueue.value) {
-    try {
-      await preloadImage(imageData)
-      // Small delay between preloads to keep UI responsive
-      await new Promise(resolve => setTimeout(resolve, 50))
-    } catch (error) {
+  // Preload all images as fast as possible without delays
+  const preloadPromises = preloadQueue.value.map(imageData =>
+    preloadImage(imageData).catch(error => {
       console.error('Preload error:', error)
-    }
-  }
+      return null
+    })
+  )
+  
+  await Promise.all(preloadPromises)
   
   isPreloading.value = false
   console.log('🎉 Image preloading completed')
@@ -1161,7 +1160,7 @@ const getImageUrl = (image, size = 'original') => {
     return imageUrlCache.value.get(cacheKey)
   }
 
-  // Use 'original' size to get uncropped images for main display
+  // Use 'large' size for faster loading while maintaining good quality
   const url = `/api/media/${image.uuid}/image?size=${size}`
   imageUrlCache.value.set(cacheKey, url)
   return url
@@ -1194,9 +1193,10 @@ const constrainTranslation = (scale, translateX, translateY) => {
   const scaledWidth = imageRect.width * scale
   const scaledHeight = imageRect.height * scale
 
-  // Calculate max translation to keep image within container
-  const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2 / scale)
-  const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2 / scale)
+  // Calculate max translation with some padding for smoother movement
+  const padding = 50 // Allow some overpan for smoother experience
+  const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2 / scale + padding)
+  const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2 / scale + padding)
 
   return {
     translateX: Math.max(-maxTranslateX, Math.min(maxTranslateX, translateX)),
@@ -1252,174 +1252,113 @@ const handleMouseUp = () => {
 }
 
 const getTouchDistance = (touches) => {
-  if (touches.length < 2) {
-    console.log('🔥 [TOUCH DEBUG] getTouchDistance: Less than 2 touches')
-    return 0
-  }
+  if (touches.length < 2) return 0
 
   const touch1 = touches[0]
   const touch2 = touches[1]
 
-  const distance = Math.sqrt(
+  return Math.sqrt(
     Math.pow(touch2.clientX - touch1.clientX, 2) +
     Math.pow(touch2.clientY - touch1.clientY, 2)
   )
-
-  console.log('🔥 [TOUCH DEBUG] getTouchDistance calculated', {
-    touch1: { x: touch1.clientX, y: touch1.clientY },
-    touch2: { x: touch2.clientX, y: touch2.clientY },
-    distance
-  })
-
-  return distance
 }
 
-const handleTouchStart = (event) => {
-  console.log('🔥 [TOUCH DEBUG] handleTouchStart called', {
-    currentImage: !!currentImage.value,
-    touchCount: event.touches.length,
-    currentScale: sharedZoomState.value.scale,
-    touches: Array.from(event.touches).map(t => ({ x: t.clientX, y: t.clientY })),
-    target: event.target,
-    currentTarget: event.currentTarget
-  })
 
-  // ALWAYS prevent default and stop propagation first, regardless of conditions
+const handleTouchStart = (event) => {
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
 
-  if (!currentImage.value) {
-    console.log('🔥 [TOUCH DEBUG] No current image, but still preventing default')
-    return
-  }
+  if (!currentImage.value) return
 
   if (event.touches.length === 1) {
-    // Single touch - always start tracking for potential zoom/pan
+    // Single touch - start panning
     const touch = event.touches[0]
     dragStart.value = { x: touch.clientX, y: touch.clientY }
     isDragging.value = true
-    console.log('🔥 [TOUCH DEBUG] Started single touch drag', {
-      scale: sharedZoomState.value.scale,
-      startPos: dragStart.value
-    })
+    isZooming.value = false
   } else if (event.touches.length === 2) {
-    // Two touches - start zooming
+    // Two touches - start simultaneous zoom and pan
+    // IMPORTANT: Use the first finger for panning, not the center
+    const firstTouch = event.touches[0]
+    dragStart.value = { x: firstTouch.clientX, y: firstTouch.clientY }
+    
     isZooming.value = true
-    isDragging.value = false
+    isDragging.value = true
     lastTouchDistance.value = getTouchDistance(event.touches)
-    console.log('🔥 [TOUCH DEBUG] Started two touch zoom', {
-      distance: lastTouchDistance.value,
-      currentScale: sharedZoomState.value.scale
-    })
   }
 }
 
 const handleTouchMove = (event) => {
-  console.log('🔥 [TOUCH DEBUG] handleTouchMove called', {
-    currentImage: !!currentImage.value,
-    touchCount: event.touches.length,
-    isDragging: isDragging.value,
-    isZooming: isZooming.value,
-    currentScale: sharedZoomState.value.scale
-  })
-
-  // ALWAYS prevent default and stop propagation first
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
 
-  if (!currentImage.value) {
-    console.log('🔥 [TOUCH DEBUG] No current image in move, but still preventing default')
-    return
-  }
+  if (!currentImage.value) return
 
-  if (event.touches.length === 1) {
-    // Single touch - handle both drag and potential zoom start
+  if (event.touches.length === 1 && isDragging.value && !isZooming.value) {
+    // Single touch panning
     const touch = event.touches[0]
     const deltaX = touch.clientX - dragStart.value.x
     const deltaY = touch.clientY - dragStart.value.y
 
-    console.log('🔥 [TOUCH DEBUG] Single touch move', {
-      touchPos: { x: touch.clientX, y: touch.clientY },
-      dragStart: dragStart.value,
-      delta: { x: deltaX, y: deltaY },
-      isDragging: isDragging.value,
-      scale: sharedZoomState.value.scale
+    const currentState = sharedZoomState.value
+    const newTranslateX = currentState.translateX + deltaX / currentState.scale
+    const newTranslateY = currentState.translateY + deltaY / currentState.scale
+
+    const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
+    updateSharedZoom(constrained)
+
+    dragStart.value = { x: touch.clientX, y: touch.clientY }
+  } else if (event.touches.length === 2 && isZooming.value) {
+    // Two touch simultaneous zoom and pan
+    // IMPORTANT: Pan is based ONLY on the first finger's movement
+    const firstTouch = event.touches[0]
+    const currentDistance = getTouchDistance(event.touches)
+    
+    const currentState = sharedZoomState.value
+    
+    // Handle zoom
+    const distanceRatio = currentDistance / lastTouchDistance.value
+    const smoothedRatio = 1 + (distanceRatio - 1) * 0.5 // Smooth zoom
+    const newScale = Math.max(0.5, Math.min(5, currentState.scale * smoothedRatio))
+    
+    // Handle pan based ONLY on first finger movement
+    const deltaX = firstTouch.clientX - dragStart.value.x
+    const deltaY = firstTouch.clientY - dragStart.value.y
+    
+    const newTranslateX = currentState.translateX + deltaX / currentState.scale
+    const newTranslateY = currentState.translateY + deltaY / currentState.scale
+
+    const constrained = constrainTranslation(newScale, newTranslateX, newTranslateY)
+    updateSharedZoom({
+      scale: newScale,
+      translateX: constrained.translateX,
+      translateY: constrained.translateY
     })
 
-    if (isDragging.value) {
-      // Dragging while zoomed
-      const currentState = sharedZoomState.value
-      const newTranslateX = currentState.translateX + deltaX / currentState.scale
-      const newTranslateY = currentState.translateY + deltaY / currentState.scale
-
-      const constrained = constrainTranslation(currentState.scale, newTranslateX, newTranslateY)
-      console.log('🔥 [TOUCH DEBUG] Updating zoom state for drag', {
-        before: currentState,
-        after: constrained
-      })
-      updateSharedZoom(constrained)
-
-      dragStart.value = { x: touch.clientX, y: touch.clientY }
-    }
-  } else if (event.touches.length === 2) {
-    // Two touch zoom
-    if (!isZooming.value) {
-      // Start zooming if not already
-      isZooming.value = true
-      isDragging.value = false
-      lastTouchDistance.value = getTouchDistance(event.touches)
-      console.log('🔥 [TOUCH DEBUG] Starting zoom from move event')
-    } else {
-      const currentDistance = getTouchDistance(event.touches)
-      const distanceRatio = currentDistance / lastTouchDistance.value
-
-      console.log('🔥 [TOUCH DEBUG] Two touch zoom', {
-        currentDistance,
-        lastDistance: lastTouchDistance.value,
-        ratio: distanceRatio,
-        currentScale: sharedZoomState.value.scale
-      })
-
-      const currentState = sharedZoomState.value
-      const newScale = Math.max(0.5, Math.min(5, currentState.scale * distanceRatio))
-
-      console.log('🔥 [TOUCH DEBUG] Updating scale', {
-        oldScale: currentState.scale,
-        newScale
-      })
-
-      updateSharedZoom({ scale: newScale })
-      lastTouchDistance.value = currentDistance
-    }
+    // Update tracking values
+    lastTouchDistance.value = currentDistance
+    dragStart.value = { x: firstTouch.clientX, y: firstTouch.clientY }
   }
 }
 
 const handleTouchEnd = (event) => {
-  console.log('🔥 [TOUCH DEBUG] handleTouchEnd called', {
-    remainingTouches: event.touches.length,
-    isDragging: isDragging.value,
-    isZooming: isZooming.value,
-    currentScale: sharedZoomState.value.scale
-  })
-
-  // ALWAYS prevent default and stop propagation
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
 
   if (event.touches.length === 0) {
-    console.log('🔥 [TOUCH DEBUG] All touches ended, clearing states')
+    // All touches ended
     isDragging.value = false
     isZooming.value = false
   } else if (event.touches.length === 1) {
-    console.log('🔥 [TOUCH DEBUG] One touch remaining')
+    // One touch remaining - continue with single touch panning
+    // Use the remaining touch as the new drag start point
     isZooming.value = false
     isDragging.value = true
     const touch = event.touches[0]
     dragStart.value = { x: touch.clientX, y: touch.clientY }
-    console.log('🔥 [TOUCH DEBUG] Continuing drag with remaining touch', dragStart.value)
   }
 }
 

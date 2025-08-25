@@ -96,7 +96,7 @@ async function storeBytea(
   const result = await client.query(`
     INSERT INTO media_records (
       filename, type, purpose, encrypted_data, file_size, original_size,
-      storage_type, checksum, subject_uuid, encryption_method, chunk_size, metadata
+      storage_type, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata
     ) VALUES ($1, $2, $3, $4, $5, $6, 'bytea', $7, $8, $9, $10, $11)
     RETURNING uuid
   `, [
@@ -191,7 +191,7 @@ async function storeLargeObject(
     const result = await client.query(`
       INSERT INTO media_records (
         filename, type, purpose, large_object_oid, file_size, original_size,
-        storage_type, size_threshold, checksum, subject_uuid, encryption_method, chunk_size, metadata
+        storage_type, size_threshold, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata
       ) VALUES ($1, $2, $3, $4::integer, $5, $6, 'lob', $7, $8, $9, $10, $11, $12)
       RETURNING uuid
     `, [
@@ -235,7 +235,7 @@ export async function retrieveMedia(uuid: string): Promise<Buffer | null> {
   try {
     // Get storage info
     const record = await client.query(`
-      SELECT storage_type, encrypted_data, large_object_oid, file_size, encryption_method, metadata
+      SELECT storage_type, encrypted_data, large_object_oid, file_size, encryption_method, encryption_metadata
       FROM media_records WHERE uuid = $1
     `, [uuid])
     
@@ -243,7 +243,7 @@ export async function retrieveMedia(uuid: string): Promise<Buffer | null> {
       return null
     }
     
-    const { storage_type, encrypted_data, large_object_oid, file_size, encryption_method, metadata } = record.rows[0]
+    const { storage_type, encrypted_data, large_object_oid, file_size, encryption_method, encryption_metadata } = record.rows[0]
     
     // Update access tracking
     await client.query(
@@ -263,13 +263,13 @@ export async function retrieveMedia(uuid: string): Promise<Buffer | null> {
     // Decrypt the data based on encryption method
     const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY || 'default_key'
     
-    if (encryption_method === 'aes-gcm-unified' && metadata) {
+    if (encryption_method === 'aes-gcm-unified' && encryption_metadata) {
       // New unified AES-GCM encryption
-      const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
+      const chunkMetadata = (typeof encryption_metadata === 'string' ? JSON.parse(encryption_metadata) : encryption_metadata) as ChunkMetadata
       return await decryptChunked(encryptedBuffer, chunkMetadata, encryptionKey)
-    } else if (encryption_method === 'chunk-based' && metadata) {
+    } else if (encryption_method === 'chunk-based' && encryption_metadata) {
       // Legacy chunk-based encryption
-      const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
+      const chunkMetadata = (typeof encryption_metadata === 'string' ? JSON.parse(encryption_metadata) : encryption_metadata) as ChunkMetadata
       return await decryptChunked(encryptedBuffer, chunkMetadata, encryptionKey)
     } else {
       // Legacy Fernet full-file decryption
@@ -300,7 +300,7 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
   try {
     // Get storage info
     const record = await client.query(`
-      SELECT storage_type, encrypted_data, large_object_oid, file_size, filename, encryption_method, metadata
+      SELECT storage_type, encrypted_data, large_object_oid, file_size, original_size, filename, encryption_method, encryption_metadata, chunk_size
       FROM media_records WHERE uuid = $1
     `, [uuid])
     
@@ -309,7 +309,7 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
       return null
     }
     
-    const { storage_type, encrypted_data, large_object_oid, file_size, encryption_method, metadata } = record.rows[0]
+    const { storage_type, encrypted_data, large_object_oid, file_size, original_size, encryption_method, encryption_metadata, chunk_size } = record.rows[0]
     
     const isRangeRequest = range !== undefined
     const storageTypeLabel = storage_type === 'lob' ? 'LOB' : 'BYTEA'
@@ -340,9 +340,25 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
       
       logger.info(`🔄 BYTEA streaming for ${uuid}`)
       
-      if ((encryption_method === 'aes-gcm-unified' || encryption_method === 'chunk-based') && metadata) {
-        const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
-        logger.info(`📊 BYTEA chunk metadata: ${JSON.stringify(chunkMetadata)}`)
+      if ((encryption_method === 'aes-gcm-unified' || encryption_method === 'chunk-based') && (encryption_metadata || chunk_size)) {
+        let chunkMetadata: ChunkMetadata
+        
+        if (encryption_metadata) {
+          // Use the dedicated encryption_metadata column
+          chunkMetadata = (typeof encryption_metadata === 'string' ? JSON.parse(encryption_metadata) : encryption_metadata) as ChunkMetadata
+          logger.info(`📊 BYTEA using encryption_metadata: ${JSON.stringify(chunkMetadata)}`)
+        } else {
+          // Fallback: construct ChunkMetadata from database columns for legacy records
+          const actualFileSize = parseInt(original_size || file_size, 10)
+          const actualChunkSize = chunk_size || 1048576 // Default 1MB
+          chunkMetadata = {
+            chunkSize: actualChunkSize,
+            totalChunks: Math.ceil(actualFileSize / actualChunkSize),
+            encryptionMethod: 'aes-gcm-unified',
+            fileSize: actualFileSize
+          }
+          logger.info(`📊 BYTEA reconstructed chunk metadata from DB columns: ${JSON.stringify(chunkMetadata)}`)
+        }
         
         try {
           if (range) {
@@ -422,8 +438,25 @@ export async function streamMedia(uuid: string, range?: StreamRange): Promise<{
       }
     } else {
       // For Large Objects with chunk-based encryption, we can stream efficiently
-      if ((encryption_method === 'aes-gcm-unified' || encryption_method === 'chunk-based') && metadata) {
-        const chunkMetadata = (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) as ChunkMetadata
+      if ((encryption_method === 'aes-gcm-unified' || encryption_method === 'chunk-based') && (encryption_metadata || chunk_size)) {
+        let chunkMetadata: ChunkMetadata
+        
+        if (encryption_metadata) {
+          // Use the dedicated encryption_metadata column
+          chunkMetadata = (typeof encryption_metadata === 'string' ? JSON.parse(encryption_metadata) : encryption_metadata) as ChunkMetadata
+          logger.info(`📊 LOB using encryption_metadata: ${JSON.stringify(chunkMetadata)}`)
+        } else {
+          // Fallback: construct ChunkMetadata from database columns for legacy records
+          const actualFileSize = parseInt(original_size || file_size, 10)
+          const actualChunkSize = chunk_size || 1048576 // Default 1MB
+          chunkMetadata = {
+            chunkSize: actualChunkSize,
+            totalChunks: Math.ceil(actualFileSize / actualChunkSize),
+            encryptionMethod: 'aes-gcm-unified',
+            fileSize: actualFileSize
+          }
+          logger.info(`📊 LOB reconstructed chunk metadata from DB columns: ${JSON.stringify(chunkMetadata)}`)
+        }
         
         if (range) {
           // Efficient range streaming: only read and decrypt the chunks we need
@@ -642,7 +675,7 @@ export async function getMediaInfo(uuid: string): Promise<{
   
   try {
     const record = await client.query(`
-      SELECT filename, type, storage_type, file_size, original_size, metadata
+      SELECT filename, type, storage_type, file_size, original_size, encryption_metadata
       FROM media_records WHERE uuid = $1
     `, [uuid])
     
@@ -656,11 +689,27 @@ export async function getMediaInfo(uuid: string): Promise<{
     // and file_size (encrypted size) for encryptedSize
     let actualFileSize = parseInt(row.original_size || row.file_size, 10)
     
-    // If we have metadata with fileSize, use that as it's the most accurate
-    if (row.metadata) {
-      const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata
-      if (metadata.fileSize) {
-        actualFileSize = metadata.fileSize
+    // For AES-GCM encrypted files, calculate the actual decrypted size based on chunk structure
+    if (row.storage_type === 'bytea' && row.encryption_metadata) {
+      const encryptionMetadata = typeof row.encryption_metadata === 'string' ? JSON.parse(row.encryption_metadata) : row.encryption_metadata
+      if (encryptionMetadata.chunkSize && encryptionMetadata.totalChunks) {
+        // Calculate the maximum possible decrypted size based on chunk structure
+        const chunkOverhead = 32 // IV + AuthTag per chunk
+        const encryptedSize = parseInt(row.file_size, 10)
+        const maxDecryptedSize = encryptedSize - (encryptionMetadata.totalChunks * chunkOverhead)
+        
+        // Use the smaller of metadata fileSize or calculated max size
+        if (encryptionMetadata.fileSize) {
+          actualFileSize = Math.min(encryptionMetadata.fileSize, maxDecryptedSize)
+        } else {
+          actualFileSize = maxDecryptedSize
+        }
+      }
+    } else if (row.encryption_metadata) {
+      // Fallback for other cases
+      const encryptionMetadata = typeof row.encryption_metadata === 'string' ? JSON.parse(row.encryption_metadata) : row.encryption_metadata
+      if (encryptionMetadata.fileSize) {
+        actualFileSize = encryptionMetadata.fileSize
       }
     }
     

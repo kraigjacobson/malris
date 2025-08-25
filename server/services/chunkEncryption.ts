@@ -179,7 +179,17 @@ export async function decryptChunkRange(
     const rangeStartInChunks = startByte - (startChunk * metadata.chunkSize)
     const rangeEndInChunks = endByte - (startChunk * metadata.chunkSize)
     
-    return fullDecryptedRange.slice(rangeStartInChunks, rangeEndInChunks + 1)
+    // Ensure we don't go beyond the available decrypted data
+    const maxAvailableIndex = fullDecryptedRange.length - 1
+    const actualRangeStart = Math.max(0, Math.min(rangeStartInChunks, maxAvailableIndex))
+    const actualRangeEnd = Math.max(actualRangeStart, Math.min(rangeEndInChunks, maxAvailableIndex))
+    
+    // If the requested range is completely beyond available data, return empty buffer
+    if (rangeStartInChunks >= fullDecryptedRange.length) {
+      return Buffer.alloc(0)
+    }
+    
+    return fullDecryptedRange.slice(actualRangeStart, actualRangeEnd + 1)
   }
 
 /**

@@ -618,36 +618,22 @@ const loadVideos = async (reset = false) => {
     params.append('limit', limit.toString())
     params.append('offset', ((videoCurrentPage.value - 1) * limit).toString())
     
-    // Handle dynamic sorting
-    const sortValue = typeof searchStore.videoSearch.sortOptions === 'object' ? searchStore.videoSearch.sortOptions.value : searchStore.videoSearch.sortOptions
+    // Handle dynamic sorting with separate sortType and sortOrder
+    const sortType = typeof searchStore.videoSearch.sortType === 'object' ? searchStore.videoSearch.sortType.value : searchStore.videoSearch.sortType
+    const sortOrder = typeof searchStore.videoSearch.sortOrder === 'object' ? searchStore.videoSearch.sortOrder.value : searchStore.videoSearch.sortOrder
     
-    console.log('🔍 submit-job.vue sort value:', sortValue, 'type:', typeof sortValue)
+    console.log('🔍 submit-job.vue sort type:', sortType, 'order:', sortOrder)
     
     // Check if random sorting is selected
-    if (sortValue === 'random') {
+    if (sortType === 'random') {
       params.append('sort_by', 'random')
       params.append('sort_order', 'asc') // Order doesn't matter for random, but API expects it
       console.log('✅ Using random sorting in submit-job.vue')
     } else {
-      // Parse sort value properly for API format
-      let sortBy, sortOrder
-      if (sortValue && sortValue.endsWith('_desc')) {
-        sortBy = sortValue.slice(0, -5) // Remove '_desc'
-        sortOrder = 'desc'
-      } else if (sortValue && sortValue.endsWith('_asc')) {
-        sortBy = sortValue.slice(0, -4) // Remove '_asc'
-        sortOrder = 'asc'
-      } else {
-        // This should never happen if the UI is working correctly
-        console.error('❌ SUBMIT-JOB FALLBACK USED: Unknown sort value from searchStore:', sortValue, 'searchStore.videoSearch.sortOptions:', searchStore.videoSearch.sortOptions)
-        console.error('❌ This indicates a bug in the search filter UI or store')
-        sortBy = 'random'
-        sortOrder = 'asc'
-      }
-      
-      params.append('sort_by', sortBy)
-      params.append('sort_order', sortOrder)
-      console.log('✅ Using sort in submit-job.vue:', sortBy, sortOrder)
+      // Use the separate sort type and order
+      params.append('sort_by', sortType || 'created_at')
+      params.append('sort_order', sortOrder || 'desc')
+      console.log('✅ Using sort in submit-job.vue:', sortType, sortOrder)
     }
 
     // Add selected tags
@@ -825,12 +811,18 @@ const createBatchJobs = async () => {
   }
 }
 
-// Initialize search store on mount
+// Initialize search store and preload subjects cache on mount
 onMounted(async () => {
   try {
     if (searchStore.initializeSearch) {
       await searchStore.initializeSearch()
     }
+    
+    // Preload subjects cache in the background for instant search results
+    console.log('🚀 Preloading subjects cache for faster search...')
+    subjectsStore.initializeFullSubjects().catch(error => {
+      console.warn('Failed to preload subjects cache:', error)
+    })
   } catch (error) {
     console.error('Failed to initialize search store on mount:', error)
   }

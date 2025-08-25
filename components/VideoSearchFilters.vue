@@ -1,71 +1,84 @@
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-medium text-gray-900 dark:text-white">Video Search Filters</h4>
-        <UButton
-          variant="ghost"
-          size="xs"
-          :icon="isCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
-          @click="toggleCollapse"
-        />
-      </div>
-    </template>
-    
-    <div v-show="!isCollapsed" class="space-y-2">
-      <!-- Tags and Hide Used in one row -->
-      <div class="grid grid-cols-1 gap-2">
-        <UInputTags
-          v-model="searchStore.videoSearch.selectedTags"
-          placeholder="Add tags (e.g., 1girl, long_hair, anime)"
-          class="w-full"
-          enterkeyhint="enter"
-          inputmode="text"
-          size="sm"
-        />
-        <UCheckbox
-          v-model="searchStore.videoSearch.excludeAssignedVideos"
-          label="Hide Used"
-          class="text-xs"
-        />
-      </div>
-      
-      <!-- Duration, Sort, and Limit in compact grid -->
-      <div class="grid grid-cols-4 gap-2 items-end">
-        <UInput
-          v-model.number="searchStore.videoSearch.durationFilters.min_duration"
-          type="number"
-          placeholder="Min (sec)"
-          min="0"
-          class="w-full"
-          size="sm"
-        />
-        <UInput
-          v-model.number="searchStore.videoSearch.durationFilters.max_duration"
-          type="number"
-          placeholder="Max (sec)"
-          min="0"
-          class="w-full"
-          size="sm"
-        />
-        <USelectMenu
-          v-model="searchStore.videoSearch.sortOptions"
-          :items="sortOptionsItems"
-          class="w-full"
-          size="sm"
-          placeholder="Sort"
-        />
-        <USelectMenu
-          v-model="searchStore.videoSearch.limitOptions"
-          :items="limitOptionsItems"
-          class="w-full"
-          size="sm"
-          placeholder="Limit"
-        />
-      </div>
-      
+  <div>
+    <!-- Collapsible Header -->
+    <div
+      class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      @click="toggleCollapse"
+    >
+      <h4 class="text-sm font-medium text-gray-900 dark:text-white">Video Search Filters</h4>
+      <UIcon
+        :name="isCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
+        class="w-4 h-4 text-gray-500"
+      />
     </div>
-  </UCard>
+    
+    <!-- Collapsible Content -->
+    <UCard v-show="!isCollapsed" class="mt-2">
+      <div class="space-y-2">
+        <!-- Tags and Hide Used in one row -->
+        <div class="grid grid-cols-1 gap-2">
+          <UInputTags
+            v-model="searchStore.videoSearch.selectedTags"
+            placeholder="Add tags (e.g., 1girl, long_hair, anime)"
+            class="w-full"
+            enterkeyhint="enter"
+            inputmode="text"
+            size="sm"
+          />
+          <UCheckbox
+            v-model="searchStore.videoSearch.excludeAssignedVideos"
+            label="Hide Used"
+            class="text-xs"
+          />
+        </div>
+        
+        <!-- Duration filters -->
+        <div class="grid grid-cols-2 gap-2 items-end">
+          <UInput
+            v-model.number="searchStore.videoSearch.durationFilters.min_duration"
+            type="number"
+            placeholder="Min (sec)"
+            min="0"
+            class="w-full"
+            size="sm"
+          />
+          <UInput
+            v-model.number="searchStore.videoSearch.durationFilters.max_duration"
+            type="number"
+            placeholder="Max (sec)"
+            min="0"
+            class="w-full"
+            size="sm"
+          />
+        </div>
+        
+        <!-- Sort and Limit options -->
+        <div class="grid gap-2 items-end" style="grid-template-columns: 2fr 1fr 1fr;">
+          <USelect
+            v-model="searchStore.videoSearch.sortType"
+            :items="sortTypeItems"
+            class="w-full"
+            size="sm"
+            placeholder="Sort By"
+          />
+          <USelect
+            v-model="searchStore.videoSearch.sortOrder"
+            :items="sortOrderItems"
+            class="w-full"
+            size="sm"
+            placeholder="Order"
+          />
+          <USelect
+            v-model="searchStore.videoSearch.limitOptions"
+            :items="limitOptionsItems"
+            class="w-full"
+            size="sm"
+            placeholder="Limit"
+          />
+        </div>
+      </div>
+    </UCard>
+  </div>
 </template>
 
 <script setup>
@@ -81,27 +94,28 @@ defineProps({
 
 const searchStore = useSearchStore()
 
-// Collapse state
-const isCollapsed = ref(false)
+// Collapse state - start collapsed to save space
+const isCollapsed = ref(true)
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
 
-// Sort options
-const sortOptionsItems = [
+// Sort type options (separate from order)
+const sortTypeItems = [
   { label: 'Random', value: 'random' },
-  { label: 'Created Date (Newest)', value: 'created_at_desc' },
-  { label: 'Created Date (Oldest)', value: 'created_at_asc' },
-  { label: 'Updated Date (Newest)', value: 'updated_at_desc' },
-  { label: 'Updated Date (Oldest)', value: 'updated_at_asc' },
-  { label: 'Duration (Shortest)', value: 'duration_asc' },
-  { label: 'Duration (Longest)', value: 'duration_desc' },
-  { label: 'File Size (Largest)', value: 'file_size_desc' },
-  { label: 'File Size (Smallest)', value: 'file_size_asc' },
-  { label: 'Filename (A-Z)', value: 'filename_asc' },
-  { label: 'Filename (Z-A)', value: 'filename_desc' }
+  { label: 'Created Date', value: 'created_at' },
+  { label: 'Updated Date', value: 'updated_at' },
+  { label: 'Duration', value: 'duration' },
+  { label: 'File Size', value: 'file_size' },
+  { label: 'Filename', value: 'filename' }
+]
+
+// Sort order options
+const sortOrderItems = [
+  { label: 'Asc', value: 'asc' },
+  { label: 'Desc', value: 'desc' }
 ]
 
 // Limit options

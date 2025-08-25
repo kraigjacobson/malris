@@ -6,6 +6,7 @@ export interface MediaGalleryFilters {
   subject_uuid: string
   media_uuid: string
   selectedTags: string[]
+  onlyShowUntagged: boolean
   sortOptions: {
     sort_by: { label: string; value: string } | string
     sort_order: { label: string; value: string } | string
@@ -21,10 +22,11 @@ const STORAGE_KEY = 'mediaGalleryFilters'
 
 const defaultFilters: MediaGalleryFilters = {
   media_type: { label: 'Videos', value: 'video' },
-  purpose: { label: 'Output', value: 'output' },
+  purpose: { label: 'All Purposes', value: 'all' },
   subject_uuid: '',
   media_uuid: '',
   selectedTags: [],
+  onlyShowUntagged: false,
   sortOptions: {
     sort_by: { label: 'Created Date', value: 'created_at' },
     sort_order: { label: 'Descending', value: 'desc' }
@@ -115,6 +117,10 @@ export const useMediaGalleryFilters = () => {
     mediaUuid: computed({
       get: () => filters.value.media_uuid,
       set: (value) => { filters.value.media_uuid = value }
+    }),
+    onlyShowUntagged: computed({
+      get: () => filters.value.onlyShowUntagged,
+      set: (value) => { filters.value.onlyShowUntagged = value }
     })
   }
 }

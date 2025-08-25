@@ -10,13 +10,16 @@ export default defineEventHandler(async (_event) => {
   try {
     const db = getDb()
     
-    // Get total untagged videos count
+    // Get total untagged media count (both videos and images)
     const totalUntaggedCount = await db
       .select({ count: mediaRecords.uuid })
       .from(mediaRecords)
       .where(
         and(
-          eq(mediaRecords.type, 'video'),
+          or(
+            eq(mediaRecords.type, 'video'),
+            eq(mediaRecords.type, 'image')
+          ),
           eq(mediaRecords.purpose, 'dest'),
           or(
             isNull(mediaRecords.tags),
