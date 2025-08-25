@@ -214,7 +214,7 @@ const isSaving = ref(false)
 const settingsStore = useSettingsStore()
 
 // Predefined quick tags organized by category
-const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair', 'braid', 'bangs']
+const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair', 'braid', 'bangs', 'curly']
 const ageBodyTags = ['teen', 'milf', 'chub']
 const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34']
 
