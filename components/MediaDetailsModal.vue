@@ -715,7 +715,7 @@ const originalTags = ref([])
 // Predefined quick tags organized by category
 const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair']
 const hairStyleTags = ['braid', 'bangs', 'curly']
-const ageBodyTags = ['teen', 'milf', 'chub']
+const ageBodyTags = ['teen', 'milf', 'chub', 'glasses']
 const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34']
 
 // Custom crop overlay state
