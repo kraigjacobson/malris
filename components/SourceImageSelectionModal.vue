@@ -499,7 +499,7 @@ const imageTransformStyle = computed(() => {
   const state = sharedZoomState.value
   return {
     transform: `scale(${state.scale}) translate(${state.translateX}px, ${state.translateY}px)`,
-    transformOrigin: 'center center'
+    transformOrigin: 'top center'
   }
 })
 
@@ -784,6 +784,18 @@ const onImageLoad = () => {
   if (currentImage.value) {
     lastLoadedImage.value = currentImage.value
   }
+  
+  // Restore preserved zoom state or set initial zoom
+  nextTick(() => {
+    if (preservedZoomState.value) {
+      // Restore the preserved zoom state
+      updateSharedZoom(preservedZoomState.value)
+      preservedZoomState.value = null // Clear after use
+    } else {
+      // Set initial zoom to fit width for new images
+      setInitialZoomToFitWidth()
+    }
+  })
 }
 
 const onImageError = () => {
@@ -850,8 +862,14 @@ const setupPreloading = () => {
   }
 }
 
+// Store zoom state for persistence across image changes
+const preservedZoomState = ref(null)
+
 const goToPreviousImage = () => {
   if (sourceImages.value.length > 1) {
+    // Store current zoom state
+    preservedZoomState.value = { ...sharedZoomState.value }
+    
     if (currentImageIndex.value > 0) {
       currentImageIndex.value--
     } else {
@@ -864,6 +882,9 @@ const goToPreviousImage = () => {
 
 const goToNextImage = () => {
   if (sourceImages.value.length > 1) {
+    // Store current zoom state
+    preservedZoomState.value = { ...sharedZoomState.value }
+    
     if (currentImageIndex.value < sourceImages.value.length - 1) {
       currentImageIndex.value++
     } else {
@@ -1183,24 +1204,110 @@ const resetZoom = () => {
   updateSharedZoom({ scale: 1, translateX: 0, translateY: 0 })
 }
 
+const setInitialZoomToFitWidth = () => {
+  if (!imageContainer.value || !zoomableImage.value || !currentImage.value) return
+  
+  const containerRect = imageContainer.value.getBoundingClientRect()
+  
+  // Get the natural dimensions of the image
+  const naturalWidth = currentImage.value.width || zoomableImage.value.naturalWidth
+  const naturalHeight = currentImage.value.height || zoomableImage.value.naturalHeight
+  
+  if (!naturalWidth || !naturalHeight) return
+  
+  // Calculate what object-contain would do
+  const containerAspect = containerRect.width / containerRect.height
+  const imageAspect = naturalWidth / naturalHeight
+  
+  let displayedWidth, displayedHeight
+  
+  if (imageAspect > containerAspect) {
+    // Image is wider - width will be constrained
+    displayedWidth = containerRect.width
+    displayedHeight = containerRect.width / imageAspect
+  } else {
+    // Image is taller - height will be constrained
+    displayedHeight = containerRect.height
+    displayedWidth = containerRect.height * imageAspect
+  }
+  
+  // Calculate the scale needed to make the displayed width fill the container width
+  const scaleToFitWidth = containerRect.width / displayedWidth
+  
+  // Calculate initial Y translation to anchor to top of image
+  const initialTranslateY = 0
+  
+  // With transform-origin 'top center', scaling from top means no Y translation needed
+  // The image will naturally show from the top when scaled
+  
+  // Apply the scale to fit width and anchor to top
+  updateSharedZoom({
+    scale: scaleToFitWidth,
+    translateX: 0,
+    translateY: initialTranslateY
+  })
+  
+  console.log('🔍 Auto-fit calculation:', {
+    containerSize: { width: containerRect.width, height: containerRect.height },
+    naturalSize: { width: naturalWidth, height: naturalHeight },
+    displayedSize: { width: displayedWidth, height: displayedHeight },
+    scaleToFitWidth,
+    initialTranslateY,
+    containerAspect,
+    imageAspect
+  })
+}
+
 const constrainTranslation = (scale, translateX, translateY) => {
-  if (!imageContainer.value || !zoomableImage.value) return { translateX, translateY }
+  if (!imageContainer.value || !zoomableImage.value || !currentImage.value) return { translateX, translateY }
 
   const containerRect = imageContainer.value.getBoundingClientRect()
-  const imageRect = zoomableImage.value.getBoundingClientRect()
+  
+  // Get the natural dimensions of the image
+  const naturalWidth = currentImage.value.width || zoomableImage.value.naturalWidth
+  const naturalHeight = currentImage.value.height || zoomableImage.value.naturalHeight
+  
+  if (!naturalWidth || !naturalHeight) return { translateX, translateY }
+  
+  // Calculate what object-contain would display
+  const containerAspect = containerRect.width / containerRect.height
+  const imageAspect = naturalWidth / naturalHeight
+  
+  let displayedWidth, displayedHeight
+  
+  if (imageAspect > containerAspect) {
+    displayedWidth = containerRect.width
+    displayedHeight = containerRect.width / imageAspect
+  } else {
+    displayedHeight = containerRect.height
+    displayedWidth = containerRect.height * imageAspect
+  }
 
   // Calculate the scaled image dimensions
-  const scaledWidth = imageRect.width * scale
-  const scaledHeight = imageRect.height * scale
+  const scaledWidth = displayedWidth * scale
+  const scaledHeight = displayedHeight * scale
 
-  // Calculate max translation with some padding for smoother movement
-  const padding = 50 // Allow some overpan for smoother experience
-  const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2 / scale + padding)
-  const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2 / scale + padding)
+  // Calculate max translation - with transform-origin 'top center'
+  let maxTranslateX = 0
+  let minTranslateY = 0
+  let maxTranslateY = 0
+  
+  if (scaledWidth > containerRect.width) {
+    maxTranslateX = (scaledWidth - containerRect.width) / 2 / scale
+  }
+  
+  if (scaledHeight > containerRect.height) {
+    // With 'top center' origin, the image starts at the top
+    // We can translate up (negative Y) to see more of the bottom
+    // We can translate down (positive Y) but not past the top edge
+    const excessHeight = scaledHeight - containerRect.height
+    minTranslateY = -excessHeight / scale  // Can translate up to see bottom
+    maxTranslateY = 0  // Can't translate down past the top edge
+  }
 
   return {
     translateX: Math.max(-maxTranslateX, Math.min(maxTranslateX, translateX)),
-    translateY: Math.max(-maxTranslateY, Math.min(maxTranslateY, translateY))
+    translateY: Math.max(minTranslateY, Math.min(maxTranslateY, translateY))
   }
 }
 
@@ -1211,11 +1318,42 @@ const handleWheel = (event) => {
 
   const delta = event.deltaY > 0 ? -0.1 : 0.1
   const currentState = sharedZoomState.value
-  const newScale = Math.max(0.5, Math.min(5, currentState.scale + delta))
+  
+  // Calculate minimum scale to fit width
+  const minScale = getMinimumScale()
+  const newScale = Math.max(minScale, Math.min(5, currentState.scale + delta))
 
   if (newScale !== currentState.scale) {
-    updateSharedZoom({ scale: newScale })
+    // Constrain translation when scale changes
+    const constrained = constrainTranslation(newScale, currentState.translateX, currentState.translateY)
+    updateSharedZoom({
+      scale: newScale,
+      translateX: constrained.translateX,
+      translateY: constrained.translateY
+    })
   }
+}
+
+const getMinimumScale = () => {
+  if (!imageContainer.value || !currentImage.value) return 1
+  
+  const containerRect = imageContainer.value.getBoundingClientRect()
+  const naturalWidth = currentImage.value.width || 1
+  const naturalHeight = currentImage.value.height || 1
+  
+  const containerAspect = containerRect.width / containerRect.height
+  const imageAspect = naturalWidth / naturalHeight
+  
+  let displayedWidth
+  
+  if (imageAspect > containerAspect) {
+    displayedWidth = containerRect.width
+  } else {
+    displayedWidth = containerRect.height * imageAspect
+  }
+  
+  // Minimum scale is what's needed to fit the width
+  return containerRect.width / displayedWidth
 }
 
 const handleMouseDown = (event) => {
