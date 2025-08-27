@@ -20,19 +20,19 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB per file
 export default defineEventHandler(async (event) => {
   try {
     // Parse multipart form data using streaming approach
-    const { videoFiles, uploadCategories, uploadPurpose } = await parseMultipartStream(event)
+    const { mediaFiles, uploadCategories, uploadPurpose } = await parseMultipartStream(event)
     
-    if (videoFiles.length === 0) {
+    if (mediaFiles.length === 0) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'No video files found in upload'
+        statusMessage: 'No media files found in upload'
       })
     }
 
-    if (videoFiles.length > MAX_BATCH_SIZE) {
+    if (mediaFiles.length > MAX_BATCH_SIZE) {
       throw createError({
         statusCode: 400,
-        statusMessage: `Batch size too large. Maximum ${MAX_BATCH_SIZE} videos per batch.`
+        statusMessage: `Batch size too large. Maximum ${MAX_BATCH_SIZE} files per batch.`
       })
     }
 
@@ -50,16 +50,18 @@ export default defineEventHandler(async (event) => {
     const errors = []
 
     // Create temp directory for processing
-    const tempDir = path.join(os.tmpdir(), `video-upload-${Date.now()}`)
+    const tempDir = path.join(os.tmpdir(), `media-upload-${Date.now()}`)
     await mkdir(tempDir, { recursive: true })
 
     try {
-      // Process each video file
-      for (let i = 0; i < videoFiles.length; i++) {
-        const file = videoFiles[i]
+      // Process each media file
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const file = mediaFiles[i]
         
         try {
-          logger.info(`🎬 Processing video ${i + 1}/${videoFiles.length}: ${file.filename}`)
+          const fileType = file.type.startsWith('video/') ? 'video' : 'image'
+          const emoji = fileType === 'video' ? '🎬' : '🖼️'
+          logger.info(`${emoji} Processing ${fileType} ${i + 1}/${mediaFiles.length}: ${file.filename}`)
 
           // Validate file size
           if (file.size > MAX_FILE_SIZE) {
@@ -71,41 +73,80 @@ export default defineEventHandler(async (event) => {
           }
 
           // File is already saved to temp path by streaming parser
-          const tempVideoPath = file.tempPath
+          const tempFilePath = file.tempPath
 
-          // Get video metadata using ffmpeg
-          const metadata = await getVideoMetadata(tempVideoPath)
+          // Get metadata based on file type
+          let metadata
+          if (fileType === 'video') {
+            metadata = await getVideoMetadata(tempFilePath)
+          } else {
+            metadata = await getImageMetadata(tempFilePath)
+          }
           
           // Strip path from filename for storage and comparison
           const baseFilename = path.basename(file.filename!)
           
           // Check for duplicates based on dimensions and filename (basename only)
-          const existingVideo = await db
+          const existingMedia = await db
             .select()
             .from(mediaRecords)
             .where(and(
               eq(mediaRecords.filename, baseFilename),
               eq(mediaRecords.width, metadata.width),
               eq(mediaRecords.height, metadata.height),
-              eq(mediaRecords.purpose, 'dest'),
-              eq(mediaRecords.type, 'video')
+              eq(mediaRecords.type, fileType)
             ))
             .limit(1)
 
-          if (existingVideo.length > 0) {
-            logger.info(`⚠️ Duplicate video skipped: ${baseFilename} (${metadata.width}x${metadata.height})`)
-            results.push({
-              filename: baseFilename,
-              success: true,
-              message: 'Duplicate video skipped',
-              uuid: existingVideo[0].uuid
-            })
-            await unlink(tempVideoPath)
+          if (existingMedia.length > 0) {
+            const existing = existingMedia[0]
+            
+            // If the existing media has a different purpose, update it to the new purpose
+            if (existing.purpose !== uploadPurpose) {
+              logger.info(`🔄 Updating ${fileType} purpose: ${baseFilename} (${existing.purpose} → ${uploadPurpose})`)
+              
+              await db
+                .update(mediaRecords)
+                .set({
+                  purpose: uploadPurpose,
+                  updatedAt: new Date()
+                })
+                .where(eq(mediaRecords.uuid, existing.uuid))
+              
+              results.push({
+                filename: baseFilename,
+                success: true,
+                message: `${fileType} purpose updated from ${existing.purpose} to ${uploadPurpose}`,
+                media_uuid: existing.uuid,
+                thumbnail_uuid: existing.thumbnailUuid,
+                type: fileType,
+                metadata: metadata
+              })
+            } else {
+              // Same purpose, truly a duplicate
+              logger.info(`⚠️ Duplicate ${fileType} skipped: ${baseFilename} (${metadata.width}x${metadata.height})`)
+              results.push({
+                filename: baseFilename,
+                success: true,
+                message: `Duplicate ${fileType} skipped`,
+                media_uuid: existing.uuid,
+                thumbnail_uuid: existing.thumbnailUuid,
+                type: fileType,
+                metadata: metadata
+              })
+            }
+            
+            await unlink(tempFilePath)
             continue
           }
 
           // Generate thumbnail
-          const thumbnailBuffer = await generateThumbnail(tempVideoPath)
+          let thumbnailBuffer
+          if (fileType === 'video') {
+            thumbnailBuffer = await generateVideoThumbnail(tempFilePath)
+          } else {
+            thumbnailBuffer = await generateImageThumbnail(tempFilePath)
+          }
 
           // Store thumbnail using hybrid storage
           const thumbnailResult = await storeMedia(thumbnailBuffer, {
@@ -114,38 +155,50 @@ export default defineEventHandler(async (event) => {
             purpose: 'thumbnail'
           })
 
-          // Read video file from disk for storage
-          const videoBuffer = await readFile(tempVideoPath)
+          // Read media file from disk for storage
+          const mediaBuffer = await readFile(tempFilePath)
           
-          // Store video using hybrid storage
-          const videoResult = await storeMedia(videoBuffer, {
+          // Store media using hybrid storage
+          const mediaResult = await storeMedia(mediaBuffer, {
             filename: baseFilename,
-            type: 'video',
+            type: fileType,
             purpose: uploadPurpose
           })
 
           const thumbnailUuid = thumbnailResult.uuid
-          const videoUuid = videoResult.uuid
+          const mediaUuid = mediaResult.uuid
 
-          // Update the video record with additional metadata using direct database query
+          // Update the media record with additional metadata using direct database query
           // since storeMedia doesn't handle all the custom fields we need
+          const updateData: any = {
+            width: metadata.width,
+            height: metadata.height,
+            thumbnailUuid: thumbnailUuid,
+            tagsConfirmed: false
+          }
+
+          // Add type-specific metadata
+          if (fileType === 'video') {
+            updateData.duration = metadata.duration
+            updateData.metadata = {
+              codec: metadata.codec,
+              format: metadata.format,
+              bitrate: metadata.bitrate,
+              fps: metadata.fps,
+              container: metadata.container
+            }
+          } else {
+            updateData.metadata = {
+              format: metadata.format,
+              colorSpace: metadata.colorSpace,
+              hasAlpha: metadata.hasAlpha
+            }
+          }
+
           await db
             .update(mediaRecords)
-            .set({
-              width: metadata.width,
-              height: metadata.height,
-              duration: metadata.duration,
-              metadata: {
-                codec: metadata.codec,
-                format: metadata.format,
-                bitrate: metadata.bitrate,
-                fps: metadata.fps,
-                container: metadata.container
-              },
-              thumbnailUuid: thumbnailUuid,
-              tagsConfirmed: false
-            })
-            .where(eq(mediaRecords.uuid, videoUuid))
+            .set(updateData)
+            .where(eq(mediaRecords.uuid, mediaUuid))
 
           // Update the thumbnail record with dimensions
           await db
@@ -155,7 +208,7 @@ export default defineEventHandler(async (event) => {
               height: Math.round((320 * metadata.height) / metadata.width),
               metadata: {
                 generated_from: baseFilename,
-                thumbnail_type: 'video_frame'
+                thumbnail_type: fileType === 'video' ? 'video_frame' : 'image_resize'
               },
               tagsConfirmed: false
             })
@@ -199,7 +252,7 @@ export default defineEventHandler(async (event) => {
                 .insert(mediaRecordCategories)
                 .values(
                   categoryIds.map(categoryId => ({
-                    mediaRecordUuid: videoUuid,
+                    mediaRecordUuid: mediaUuid,
                     categoryId: categoryId
                   }))
                 )
@@ -208,15 +261,16 @@ export default defineEventHandler(async (event) => {
 
           results.push({
             filename: baseFilename,
-            video_uuid: videoUuid,
+            media_uuid: mediaUuid,
             thumbnail_uuid: thumbnailUuid,
+            type: fileType,
             metadata: metadata
           })
 
           logger.info(`✅ Successfully processed: ${baseFilename}`)
 
           // Clean up temp file
-          await unlink(tempVideoPath)
+          await unlink(tempFilePath)
 
         } catch (error) {
           logger.error(`❌ Error processing ${file.filename}:`, error)
@@ -240,17 +294,17 @@ export default defineEventHandler(async (event) => {
     return {
       success: true,
       processed: results.length,
-      total: videoFiles.length,
+      total: mediaFiles.length,
       results,
       errors: errors.length > 0 ? errors : undefined
     }
 
   } catch (error: any) {
-    logger.error('Video upload error:', error)
+    logger.error('Media upload error:', error)
     
     throw createError({
       statusCode: error.statusCode || 500,
-      statusMessage: error.statusMessage || `Failed to upload videos: ${error.message || 'Unknown error'}`
+      statusMessage: error.statusMessage || `Failed to upload media: ${error.message || 'Unknown error'}`
     })
   }
 })
@@ -259,16 +313,16 @@ export default defineEventHandler(async (event) => {
  * Parse multipart form data using streaming approach to handle large files
  */
 async function parseMultipartStream(event: any): Promise<{
-  videoFiles: Array<{ filename: string; tempPath: string; size: number; type: string }>
+  mediaFiles: Array<{ filename: string; tempPath: string; size: number; type: string }>
   uploadCategories: string[]
   uploadPurpose: string
 }> {
   return new Promise((resolve, reject) => {
-    const videoFiles: Array<{ filename: string; tempPath: string; size: number; type: string }> = []
+    const mediaFiles: Array<{ filename: string; tempPath: string; size: number; type: string }> = []
     let uploadCategories: string[] = []
     let uploadPurpose = 'dest'
     
-    const tempDir = path.join(os.tmpdir(), `video-upload-stream-${Date.now()}`)
+    const tempDir = path.join(os.tmpdir(), `media-upload-stream-${Date.now()}`)
     
     // Create temp directory
     mkdir(tempDir, { recursive: true }).then(() => {
@@ -283,7 +337,7 @@ async function parseMultipartStream(event: any): Promise<{
       bb.on('file', (name, file, info) => {
         const { filename, mimeType } = info
         
-        if (name === 'videos' && filename && mimeType?.startsWith('video/')) {
+        if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/'))) {
           const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
           const writeStream = createWriteStream(tempPath)
           let fileSize = 0
@@ -299,7 +353,7 @@ async function parseMultipartStream(event: any): Promise<{
           })
           
           file.on('end', () => {
-            videoFiles.push({
+            mediaFiles.push({
               filename,
               tempPath,
               size: fileSize,
@@ -315,7 +369,7 @@ async function parseMultipartStream(event: any): Promise<{
           
           file.pipe(writeStream)
         } else {
-          // Skip non-video files
+          // Skip non-media files
           file.resume()
         }
       })
@@ -333,7 +387,7 @@ async function parseMultipartStream(event: any): Promise<{
       })
       
       bb.on('close', () => {
-        resolve({ videoFiles, uploadCategories, uploadPurpose })
+        resolve({ mediaFiles, uploadCategories, uploadPurpose })
       })
       
       bb.on('error', (err) => {
@@ -373,8 +427,31 @@ async function getVideoMetadata(videoPath: string): Promise<any> {
   }
 }
 
-// Helper function to generate thumbnail using ffmpeg command
-async function generateThumbnail(videoPath: string): Promise<Buffer> {
+// Helper function to get image metadata using ffprobe command
+async function getImageMetadata(imagePath: string): Promise<any> {
+  try {
+    const { stdout } = await execAsync(`ffprobe -v quiet -print_format json -show_format -show_streams "${imagePath}"`)
+    const metadata = JSON.parse(stdout)
+    
+    const imageStream = metadata.streams.find((stream: any) => stream.codec_type === 'video')
+    if (!imageStream) {
+      throw new Error('No image stream found')
+    }
+
+    return {
+      width: imageStream.width || 0,
+      height: imageStream.height || 0,
+      format: metadata.format.format_name || 'unknown',
+      colorSpace: imageStream.color_space || 'unknown',
+      hasAlpha: imageStream.pix_fmt?.includes('a') || false
+    }
+  } catch (error) {
+    throw new Error(`Failed to get image metadata: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Helper function to generate video thumbnail using ffmpeg command
+async function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
   const tempThumbnailPath = `${videoPath}_thumb.jpg`
   
   try {
@@ -395,6 +472,32 @@ async function generateThumbnail(videoPath: string): Promise<Buffer> {
       // Ignore cleanup errors
     }
     
-    throw new Error(`Failed to generate thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    throw new Error(`Failed to generate video thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Helper function to generate image thumbnail using ffmpeg command
+async function generateImageThumbnail(imagePath: string): Promise<Buffer> {
+  const tempThumbnailPath = `${imagePath}_thumb.jpg`
+  
+  try {
+    // Generate thumbnail with 320px width, maintaining aspect ratio
+    await execAsync(`ffmpeg -i "${imagePath}" -vf "scale=320:-1" "${tempThumbnailPath}"`)
+    
+    const fs = await import('fs/promises')
+    const thumbnailBuffer = await fs.readFile(tempThumbnailPath)
+    await fs.unlink(tempThumbnailPath) // Clean up
+    
+    return thumbnailBuffer
+  } catch (error) {
+    // Clean up temp file if it exists
+    try {
+      const fs = await import('fs/promises')
+      await fs.unlink(tempThumbnailPath)
+    } catch {
+      // Ignore cleanup errors
+    }
+    
+    throw new Error(`Failed to generate image thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

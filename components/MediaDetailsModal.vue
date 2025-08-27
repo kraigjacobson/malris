@@ -16,6 +16,16 @@
         </div>
         
         <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+          <!-- Purpose Selector -->
+          <USelect
+            v-model="currentPurpose"
+            :items="purposeOptions"
+            size="xs"
+            class="w-20"
+            :loading="isSavingPurpose"
+            @update:model-value="updatePurpose"
+          />
+          
           <!-- Mode Selector -->
           <USelect
             v-model="currentMode"
@@ -704,7 +714,8 @@ const emit = defineEmits([
   'confirmDelete',
   'close',
   'saveEdits',
-  'save'
+  'save',
+  'purposeUpdated'
 ])
 
 // Stores
@@ -719,6 +730,18 @@ const modeOptions = computed(() => [
   { label: 'None', value: 'none' },
   { label: 'Edit', value: 'edit', disabled: props.media?.type !== 'video' },
   { label: 'Tag', value: 'tag' }
+])
+
+// Purpose state
+const currentPurpose = ref('')
+const isSavingPurpose = ref(false)
+const purposeOptions = computed(() => [
+  { label: 'Dest', value: 'dest' },
+  { label: 'Output', value: 'output' },
+  { label: 'Voyeur', value: 'voyeur' },
+  { label: 'Subject', value: 'subject' },
+  { label: 'Porn', value: 'porn' },
+  { label: 'Todo', value: 'todo' }
 ])
 
 // Video editing state
@@ -847,6 +870,49 @@ const fetchTotalUntaggedCount = async () => {
   } catch (error) {
     console.error('Failed to fetch total untagged count:', error)
     totalUntaggedInDatabase.value = 0
+  }
+}
+
+// Purpose update method
+const updatePurpose = async (newPurpose) => {
+  if (!props.media || newPurpose === props.media.purpose) return
+  
+  isSavingPurpose.value = true
+  const toast = useToast()
+  
+  try {
+    const response = await useApiFetch(`media/${props.media.uuid}/purpose`, {
+      method: 'PUT',
+      body: {
+        purpose: newPurpose
+      }
+    })
+    
+    if (response.success) {
+      toast.add({
+        title: 'Purpose Updated',
+        description: `Media purpose changed to ${newPurpose}`,
+        color: 'success',
+        duration: 2000
+      })
+      
+      // Emit a specific event for purpose updates
+      emit('purposeUpdated', { ...props.media, purpose: newPurpose })
+    }
+    
+  } catch (error) {
+    console.error('Failed to update purpose:', error)
+    toast.add({
+      title: 'Update Failed',
+      description: error.data?.message || 'Failed to update purpose. Please try again.',
+      color: 'error',
+      duration: 3000
+    })
+    
+    // Revert the dropdown to the original value
+    currentPurpose.value = props.media.purpose
+  } finally {
+    isSavingPurpose.value = false
   }
 }
 
@@ -1350,15 +1416,19 @@ const resetTagState = () => {
   originalTags.value = []
 }
 
-// Watch for media changes to update tags
+// Watch for media changes to update tags and purpose
 watch(() => props.media, (newMedia) => {
   if (newMedia) {
     // Extract tags from the media object
     const tags = newMedia.tags?.tags || []
     selectedTags.value = [...tags]
     originalTags.value = [...tags]
+    
+    // Update current purpose
+    currentPurpose.value = newMedia.purpose || ''
   } else {
     resetTagState()
+    currentPurpose.value = ''
   }
 }, { immediate: true })
 

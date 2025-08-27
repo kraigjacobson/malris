@@ -4,7 +4,7 @@
     <!-- Search Filters -->
     <div class="mb-3 sm:mb-6">
       <!-- Header always visible -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-t-lg px-4 py-3">
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 py-3" :class="filtersCollapsed ? 'rounded-lg' : 'rounded-t-lg'">
         <div class="flex justify-between items-center">
           <div class="flex gap-2 items-center">
             <!-- Search and Clear Buttons -->
@@ -32,21 +32,16 @@
             </UButton>
           </div>
           <div class="flex gap-2 items-center">
-            <!-- Upload Videos Dropdown -->
-            <UDropdownMenu
-              :items="uploadMenuItems"
-              :ui="{ content: 'w-48' }"
+            <!-- Upload Videos Button -->
+            <UButton
+              color="green"
+              variant="outline"
+              size="xs"
+              @click="openUploadModal()"
             >
-              <UButton
-                color="green"
-                variant="outline"
-                size="xs"
-                trailing-icon="i-heroicons-chevron-down"
-              >
-                <UIcon name="i-heroicons-arrow-up-tray" />
-                <span class="hidden sm:inline">Upload</span>
-              </UButton>
-            </UDropdownMenu>
+              <UIcon name="i-heroicons-arrow-up-tray" />
+              <span class="hidden sm:inline">Upload</span>
+            </UButton>
             <!-- Slideshow Button -->
             <UButton
               color="primary"
@@ -511,241 +506,11 @@
     </div>
 
 
-    <!-- Video Upload Modal -->
-    <UModal v-model:open="isUploadModalOpen" :ui="{ width: 'sm:max-w-2xl' }">
-      <template #body>
-        <div class="p-3 sm:p-6">
-          <!-- Header -->
-          <div class="flex justify-between items-center mb-3 sm:mb-6">
-            <h3 class="text-base sm:text-lg font-semibold">
-              Upload {{ uploadMode === 'single' ? 'Video File' : 'Destination Videos' }}
-            </h3>
-            <UButton
-              variant="ghost"
-              icon="i-heroicons-x-mark"
-              size="xs"
-              @click="closeUploadModal"
-            />
-          </div>
-
-          <div class="space-y-4">
-          <!-- File Selection -->
-          <div v-if="!isUploading && uploadedFiles.length === 0">
-            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
-              <UIcon :name="uploadMode === 'single' ? 'i-heroicons-document-plus' : 'i-heroicons-folder'" class="text-4xl text-gray-400 mb-4" />
-              <p class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                {{ uploadMode === 'single' ? 'Select Video File' : 'Select Video Folder' }}
-              </p>
-              <p class="text-sm text-gray-500 mb-4">
-                {{ uploadMode === 'single' ? 'Choose a single video file to upload' : 'Choose a folder containing destination videos to upload' }}
-              </p>
-              
-              <!-- Hidden file inputs -->
-              <input
-                ref="folderInput"
-                type="file"
-                webkitdirectory
-                directory
-                multiple
-                accept="video/*"
-                class="hidden"
-                @change="handleFolderSelection"
-              >
-              <input
-                ref="singleFileInput"
-                type="file"
-                accept="video/*"
-                class="hidden"
-                @change="handleSingleFileSelection"
-              >
-              
-              <!-- Upload buttons -->
-              <div class="flex gap-2 justify-center">
-                <UButton
-                  v-if="uploadMode === 'folder'"
-                  color="primary"
-                  @click="folderInput?.click()"
-                >
-                  <UIcon name="i-heroicons-folder-open" class="mr-2" />
-                  Choose Folder
-                </UButton>
-                <UButton
-                  v-if="uploadMode === 'single'"
-                  color="primary"
-                  @click="singleFileInput?.click()"
-                >
-                  <UIcon name="i-heroicons-document-plus" class="mr-2" />
-                  Choose File
-                </UButton>
-                
-                <!-- Switch mode button -->
-                <UButton
-                  variant="outline"
-                  @click="switchUploadMode"
-                >
-                  <UIcon :name="uploadMode === 'single' ? 'i-heroicons-folder' : 'i-heroicons-document'" class="mr-2" />
-                  {{ uploadMode === 'single' ? 'Upload Folder' : 'Upload Single File' }}
-                </UButton>
-              </div>
-            </div>
-          </div>
-
-          <!-- Upload Configuration -->
-          <div v-if="selectedFiles.length === 0 && !isUploading">
-            <div class="space-y-4">
-              <!-- Purpose Selection -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Purpose
-                </label>
-                <USelectMenu
-                  v-model="uploadConfig.purpose"
-                  :items="uploadPurposeOptions"
-                  placeholder="Select purpose..."
-                  class="w-full"
-                />
-              </div>
-
-              <!-- Category Selection -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Categories (Optional)
-                </label>
-                <UInputMenu
-                  v-model="uploadConfig.categories"
-                  multiple
-                  creatable
-                  :items="availableCategories"
-                  :loading="loadingCategories"
-                  placeholder="Select or create categories..."
-                  class="w-full"
-                />
-                <p class="text-xs text-gray-500 mt-1">
-                  Select from existing categories or type to create new ones
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Selected Files Preview -->
-          <div v-if="selectedFiles.length > 0 && !isUploading">
-            <div class="mb-4">
-              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-2">
-                Selected {{ uploadMode === 'single' ? 'Video' : 'Videos' }} ({{ selectedFiles.length }})
-              </h4>
-              <p class="text-sm text-gray-500">
-                {{ uploadMode === 'single' ? 'File size:' : 'Total size:' }} {{ formatFileSize(totalSize) }}
-              </p>
-            </div>
-            
-            <!-- Summary Card -->
-            <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
-                    Ready to upload {{ selectedFiles.length }} video{{ selectedFiles.length === 1 ? '' : 's' }}
-                  </p>
-                  <p class="text-xs text-gray-500">
-                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ' • Will be processed in batches of 5' : '' }}
-                  </p>
-                </div>
-                <UIcon name="i-heroicons-video-camera" class="text-2xl text-gray-400" />
-              </div>
-            </div>
-
-            <div class="flex gap-2">
-              <UButton
-                color="primary"
-                :loading="isUploading"
-                @click="startUpload"
-              >
-                <UIcon name="i-heroicons-arrow-up-tray" class="mr-2" />
-                Upload {{ selectedFiles.length }} Videos
-              </UButton>
-              <UButton
-                variant="outline"
-                @click="clearSelection"
-              >
-                Clear Selection
-              </UButton>
-            </div>
-          </div>
-
-          <!-- Upload Progress -->
-          <div v-if="isUploading">
-            <div class="mb-4">
-              <div class="flex justify-between items-center mb-2">
-                <h4 class="text-md font-medium text-gray-900 dark:text-white">
-                  Uploading Videos...
-                </h4>
-                <span class="text-sm text-gray-500">
-                  {{ uploadProgress.completed }} / {{ uploadProgress.total }}
-                </span>
-              </div>
-              <UProgress
-                :value="(uploadProgress.completed / uploadProgress.total) * 100"
-                class="mb-2"
-              />
-              <p class="text-sm text-gray-500">
-                {{ uploadProgress.currentFile || 'Processing...' }}
-              </p>
-            </div>
-
-            <!-- Upload Results -->
-            <div v-if="uploadResults.length > 0" class="max-h-40 overflow-y-auto space-y-2">
-              <div
-                v-for="result in uploadResults"
-                :key="result.filename"
-                class="flex items-center justify-between p-2 rounded"
-                :class="result.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'"
-              >
-                <div class="flex items-center gap-2">
-                  <UIcon
-                    :name="result.success ? 'i-heroicons-check-circle' : 'i-heroicons-x-circle'"
-                    :class="result.success ? 'text-green-500' : 'text-red-500'"
-                  />
-                  <span class="text-sm font-medium">{{ result.filename }}</span>
-                </div>
-                <span v-if="!result.success" class="text-xs text-red-600 dark:text-red-400">
-                  {{ result.error }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Upload Complete -->
-          <div v-if="uploadComplete">
-            <div class="text-center py-4">
-              <UIcon name="i-heroicons-check-circle" class="text-4xl text-green-500 mb-2" />
-              <h4 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Upload Complete!
-              </h4>
-              <p class="text-sm text-gray-500">
-                Successfully uploaded {{ uploadResults.filter(r => r.success).length }} videos
-                {{ uploadResults.filter(r => !r.success).length > 0 ?
-                  `(${uploadResults.filter(r => !r.success).length} failed)` : '' }}
-              </p>
-            </div>
-            
-            <div class="flex gap-2 justify-center">
-              <UButton
-                color="primary"
-                @click="refreshAfterUpload"
-              >
-                Refresh Gallery
-              </UButton>
-              <UButton
-                variant="outline"
-                @click="closeUploadModal"
-              >
-                Close
-              </UButton>
-            </div>
-          </div>
-        </div>
-        </div>
-      </template>
-    </UModal>
+    <!-- Media Upload Modal -->
+    <UploadModal
+      v-model:is-open="isUploadModalOpen"
+      @close="closeUploadModal"
+    />
 
   </div>
 </template>
@@ -782,41 +547,12 @@ const {
 } = useMediaGalleryFilters()
 
 // Template refs
-const folderInput = ref(null)
-const singleFileInput = ref(null)
 const modalVideo = ref(null)
 
-// Reactive data
-const filters = ref({
-  media_type: { label: 'Videos', value: 'video' }, // Default to videos in dropdown format
-  purpose: { label: 'Output', value: 'output' }, // Default to output purpose
-  subject_uuid: ''
-})
 
 
-// Video upload functionality
+// Upload modal functionality
 const isUploadModalOpen = ref(false)
-const uploadMode = ref('folder') // 'single' or 'folder'
-const selectedFiles = ref([])
-const isUploading = ref(false)
-const uploadComplete = ref(false)
-const uploadProgress = ref({
-  completed: 0,
-  total: 0,
-  currentFile: ''
-})
-const uploadResults = ref([])
-const uploadedFiles = ref([])
-
-// Upload configuration
-const uploadConfig = ref({
-  purpose: { label: 'Destination', value: 'dest' },
-  categories: []
-})
-
-// Categories management
-const availableCategories = ref([])
-const loadingCategories = ref(false)
 
 
 
@@ -880,10 +616,6 @@ const currentMediaIndex = computed(() => {
 
 
 
-// Upload computed properties
-const totalSize = computed(() => {
-  return selectedFiles.value.reduce((total, file) => total + file.size, 0)
-})
 
 // Filter options
 const mediaTypeOptions = [
@@ -895,10 +627,12 @@ const purposeOptions = [
   { label: 'All Purposes', value: 'all' },
   { label: 'Source', value: 'source' },
   { label: 'Destination', value: 'dest' },
-  { label: 'Intermediate', value: 'intermediate' },
-  { label: 'Backup', value: 'backup' },
   { label: 'Output', value: 'output' },
-  { label: 'Thumbnail', value: 'thumbnail' }
+  { label: 'Thumbnail', value: 'thumbnail' },
+  { label: 'Voyeur', value: 'voyeur' },
+  { label: 'Subject', value: 'subject' },
+  { label: 'Porn', value: 'porn' },
+  { label: 'Todo', value: 'todo' }
 ]
 
 const sortByOptions = [
@@ -928,34 +662,7 @@ const limitOptions = [
   { label: '480', value: 480 }
 ]
 
-// Upload purpose options
-const uploadPurposeOptions = [
-  { label: 'Source', value: 'source' },
-  { label: 'Destination', value: 'dest' },
-  { label: 'Intermediate', value: 'intermediate' },
-  { label: 'Backup', value: 'backup' },
-  { label: 'Output', value: 'output' }
-]
 
-// Upload menu items
-const uploadMenuItems = [
-  [{
-    label: 'Upload Single File',
-    icon: 'i-heroicons-document-plus',
-    onSelect: (_e) => {
-      console.log('Single file upload selected')
-      openUploadModal('single')
-    }
-  }],
-  [{
-    label: 'Upload Folder',
-    icon: 'i-heroicons-folder-open',
-    onSelect: (_e) => {
-      console.log('Folder upload selected')
-      openUploadModal('folder')
-    }
-  }]
-]
 
 // Search cancellation
 const searchController = ref(null)
@@ -2004,255 +1711,13 @@ watch(isModalOpen, (isOpen) => {
   }
 })
 
-// Video upload methods
-const openUploadModal = async (mode = 'folder') => {
-  uploadMode.value = mode
+// Upload modal methods
+const openUploadModal = () => {
   isUploadModalOpen.value = true
-  resetUploadState()
-  await loadCategories()
 }
 
 const closeUploadModal = () => {
   isUploadModalOpen.value = false
-  resetUploadState()
-}
-
-const resetUploadState = () => {
-  selectedFiles.value = []
-  isUploading.value = false
-  uploadComplete.value = false
-  uploadProgress.value = {
-    completed: 0,
-    total: 0,
-    currentFile: ''
-  }
-  uploadResults.value = []
-  uploadedFiles.value = []
-}
-
-const switchUploadMode = () => {
-  uploadMode.value = uploadMode.value === 'single' ? 'folder' : 'single'
-  selectedFiles.value = [] // Clear selection when switching modes
-}
-
-const handleFolderSelection = (event) => {
-  const files = Array.from(event.target.files || [])
-  
-  // Filter for video files only
-  const videoFiles = files.filter(file =>
-    file.type.startsWith('video/') &&
-    file.size > 0
-  )
-  
-  selectedFiles.value = videoFiles
-  
-  const toast = useToast()
-  toast.add({
-    title: 'Files Selected',
-    description: `Selected ${videoFiles.length} video files (${formatFileSize(totalSize.value)})`,
-    color: 'green',
-    timeout: 3000
-  })
-}
-
-const handleSingleFileSelection = (event) => {
-  const files = Array.from(event.target.files || [])
-  
-  // Filter for video files only
-  const videoFiles = files.filter(file =>
-    file.type.startsWith('video/') &&
-    file.size > 0
-  )
-  
-  selectedFiles.value = videoFiles
-  
-  const toast = useToast()
-  if (videoFiles.length > 0) {
-    toast.add({
-      title: 'File Selected',
-      description: `Selected "${videoFiles[0].name}" (${formatFileSize(videoFiles[0].size)})`,
-      color: 'green',
-      timeout: 3000
-    })
-  } else {
-    toast.add({
-      title: 'No Valid Files',
-      description: 'Please select a valid video file',
-      color: 'red',
-      timeout: 3000
-    })
-  }
-}
-
-const clearSelection = () => {
-  selectedFiles.value = []
-}
-
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const startUpload = async () => {
-  if (selectedFiles.value.length === 0) return
-  
-  isUploading.value = true
-  uploadComplete.value = false
-  uploadProgress.value = {
-    completed: 0,
-    total: selectedFiles.value.length,
-    currentFile: ''
-  }
-  uploadResults.value = []
-  
-  const toast = useToast()
-  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : 5 // Process single files individually, folders in batches of 5
-  
-  // Process files in batches
-  for (let i = 0; i < selectedFiles.value.length; i += BATCH_SIZE) {
-    const batch = selectedFiles.value.slice(i, i + BATCH_SIZE)
-    
-    try {
-      // Create FormData for this batch
-      const formData = new FormData()
-      batch.forEach(file => {
-        formData.append('videos', file)
-      })
-      
-      // Add upload configuration
-      const purposeValue = typeof uploadConfig.value.purpose === 'object' ? uploadConfig.value.purpose.value : uploadConfig.value.purpose
-      formData.append('purpose', purposeValue)
-      
-      // Add categories (extract values from objects if needed)
-      const categoryValues = uploadConfig.value.categories.map(cat =>
-        typeof cat === 'object' ? cat.value || cat.label : cat
-      )
-      formData.append('categories', JSON.stringify(categoryValues))
-      
-      // Update progress
-      if (uploadMode.value === 'single') {
-        uploadProgress.value.currentFile = `Uploading ${batch[0].name}...`
-      } else {
-        uploadProgress.value.currentFile = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`
-      }
-      
-      // Upload batch
-      const response = await $fetch('/api/media/upload-videos', {
-        method: 'POST',
-        body: formData
-      })
-      
-      // Process results
-      if (response.results) {
-        response.results.forEach(result => {
-          uploadResults.value.push({
-            filename: result.filename,
-            success: true,
-            video_uuid: result.video_uuid,
-            thumbnail_uuid: result.thumbnail_uuid
-          })
-          uploadProgress.value.completed++
-        })
-      }
-      
-      // Process errors
-      if (response.errors) {
-        response.errors.forEach(error => {
-          uploadResults.value.push({
-            filename: error.filename,
-            success: false,
-            error: error.error
-          })
-          uploadProgress.value.completed++
-        })
-      }
-      
-    } catch (error) {
-      console.error('Batch upload error:', error)
-      
-      // Mark all files in this batch as failed
-      batch.forEach(file => {
-        uploadResults.value.push({
-          filename: file.name,
-          success: false,
-          error: error.data?.message || error.message || 'Upload failed'
-        })
-        uploadProgress.value.completed++
-      })
-      
-      toast.add({
-        title: 'Batch Upload Error',
-        description: `Failed to upload batch: ${error.data?.message || error.message}`,
-        color: 'red',
-        timeout: 5000
-      })
-    }
-  }
-  
-  // Upload complete
-  isUploading.value = false
-  uploadComplete.value = true
-  
-  const successCount = uploadResults.value.filter(r => r.success).length
-  const failCount = uploadResults.value.filter(r => !r.success).length
-  
-  toast.add({
-    title: 'Upload Complete',
-    description: `Successfully uploaded ${successCount} videos${failCount > 0 ? `, ${failCount} failed` : ''}`,
-    color: successCount > 0 ? 'green' : 'red',
-    timeout: 5000
-  })
-}
-
-const refreshAfterUpload = async () => {
-  // Set filters to show destination videos
-  filters.value.media_type = { label: 'Videos', value: 'video' }
-  filters.value.purpose = { label: 'Destination', value: 'dest' }
-  
-  // Refresh the search
-  await searchMedia()
-  
-  // Close modal
-  closeUploadModal()
-  
-  const toast = useToast()
-  toast.add({
-    title: 'Gallery Refreshed',
-    description: 'Showing newly uploaded destination videos',
-    color: 'green',
-    timeout: 3000
-  })
-}
-
-// Categories management methods
-const loadCategories = async () => {
-  loadingCategories.value = true
-  try {
-    const response = await $fetch('/api/categories')
-    if (response.success) {
-      // Transform categories for UInputMenu format
-      availableCategories.value = response.categories.map(cat => ({
-        label: cat.name,
-        value: cat.name,
-        id: cat.id,
-        color: cat.color
-      }))
-    }
-  } catch (error) {
-    console.error('Failed to load categories:', error)
-    const toast = useToast()
-    toast.add({
-      title: 'Categories Load Error',
-      description: 'Failed to load categories. You can still create new ones.',
-      color: 'yellow',
-      timeout: 3000
-    })
-  } finally {
-    loadingCategories.value = false
-  }
 }
 
 // Video editing methods
