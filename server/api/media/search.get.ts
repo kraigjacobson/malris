@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords, jobs, subjects } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, like, notInArray, notExists, sql } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, notInArray, notExists, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { logger } from '~/server/utils/logger'
 
@@ -318,7 +318,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (filename_pattern) {
-      conditions.push(like(mediaRecords.filename, `%${filename_pattern}%`))
+      conditions.push(sql`${mediaRecords.filename} ILIKE ${`%${filename_pattern}%`}`)
     }
 
     // File size filters

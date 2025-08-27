@@ -66,31 +66,59 @@
 
       <!-- Content only when not collapsed -->
       <div v-if="!filtersCollapsed" class="bg-white dark:bg-gray-800 border-x border-b border-gray-200 dark:border-gray-700 rounded-b-lg px-4 py-3 space-y-3 sm:space-y-4">
-        <!-- UUID Search (priority filter) -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Media UUID (Direct Lookup)
-          </label>
-          <UInput
-            v-model="mediaUuid"
-            placeholder="Enter media record UUID to find specific record..."
-            class="w-full"
-            :ui="{ trailing: 'pe-1' }"
-          >
-            <template v-if="mediaUuid?.length" #trailing>
-              <UButton
-                color="neutral"
-                variant="link"
-                size="sm"
-                icon="i-heroicons-x-mark"
-                aria-label="Clear UUID input"
-                @click="mediaUuid = ''"
-              />
-            </template>
-          </UInput>
-          <p v-if="mediaUuid" class="text-xs text-blue-600 dark:text-blue-400 mt-1">
-            When UUID is set, all other filters are ignored
-          </p>
+        <!-- UUID and Filename Search -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <!-- UUID Search (priority filter) -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Media UUID (Direct Lookup)
+            </label>
+            <UInput
+              v-model="mediaUuid"
+              placeholder="Enter media record UUID to find specific record..."
+              class="w-full"
+              :ui="{ trailing: 'pe-1' }"
+            >
+              <template v-if="mediaUuid?.length" #trailing>
+                <UButton
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-heroicons-x-mark"
+                  aria-label="Clear UUID input"
+                  @click="mediaUuid = ''"
+                />
+              </template>
+            </UInput>
+            <p v-if="mediaUuid" class="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              When UUID is set, all other filters are ignored
+            </p>
+          </div>
+
+          <!-- Filename Search -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Filename (Partial Match)
+            </label>
+            <UInput
+              v-model="filenameSearch"
+              placeholder="Enter partial filename to search..."
+              class="w-full"
+              :ui="{ trailing: 'pe-1' }"
+              :disabled="!!mediaUuid"
+            >
+              <template v-if="filenameSearch?.length" #trailing>
+                <UButton
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-heroicons-x-mark"
+                  aria-label="Clear filename input"
+                  @click="filenameSearch = ''"
+                />
+              </template>
+            </UInput>
+          </div>
         </div>
 
         <!-- Media Type and Purpose on same line -->
@@ -559,6 +587,8 @@ const isUploadModalOpen = ref(false)
 // Subject selection state
 const selectedSubject = ref(null)
 
+// Filename search state
+const filenameSearch = ref('')
 
 const mediaResults = ref([])
 const isLoading = ref(false)
@@ -669,6 +699,94 @@ const searchController = ref(null)
 
 // No longer needed - composable handles saving automatically
 
+// Helper function to build search parameters
+const buildSearchParams = () => {
+  const params = new URLSearchParams()
+  
+  // Priority searches that ignore other filters
+  if (mediaUuid.value && mediaUuid.value.trim()) {
+    params.append('uuid', mediaUuid.value.trim())
+    params.append('include_thumbnails', 'true')
+    return { params, searchType: 'uuid' }
+  }
+  
+  if (filenameSearch.value && filenameSearch.value.trim()) {
+    params.append('filename_pattern', filenameSearch.value.trim())
+    params.append('include_thumbnails', 'true')
+    return { params, searchType: 'filename' }
+  }
+  
+  // Normal search with all filters
+  const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
+  const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
+  
+  if (mediaTypeValue) params.append('media_type', mediaTypeValue)
+  if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
+  if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
+  
+  // Add selected tags from UInputTags component
+  if (selectedTags.value.length > 0) {
+    params.append('tags', selectedTags.value.join(','))
+  }
+  // Always use partial match mode (API only supports this)
+  params.append('tag_match_mode', 'partial')
+  
+  // Add only show untagged filter
+  if (onlyShowUntagged.value) {
+    params.append('only_untagged', 'true')
+  }
+  
+  params.append('include_thumbnails', 'true')
+  return { params, searchType: 'normal' }
+}
+
+// Helper function to add pagination and sorting
+const addPaginationAndSorting = (params) => {
+  // Handle limit - extract value if it's an object, use paginationLimit from composable
+  const limit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
+  params.append('limit', limit.toString())
+  params.append('offset', ((currentPage.value - 1) * limit).toString())
+  
+  // Add sort parameters
+  const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
+  const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
+  
+  if (sortByValue) {
+    params.append('sort_by', sortByValue)
+    // For random sorting, order doesn't matter but API expects it
+    if (sortByValue === 'random') {
+      params.append('sort_order', 'asc')
+    } else if (sortOrderValue) {
+      params.append('sort_order', sortOrderValue)
+    }
+  }
+}
+
+// Helper function to update pagination
+const updatePagination = (response, searchType) => {
+  if (searchType === 'uuid') {
+    pagination.value = {
+      total: response.results?.length || 0,
+      limit: 1,
+      offset: 0,
+      has_more: false
+    }
+    return
+  }
+  
+  // For filename and normal searches
+  const currentLimit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
+  const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
+  const hasMore = response.count === currentLimit
+  
+  pagination.value = {
+    total: hasMore ? currentOffset + response.count + 1 : currentOffset + response.count,
+    limit: currentLimit,
+    offset: currentOffset,
+    has_more: hasMore
+  }
+}
+
 // Methods
 const searchMedia = async () => {
   isLoading.value = true
@@ -683,81 +801,21 @@ const searchMedia = async () => {
   searchController.value = new AbortController()
 
   try {
-    const params = new URLSearchParams()
+    const { params, searchType } = buildSearchParams()
     
-    // If UUID is provided, ignore all other filters and search by UUID only
-    if (mediaUuid.value && mediaUuid.value.trim()) {
-      params.append('uuid', mediaUuid.value.trim())
-      params.append('include_thumbnails', 'true')
-      
-      const response = await useApiFetch(`media/search?${params.toString()}`, {
-        signal: searchController.value.signal
-      })
-      
-      // For UUID search, we expect either 1 result or 0 results
-      const allResults = response.results || []
-      mediaResults.value = allResults
-      
-      // Update pagination for UUID search (should be 1 or 0 results)
-      pagination.value = {
-        total: allResults.length,
-        limit: 1,
-        offset: 0,
-        has_more: false
-      }
-      
-    } else {
-      // Normal search with all filters
-      // Extract values from objects if needed
-      const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
-      const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
-      
-      if (mediaTypeValue) params.append('media_type', mediaTypeValue)
-      if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
-      if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
-      
-      // Add selected tags from UInputTags component
-      if (selectedTags.value.length > 0) {
-        params.append('tags', selectedTags.value.join(','))
-      }
-      // Always use partial match mode (API only supports this)
-      params.append('tag_match_mode', 'partial')
-      
-      // Add only show untagged filter
-      if (onlyShowUntagged.value) {
-        params.append('only_untagged', 'true')
-      }
-      
-      
-      
-      // Handle limit - extract value if it's an object, use paginationLimit from composable
-      const limit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
-      params.append('limit', limit.toString())
-      params.append('offset', ((currentPage.value - 1) * limit).toString())
-      
-      // Add sort parameters
-      const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
-      const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
-      
-      if (sortByValue) {
-        params.append('sort_by', sortByValue)
-        // For random sorting, order doesn't matter but API expects it
-        if (sortByValue === 'random') {
-          params.append('sort_order', 'asc')
-        } else if (sortOrderValue) {
-          params.append('sort_order', sortOrderValue)
-        }
-      }
-      
-      params.append('include_thumbnails', 'true')
+    // Add pagination and sorting for non-UUID searches
+    if (searchType !== 'uuid') {
+      addPaginationAndSorting(params)
+    }
 
-      const response = await useApiFetch(`media/search?${params.toString()}`, {
-        signal: searchController.value.signal
-      })
-      
-      const allResults = response.results || []
-      
-      // Filter results based on media type selection
+    const response = await useApiFetch(`media/search?${params.toString()}`, {
+      signal: searchController.value.signal
+    })
+    
+    const allResults = response.results || []
+    
+    // Filter results based on media type selection (only for normal searches)
+    if (searchType === 'normal') {
       mediaResults.value = allResults.filter(media => {
         // If searching specifically for images, exclude thumbnails to avoid duplicates
         if (mediaType === 'image') {
@@ -777,31 +835,13 @@ const searchMedia = async () => {
           console.warn(`Video ${media.uuid} (${media.filename}) has no thumbnail_uuid`)
         }
       })
-      
-      // Update pagination info based on API response
-      const currentLimit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
-      const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
-      
-      // Check if there are more results by seeing if we got a full page
-      const hasMore = response.count === currentLimit
-      
-      // For pagination display, we need to estimate total based on current results
-      // If we have a full page, assume there might be more
-      if (hasMore) {
-        // Estimate total as at least current offset + current count + 1 (to show next page)
-        pagination.value.total = currentOffset + response.count + 1
-      } else {
-        // This is the last page, so total is offset + actual count
-        pagination.value.total = currentOffset + response.count
-      }
-      
-      pagination.value = {
-        ...pagination.value,
-        limit: currentLimit,
-        offset: currentOffset,
-        has_more: hasMore
-      }
+    } else {
+      // For direct searches (UUID/filename), use results as-is
+      mediaResults.value = allResults
     }
+    
+    // Update pagination
+    updatePagination(response, searchType)
     
   } catch (err) {
     // Don't show error if search was cancelled
@@ -887,7 +927,7 @@ const handleSubjectSelection = (selected) => {
 
 
 const handleImageLoad = (event) => {
-  console.log('✅ Image loaded successfully:', {
+  console.debug('✅ Image loaded successfully:', {
     src: event.target.src.substring(0, 50) + '...',
     isBase64: event.target.src.startsWith('data:'),
     naturalWidth: event.target.naturalWidth,
