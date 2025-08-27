@@ -25,6 +25,7 @@
     "@nuxtjs/supabase": "1.5.2",
     "@pinia/nuxt": "^0.11.1",
     "@scalar/nuxt": "^0.4.34",
+    "@vite-pwa/nuxt": "^1.0.4",
     "better-sqlite3": "^11.10.0",
     "busboy": "^1.6.0",
     "drizzle-kit": "^0.30.0",

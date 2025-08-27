@@ -193,7 +193,7 @@ export const useJobsStore = defineStore('jobs', () => {
     filters.value[key] = value
   }
 
-  // WebSocket connection management
+  // WebSocket connection management with PWA persistence
   const connectWebSocket = () => {
     if (wsConnection.value?.readyState === WebSocket.OPEN) {
       console.log('🔌 WebSocket already connected')
@@ -240,26 +240,26 @@ export const useJobsStore = defineStore('jobs', () => {
         // Start polling as fallback
         startAutoRefresh()
         
-        // More aggressive reconnection - don't give up easily
+        // Aggressive reconnection for PWA - don't give up easily
         if (wsReconnectAttempts.value < maxReconnectAttempts) {
           wsReconnectAttempts.value++
-          // Faster initial reconnection attempts
-          const delay = wsReconnectAttempts.value === 1 ? 500 : reconnectDelay.value
-          console.log(`🔄 Attempting WebSocket reconnect ${wsReconnectAttempts.value}/${maxReconnectAttempts} in ${delay}ms`)
+          // Faster initial reconnection attempts for PWA
+          const delay = wsReconnectAttempts.value === 1 ? 100 : reconnectDelay.value
+          console.log(`🔄 PWA WebSocket reconnect ${wsReconnectAttempts.value}/${maxReconnectAttempts} in ${delay}ms`)
           
           setTimeout(() => {
             connectWebSocket()
           }, delay)
           
-          // Exponential backoff but cap at 10 seconds instead of 30
-          reconnectDelay.value = Math.min(reconnectDelay.value * 1.5, 10000)
+          // Exponential backoff but cap at 5 seconds for PWA
+          reconnectDelay.value = Math.min(reconnectDelay.value * 1.5, 5000)
         } else {
           console.log('❌ Max WebSocket reconnect attempts reached, falling back to polling')
-          // Reset attempts after 30 seconds to allow future reconnection attempts
+          // Reset attempts after 10 seconds for PWA (faster than before)
           setTimeout(() => {
             wsReconnectAttempts.value = 0
             reconnectDelay.value = 1000
-          }, 30000)
+          }, 10000)
         }
       }
       

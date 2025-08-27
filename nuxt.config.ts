@@ -1,4 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { defineNuxtConfig } from 'nuxt/config'
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: false },
@@ -24,7 +26,7 @@ export default defineNuxtConfig({
     timing: true // Enable request timing
     // Removed devProxy - API routes should be handled by the same Nuxt server
   },
-  modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt'],
+  modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt', '@vite-pwa/nuxt'],
 
   css: ['~/assets/css/main.css'],
 
@@ -39,6 +41,69 @@ export default defineNuxtConfig({
       sameSite: 'lax',
       secure: false, // Set to true in production with HTTPS
       httpOnly: false // Allow client-side access for dynamic expiration
+    }
+  },
+
+  // PWA Configuration for maintaining socket connections
+  pwa: {
+    strategies: 'generateSW',
+    registerType: 'autoUpdate',
+    manifest: {
+      name: 'Malris - Media Processing',
+      short_name: 'Malris',
+      description: 'AI-powered media processing application that stays connected',
+      theme_color: '#1a1a1a',
+      background_color: '#000000',
+      display: 'standalone',
+      orientation: 'portrait',
+      start_url: '/',
+      scope: '/',
+      categories: ['productivity', 'utilities'],
+      icons: [
+        {
+          src: '/icon-192x192.png',
+          sizes: '192x192',
+          type: 'image/png'
+        },
+        {
+          src: '/icon-512x512.png',
+          sizes: '512x512',
+          type: 'image/png'
+        }
+      ]
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      navigateFallback: '/',
+      navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
+      runtimeCaching: [
+        {
+          urlPattern: /^https?:\/\/.*\/api\/.*$/,
+          handler: 'NetworkFirst',
+          options: {
+            cacheName: 'api-cache',
+            networkTimeoutSeconds: 10,
+            cacheableResponse: {
+              statuses: [0, 200]
+            }
+          }
+        },
+        {
+          urlPattern: /\/_nuxt\/.*/,
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'nuxt-cache'
+          }
+        }
+      ],
+      // Keep service worker active for socket connections
+      skipWaiting: true,
+      clientsClaim: true,
+      cleanupOutdatedCaches: true
+    },
+    devOptions: {
+      enabled: false, // Disable in development to avoid MIME type issues
+      type: 'module'
     }
   },
 

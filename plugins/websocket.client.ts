@@ -1,4 +1,4 @@
-// WebSocket connection plugin - connects immediately on app startup
+// WebSocket connection plugin with PWA support - connects immediately on app startup
 export default defineNuxtPlugin({
   name: 'websocket-connection',
   enforce: 'post', // Run after other plugins
@@ -22,25 +22,45 @@ export default defineNuxtPlugin({
         }, 50)
       }
       
-      // Also handle page visibility changes globally
+      // Enhanced PWA visibility handling
       const handleVisibilityChange = () => {
-        if (!document.hidden && !jobsStore.wsConnected) {
-          console.log('🔌 Page visible, reconnecting WebSocket...')
-          jobsStore.connectWebSocket()
+        if (document.hidden) {
+          console.log('🌙 App going to background (PWA mode)')
+          // Don't disconnect - let the browser handle it naturally
+          // The PWA will automatically reconnect when returning to foreground
+        } else {
+          console.log('☀️ App returning to foreground (PWA mode)')
+          // Aggressively reconnect when coming back to foreground
+          if (!jobsStore.wsConnected) {
+            console.log('🔄 PWA foreground reconnection...')
+            jobsStore.connectWebSocket()
+          }
         }
       }
       
       document.addEventListener('visibilitychange', handleVisibilityChange)
       
-      // Cleanup when page unloads (proper way for plugins)
+      // PWA-specific page lifecycle events
+      const handlePageShow = () => {
+        console.log('📱 PWA page show event')
+        if (!jobsStore.wsConnected) {
+          jobsStore.connectWebSocket()
+        }
+      }
+      
+      const handlePageHide = () => {
+        console.log('📱 PWA page hide event')
+        // Don't force disconnect - let it happen naturally
+      }
+      
+      window.addEventListener('pageshow', handlePageShow)
+      window.addEventListener('pagehide', handlePageHide)
+      
+      // Cleanup when page unloads
       window.addEventListener('beforeunload', () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange)
-        jobsStore.cleanup()
-      })
-      
-      // Also cleanup on page navigation (SPA)
-      window.addEventListener('pagehide', () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        window.removeEventListener('pageshow', handlePageShow)
+        window.removeEventListener('pagehide', handlePageHide)
         jobsStore.cleanup()
       })
     }
