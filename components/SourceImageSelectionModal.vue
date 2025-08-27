@@ -18,35 +18,13 @@
     </template>
 
     <template #body>
-      <div class="space-y-4 h-[600px] overflow-y-auto custom-scrollbar">
+      <div
+        class="space-y-4 h-full overflow-y-auto custom-scrollbar"
+        @touchstart="handleJobSwipeTouchStart"
+        @touchmove="handleJobSwipeTouchMove"
+        @touchend="handleJobSwipeTouchEnd"
+      >
 
-        <!-- Result Limit Controls -->
-        <div class="grid grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <div>
-            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Output Images Limit
-            </label>
-            <USelectMenu
-              v-model="outputImageLimit"
-              :items="limitOptions"
-              class="w-full"
-              size="sm"
-              @change="reloadImagesForCurrentJob"
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Source Images Limit
-            </label>
-            <USelectMenu
-              v-model="sourceImageLimit"
-              :items="limitOptions"
-              class="w-full"
-              size="sm"
-              @change="reloadImagesForCurrentJob"
-            />
-          </div>
-        </div>
 
         <!-- Loading State - show skeletons while loading or when no images are available yet -->
         <div v-if="isLoadingImages || isLoadingSourceImages" class="text-center h-full flex flex-col">
@@ -92,9 +70,9 @@
                 style="height: 384px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background-color: #1f2937 !important;"
                 @wheel.prevent.stop="handleWheel"
                 @mousedown.prevent.stop="handleMouseDown"
-                @touchstart.capture.prevent.stop="handleTouchStart"
-                @touchmove.capture.prevent.stop="handleTouchMove"
-                @touchend.capture.prevent.stop="handleTouchEnd"
+                @touchstart.capture.prevent="handleImageTouchStart"
+                @touchmove.capture.prevent="handleImageTouchMove"
+                @touchend.capture.prevent="handleImageTouchEnd"
                 @gesturestart.prevent.stop
                 @gesturechange.prevent.stop
                 @gestureend.prevent.stop
@@ -138,20 +116,44 @@
                 </template>
               </div>
 
-              <!-- Left Arrow Overlay -->
-              <div v-if="sourceImages.length > 1"
-                class="absolute left-0 top-0 w-16 h-full flex items-center justify-start pl-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto z-10"
-                @click="goToPreviousImage">
-                <UIcon name="i-heroicons-chevron-left"
-                  class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
-              </div>
-
-              <!-- Right Arrow Overlay -->
-              <div v-if="sourceImages.length > 1"
-                class="absolute right-0 top-0 w-16 h-full flex items-center justify-end pr-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto z-10"
-                @click="goToNextImage">
-                <UIcon name="i-heroicons-chevron-right"
-                  class="w-8 h-8 text-white drop-shadow-lg hover:scale-110 transition-transform" />
+              <!-- Overlay Action Buttons - Left Side -->
+              <div class="absolute left-4 bottom-4 flex flex-col gap-2 opacity-100 transition-opacity duration-200 pointer-events-auto z-10">
+                <!-- Delete Job Button -->
+                <div v-if="currentImage"
+                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                  @click="handleDeleteJob"
+                  :class="{ 'opacity-50 cursor-not-allowed': isDeletingJob }">
+                  <UIcon name="i-heroicons-x-mark"
+                    class="w-8 h-8 text-white drop-shadow-lg" />
+                </div>
+                
+                <!-- Navigation Buttons (only show if multiple images) -->
+                <template v-if="sourceImages.length > 1">
+                  <!-- Next Button -->
+                  <div
+                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                    @click="goToNextImage">
+                    <UIcon name="i-heroicons-chevron-right"
+                      class="w-8 h-8 text-white drop-shadow-lg" />
+                  </div>
+                  
+                  <!-- Previous Button -->
+                  <div
+                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                    @click="goToPreviousImage">
+                    <UIcon name="i-heroicons-chevron-left"
+                      class="w-8 h-8 text-white drop-shadow-lg" />
+                  </div>
+                </template>
+                
+                <!-- Select Button -->
+                <div v-if="currentImage"
+                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                  @click="selectCurrentImage"
+                  :class="{ 'opacity-50 cursor-not-allowed': isSubmittingSource || isDeletingJob }">
+                  <UIcon name="i-heroicons-check"
+                    class="w-8 h-8 text-white drop-shadow-lg" />
+                </div>
               </div>
 
               <!-- Image Counter -->
@@ -162,25 +164,29 @@
               </div>
 
               <!-- Video/Image Toggle Button -->
-              <div class="absolute top-2 right-2">
+              <div
+                v-if="job?.dest_media_uuid"
+                class="absolute top-0 right-0 w-16 h-16 flex items-center justify-center cursor-pointer"
+                @click="toggleVideoView">
                 <UButton
-                  v-if="job?.dest_media_uuid"
                   :color="showingVideo ? 'primary' : 'gray'"
                   variant="solid"
                   size="sm"
                   :icon="showingVideo ? 'i-heroicons-photo' : 'i-heroicons-film'"
-                  @click="toggleVideoView"
-                  class="opacity-80 hover:opacity-100 transition-opacity"
+                  class="opacity-80 hover:opacity-100 transition-opacity pointer-events-none"
                   :title="showingVideo ? 'Show Output Image' : 'Show Destination Video'" />
+              </div>
+              <div
+                v-else
+                class="absolute top-0 right-0 w-16 h-16 flex items-center justify-center cursor-pointer"
+                @click="deleteCurrentImage">
                 <UButton
-                  v-else
                   color="error"
                   variant="solid"
                   size="sm"
                   icon="i-heroicons-trash"
                   :loading="isDeletingImage"
-                  @click="deleteCurrentImage"
-                  class="opacity-80 hover:opacity-100 transition-opacity" />
+                  class="opacity-80 hover:opacity-100 transition-opacity pointer-events-none" />
               </div>
 
 
@@ -216,7 +222,10 @@
                 </div>
               </div>
               <div v-else-if="sourceImages.length > 0" ref="thumbnailStrip"
-                class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
+                class="flex gap-2 overflow-x-auto py-2 scroll-smooth"
+                @touchstart.stop
+                @touchmove.stop
+                @touchend.stop>
                 <div v-for="(sourceImage, index) in sourceImages" :key="sourceImage.uuid"
                   :ref="el => { if (el) thumbnailRefs[index] = el }"
                   class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
@@ -343,7 +352,7 @@
       </div>
     </template>
 
-    <template #footer>
+    <template #footer v-if="!isMobile">
       <div class="flex justify-between items-center w-full">
         <div class="flex gap-2">
           <UButton variant="outline" @click="closeModal" :disabled="isSubmittingSource || isDeletingJob">
@@ -428,9 +437,6 @@ const isDeletingImage = ref(false)
 const thumbnailStrip = ref(null)
 const thumbnailRefs = ref({})
 
-// Result limit controls
-const outputImageLimit = ref(50)
-const sourceImageLimit = ref(100)
 
 // Image persistence for smooth transitions
 const lastLoadedImage = ref(null) // Keep previous image while new one loads
@@ -461,14 +467,26 @@ const lastTouchDistance = ref(0)
 // Composables
 const { isDeletingJob, deleteJob } = useJobActions()
 
-// Limit options for dropdowns
-const limitOptions = [
-  { label: '24 results', value: 24 },
-  { label: '48 results', value: 48 },
-  { label: '96 results', value: 96 },
-  { label: '192 results', value: 192 },
-  { label: '480 results', value: 480 }
-]
+// Job navigation gesture handling
+const {
+  handleTouchStart: handleJobSwipeTouchStart,
+  handleTouchMove: handleJobSwipeTouchMove,
+  handleTouchEnd: handleJobSwipeTouchEnd
+} = useGesture({
+  minSwipeDistance: 50,
+  onSwipeLeft: () => {
+    if (hasMultipleJobs.value) {
+      goToNextJob()
+    }
+  },
+  onSwipeRight: () => {
+    if (hasMultipleJobs.value) {
+      goToPreviousJob()
+    }
+  },
+  debug: true
+})
+
 
 // Computed
 const isOpen = computed({
@@ -593,7 +611,6 @@ const loadImagesForJob = async (job) => {
       media_type: 'image',
       purpose: 'output',
       job_id: job.id,
-      limit: outputImageLimit.value,
       include_thumbnails: false,
       sort_by: 'created_at',
       sort_order: 'desc'
@@ -1667,13 +1684,6 @@ watch(() => currentImage.value, (newImage) => {
   showingVideo.value = false
 }, { immediate: true })
 
-// Method to reload images when limits change
-const reloadImagesForCurrentJob = () => {
-  if (props.job && props.modelValue) {
-    console.log('🔄 Reloading images due to limit change')
-    loadImagesForJob(props.job)
-  }
-}
 </script>
 
 <style scoped>

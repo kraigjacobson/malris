@@ -2,98 +2,100 @@
 <template>
   <!-- Media Detail Modal -->
   <UModal :open="isOpen" @update:open="$emit('update:isOpen', $event)" fullscreen>
-    <template #body>
-      <div v-if="media" class="p-3 sm:p-6">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-3 sm:mb-6">
-          <h3 class="text-base sm:text-lg font-semibold truncate pr-2">
-            {{ currentMode === 'tag' ? 'Rapid Tag Editor' : 'Media Details' }}
-          </h3>
-          <div class="flex items-center gap-1 sm:gap-2 shrink-0">
-            <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-xs sm:text-sm text-gray-500 hidden sm:inline">
-              {{ currentIndex + 1 }} / {{ totalCount }}
-            </span>
-            
-            <!-- Mode Selector -->
-            <USelect
-              v-model="currentMode"
-              :items="modeOptions"
-              size="xs"
-              class="w-20"
-              :disabled="isSavingEdits || isSavingTags"
-            />
-            
-            <!-- Save/Cancel buttons for edit mode -->
-            <UButton
-              v-if="currentMode === 'edit'"
-              variant="solid"
-              color="green"
-              size="xs"
-              :loading="isSavingEdits"
-              @click="confirmSaveEdits"
-            >
-              Save
-            </UButton>
-            <UButton
-              v-if="currentMode === 'edit'"
-              variant="outline"
-              size="xs"
-              @click="confirmCancelEdits"
-            >
-              Cancel
-            </UButton>
-            
-            <!-- Save button for tag mode -->
-            <UButton
-              v-if="currentMode === 'tag'"
-              color="primary"
-              size="xs"
-              :loading="isSavingTags"
-              @click="saveTags"
-            >
-              Save
-            </UButton>
-            
-            <!-- Delete button (only in none mode) -->
-            <UButton
-              v-if="currentMode === 'none'"
-              variant="solid"
-              icon="i-heroicons-trash"
-              color="error"
-              size="xs"
-              :loading="deletingIds.includes(media.uuid)"
-              @click="$emit('confirmDelete', media)"
-            />
-            
-            <UButton
-              variant="ghost"
-              icon="i-heroicons-x-mark"
-              size="xs"
-              @click="closeModal"
-            />
-          </div>
+    <template #header>
+      <div v-if="media" class="flex justify-between items-center w-full">
+        <div class="flex items-center gap-1 sm:gap-2">
+          <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-xs sm:text-sm text-gray-500 hidden sm:inline">
+            {{ currentIndex + 1 }} / {{ totalCount }}
+          </span>
+          
+          <!-- Total Untagged Count (only in tag mode) -->
+          <span v-if="currentMode === 'tag' && totalUntaggedInDatabase > 0" class="text-xs sm:text-sm text-blue-600 dark:text-blue-400 font-medium">
+            {{ totalUntaggedInDatabase }} untagged
+          </span>
         </div>
+        
+        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+          <!-- Mode Selector -->
+          <USelect
+            v-model="currentMode"
+            :items="modeOptions"
+            size="xs"
+            class="w-20"
+            :disabled="isSavingEdits || isSavingTags"
+          />
+          
+          <!-- Save/Cancel buttons for edit mode -->
+          <UButton
+            v-if="currentMode === 'edit'"
+            variant="solid"
+            color="green"
+            size="xs"
+            :loading="isSavingEdits"
+            @click="confirmSaveEdits"
+          >
+            Save
+          </UButton>
+          <UButton
+            v-if="currentMode === 'edit'"
+            variant="outline"
+            size="xs"
+            @click="confirmCancelEdits"
+          >
+            Cancel
+          </UButton>
+          
+          
+          <!-- Delete button (only in none mode) -->
+          <UButton
+            v-if="currentMode === 'none'"
+            variant="solid"
+            icon="i-heroicons-trash"
+            color="error"
+            size="xs"
+            :loading="deletingIds.includes(media.uuid)"
+            @click="$emit('confirmDelete', media)"
+          />
+          
+          <UButton
+            variant="ghost"
+            icon="i-heroicons-x-mark"
+            size="xs"
+            @click="closeModal"
+          />
+        </div>
+      </div>
+    </template>
+    
+    <template #body>
+      <div v-if="media" :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'">
 
         <!-- Tag Mode Layout -->
-        <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div
+          v-if="currentMode === 'tag'"
+          class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0"
+          @touchstart="handleGestureTouchStart"
+          @touchmove="handleGestureTouchMove"
+          @touchend="handleGestureTouchEnd"
+        >
           <!-- Media Display -->
           <div class="space-y-4">
             <div class="flex justify-center">
-              <div class="max-w-md w-full">
+              <div class="w-full relative touch-pan-y">
                 <img
                   v-if="media.type === 'image'"
-                  :key="media.uuid"
+                  :key="`tag-image-${media.uuid}`"
                   :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
                   :alt="media.filename"
-                  class="w-full h-auto max-h-96 object-contain rounded-lg shadow-md"
+                  class="w-full h-auto max-h-96 object-cover rounded-lg shadow-md"
                   @error="handleImageError"
                 >
-                <div v-else-if="media.type === 'video'" class="relative" :key="media.uuid">
+                <div v-else-if="media.type === 'video'" class="relative" :key="`tag-video-${media.uuid}`">
                   <video
                     v-if="media.thumbnail_uuid"
                     :key="`video-${media.uuid}`"
                     :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
-                    class="w-full h-auto max-h-96 object-contain rounded-lg shadow-md"
+                    class="w-full h-auto max-h-96 object-cover rounded-lg shadow-md"
                     controls
                     preload="metadata"
                   >
@@ -104,29 +106,50 @@
                     <UIcon name="i-heroicons-play-circle" class="text-6xl text-neutral-400" />
                   </div>
                 </div>
+                
+                <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
+                <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
+                  <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">
+                    {{ currentIndex + 1 }} / {{ totalCount }}
+                  </div>
+                </div>
+                
+                <!-- Overlaid Navigation Buttons (Desktop Only) -->
+                <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
+                  <UButton
+                    :disabled="!props.hasPrevious"
+                    variant="solid"
+                    color="white"
+                    icon="i-heroicons-chevron-left"
+                    size="lg"
+                    class="shadow-lg w-12 h-12"
+                    @click="navigatePrevious"
+                  />
+                  <UButton
+                    :disabled="!props.hasNext"
+                    variant="solid"
+                    color="white"
+                    icon="i-heroicons-chevron-right"
+                    size="lg"
+                    class="shadow-lg w-12 h-12"
+                    @click="navigateNext"
+                  />
+                </div>
               </div>
             </div>
 
-
-            <!-- Navigation Buttons -->
+            <!-- Current/Total counter and Save & Close button -->
             <div class="flex justify-between items-center">
-              <UButton
-                :disabled="!hasPrevious"
-                variant="outline"
-                icon="i-heroicons-chevron-left"
-                @click="navigatePrevious"
-              >
-                Previous
-              </UButton>
               
-
               <UButton
-                :disabled="!hasNext"
-                variant="outline"
-                trailing-icon="i-heroicons-chevron-right"
-                @click="navigateNext"
+                v-if="!props.hasNext"
+                variant="solid"
+                color="success"
+                trailing-icon="i-heroicons-check"
+                :loading="isSavingTags"
+                @click="saveAndClose"
               >
-                Next
+                Save & Close
               </UButton>
             </div>
           </div>
@@ -135,7 +158,6 @@
           <div class="space-y-6">
             <!-- Quick Tags -->
             <div>
-              <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Quick Tags</h5>
               <div class="space-y-2">
                 <!-- Hair Color Row -->
                 <div class="flex flex-wrap gap-2">
@@ -219,7 +241,7 @@
         <!-- Normal/Edit Mode Layout -->
         <div v-else class="space-y-4">
           <!-- Image Display -->
-          <div v-if="media.type === 'image'" class="max-w-full relative">
+          <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="max-w-full relative">
             <!-- Previous Button -->
             <UButton
               v-if="currentIndex > 0"
@@ -253,7 +275,7 @@
           </div>
 
           <!-- Video Display (only show when displayImages is true) -->
-          <div v-else-if="media.type === 'video' && settingsStore.displayImages" class="max-w-full">
+          <div v-else-if="media.type === 'video' && settingsStore.displayImages" :key="`video-display-${media.uuid}`" class="max-w-full">
             <div class="relative">
               <video
                 :ref="modalVideo"
@@ -318,7 +340,7 @@
           </div>
           
           <!-- Video placeholder when displayImages is false -->
-          <div v-else-if="media.type === 'video'" class="w-full h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded">
+          <div v-else-if="media.type === 'video'" :key="`video-placeholder-${media.uuid}`" class="w-full h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded">
             <div class="text-center">
               <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
               <p class="text-gray-500">Video Hidden</p>
@@ -711,12 +733,33 @@ const videoFPS = ref(30)
 const isSavingTags = ref(false)
 const selectedTags = ref([])
 const originalTags = ref([])
+const totalUntaggedInDatabase = ref(0)
+
+// Media navigation gesture handling
+const {
+  handleTouchStart: handleGestureTouchStart,
+  handleTouchMove: handleGestureTouchMove,
+  handleTouchEnd: handleGestureTouchEnd
+} = useGesture({
+  minSwipeDistance: 50,
+  onSwipeLeft: () => {
+    if (props.hasNext) {
+      navigateNext()
+    }
+  },
+  onSwipeRight: () => {
+    if (props.hasPrevious) {
+      navigatePrevious()
+    }
+  },
+  debug: true
+})
 
 // Predefined quick tags organized by category
 const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair']
 const hairStyleTags = ['braid', 'bangs', 'curly']
 const ageBodyTags = ['teen', 'milf', 'chub', 'glasses']
-const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34']
+const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34', 'scat']
 
 // Custom crop overlay state
 const isDragging = ref(false)
@@ -787,6 +830,24 @@ const hasTagChanges = computed(() => {
   if (selectedTags.value.length !== originalTags.value.length) return true
   return !selectedTags.value.every(tag => originalTags.value.includes(tag))
 })
+
+// Method to fetch total untagged dest videos count from database
+const fetchTotalUntaggedCount = async () => {
+  try {
+    const params = new URLSearchParams()
+    params.append('media_type', 'video')
+    params.append('purpose', 'dest')
+    params.append('only_untagged', 'true')
+    params.append('limit', '1') // We only need the count, not the actual results
+    params.append('include_thumbnails', 'false')
+    
+    const response = await useApiFetch(`media/search?${params.toString()}`)
+    totalUntaggedInDatabase.value = response.total_count || 0
+  } catch (error) {
+    console.error('Failed to fetch total untagged count:', error)
+    totalUntaggedInDatabase.value = 0
+  }
+}
 
 // Methods
 const closeModal = async () => {
@@ -1220,6 +1281,11 @@ const saveTags = async (showToast = true) => {
     // Update original tags after successful save
     originalTags.value = [...selectedTags.value]
     
+    // Refresh the total untagged count since we just tagged something
+    if (currentMode.value === 'tag') {
+      fetchTotalUntaggedCount()
+    }
+    
     if (showToast) {
       const toast = useToast()
       toast.add({
@@ -1241,6 +1307,19 @@ const saveTags = async (showToast = true) => {
     throw error // Re-throw to prevent navigation on error
   } finally {
     isSavingTags.value = false
+  }
+}
+
+const saveAndClose = async () => {
+  try {
+    await saveTags(true) // Show toast for manual save
+    emit('update:isOpen', false)
+    emit('close')
+    resetMode()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (error) {
+    // Error handling is already done in saveTags method
+    // Don't close modal if save failed
   }
 }
 
@@ -1304,6 +1383,11 @@ watch(currentMode, (newMode, oldMode) => {
   }
   if (oldMode === 'tag') {
     resetTagState()
+  }
+  
+  // Fetch total untagged dest videos count when entering tag mode
+  if (newMode === 'tag') {
+    fetchTotalUntaggedCount()
   }
 })
 

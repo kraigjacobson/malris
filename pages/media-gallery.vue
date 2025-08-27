@@ -6,9 +6,31 @@
       <!-- Header always visible -->
       <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-t-lg px-4 py-3">
         <div class="flex justify-between items-center">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-            Search Filters
-          </h2>
+          <div class="flex gap-2 items-center">
+            <!-- Search and Clear Buttons -->
+            <UButton
+              v-if="!isLoading"
+              color="primary"
+              size="sm"
+              @click="searchMedia"
+            >
+              Search
+            </UButton>
+            <UButton
+              v-else
+              color="error"
+              variant="outline"
+              size="sm"
+              @click="cancelSearch"
+            >
+              <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
+              <span class="hidden sm:inline">Cancel Search</span>
+              <span class="sm:hidden">Cancel</span>
+            </UButton>
+            <UButton variant="outline" size="sm" @click="clearFilters">
+              Clear Results
+            </UButton>
+          </div>
           <div class="flex gap-2 items-center">
             <!-- Upload Videos Dropdown -->
             <UDropdownMenu
@@ -169,30 +191,6 @@
           </div>
         </div>
 
-        <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
-          <UButton
-            v-if="!isLoading"
-            color="primary"
-            size="sm"
-            @click="searchMedia"
-          >
-            Search
-          </UButton>
-          <UButton
-            v-else
-            color="error"
-            variant="outline"
-            size="sm"
-            @click="cancelSearch"
-          >
-            <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
-            <span class="hidden sm:inline">Cancel Search</span>
-            <span class="sm:hidden">Cancel</span>
-          </UButton>
-          <UButton variant="outline" size="sm" @click="clearFilters">
-            Clear Results
-          </UButton>
-        </div>
       </div>
     </div>
 
@@ -1025,8 +1023,8 @@ const searchMedia = async () => {
       
       
       
-      // Handle limit - extract value if it's an object
-      const limit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+      // Handle limit - extract value if it's an object, use paginationLimit from composable
+      const limit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
       params.append('limit', limit.toString())
       params.append('offset', ((currentPage.value - 1) * limit).toString())
       
@@ -1074,7 +1072,7 @@ const searchMedia = async () => {
       })
       
       // Update pagination info based on API response
-      const currentLimit = typeof pagination.value.limit === 'object' ? pagination.value.limit.value : pagination.value.limit
+      const currentLimit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
       const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
       
       // Check if there are more results by seeing if we got a full page
@@ -1155,7 +1153,7 @@ const clearFilters = () => {
   // Reset pagination
   pagination.value = {
     total: 0,
-    limit: paginationLimit,
+    limit: typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value,
     offset: 0,
     has_more: false
   }
