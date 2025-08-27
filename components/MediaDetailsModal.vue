@@ -87,7 +87,7 @@
                   :key="`tag-image-${media.uuid}`"
                   :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
                   :alt="media.filename"
-                  class="w-full h-auto max-h-96 object-cover rounded-lg shadow-md"
+                  class="w-full h-auto max-h-96 object-cover object-top rounded-lg shadow-md"
                   @error="handleImageError"
                 >
                 <div v-else-if="media.type === 'video'" class="relative" :key="`tag-video-${media.uuid}`">
@@ -95,9 +95,10 @@
                     v-if="media.thumbnail_uuid"
                     :key="`video-${media.uuid}`"
                     :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
-                    class="w-full h-auto max-h-96 object-cover rounded-lg shadow-md"
+                    class="w-full h-auto max-h-96 object-cover object-top rounded-lg shadow-md"
                     controls
                     preload="metadata"
+                    autoplay
                   >
                     <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
                     Your browser does not support the video tag.
@@ -256,7 +257,7 @@
               v-if="settingsStore.displayImages"
               :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`"
               :alt="media.type"
-              class="w-full h-auto max-h-[80vh] object-contain rounded"
+              class="w-full h-auto max-h-[80vh] object-cover object-top rounded"
               @error="handleImageError"
             >
             <div v-else class="w-full h-64 flex items-center justify-center">

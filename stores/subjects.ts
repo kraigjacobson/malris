@@ -152,8 +152,6 @@ export const useSubjectsStore = defineStore('subjects', () => {
     fullSubjectsLoading.value = true
     try {
       const params = new URLSearchParams()
-      params.append('limit', '10000')
-      params.append('page', '1')
       params.append('include_images', 'true')
       params.append('image_size', 'thumb')
       params.append('sort_by', 'name')

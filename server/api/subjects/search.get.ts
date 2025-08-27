@@ -1,5 +1,5 @@
-import { ilike, and, isNotNull, isNull, sql, desc, asc } from 'drizzle-orm'
-import { subjects } from '~/server/utils/schema'
+import { ilike, and, isNotNull, isNull, sql, desc, asc, eq } from 'drizzle-orm'
+import { subjects, mediaRecords, jobs } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { logger } from '~/server/utils/logger'
 
@@ -12,12 +12,12 @@ export default defineEventHandler(async (event) => {
     const tags = query.tags ? (query.tags as string).split(',').filter(Boolean) : undefined
     const tag_match_mode = (query.tag_match_mode as string) || 'partial'
     const has_hero_image = query.has_hero_image !== undefined ? query.has_hero_image === 'true' : undefined
-    const limit = parseInt(query.limit as string) || 20
+    const limit = query.limit ? parseInt(query.limit as string) : undefined
     const offset = parseInt(query.offset as string) || 0
     const page = parseInt(query.page as string) || 1
     
-    // Calculate offset from page if provided
-    const calculatedOffset = page > 1 ? (page - 1) * limit : offset
+    // Calculate offset from page if provided - only if limit is specified
+    const calculatedOffset = limit && page > 1 ? (page - 1) * limit : offset
     
     // Add sorting parameters with validation
     const sortBy = (query.sort_by as string) || 'name'
@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Build the query step by step to avoid TypeScript issues
-    // Removed LEFT JOIN with mediaRecords for better performance since we only need thumbnail URLs
+    // Use LEFT JOINs with DISTINCT COUNT to avoid Cartesian product issues
     const baseSelect = db
       .select({
         id: subjects.id,
@@ -69,9 +69,14 @@ export default defineEventHandler(async (event) => {
         tags: subjects.tags,
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt,
-        has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`
+        has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
+        output_video_count: sql<number>`COUNT(DISTINCT CASE WHEN ${mediaRecords.purpose} = 'output' AND ${mediaRecords.type} = 'video' THEN ${mediaRecords.uuid} END)`,
+        queued_job_count: sql<number>`COUNT(DISTINCT CASE WHEN ${jobs.status} = 'queued' THEN ${jobs.id} END)`
       })
       .from(subjects)
+      .leftJoin(mediaRecords, eq(subjects.id, mediaRecords.subjectUuid))
+      .leftJoin(jobs, eq(subjects.id, jobs.subjectUuid))
+      .groupBy(subjects.id, subjects.name, subjects.thumbnail, subjects.tags, subjects.createdAt, subjects.updatedAt)
 
     // Apply WHERE conditions if any
     const queryWithWhere = whereConditions.length > 0 
@@ -99,8 +104,14 @@ export default defineEventHandler(async (event) => {
       queryWithSort = queryWithWhere.orderBy(asc(subjects.name))
     }
 
-    // Apply pagination
-    const result = await queryWithSort.limit(limit).offset(calculatedOffset)
+    // Apply pagination only if limit is specified
+    let result
+    if (limit) {
+      result = await queryWithSort.limit(limit).offset(calculatedOffset)
+    } else {
+      // No pagination - return all results
+      result = await queryWithSort
+    }
 
     // Get total count for pagination - use the same WHERE conditions for accuracy
     const countSelect = db.select({ count: sql<number>`count(*)` }).from(subjects)
@@ -128,15 +139,22 @@ export default defineEventHandler(async (event) => {
         created_at: subject.createdAt,
         updated_at: subject.updatedAt,
         has_thumbnail: subject.has_thumbnail,
-        thumbnail_url
+        thumbnail_url,
+        output_video_count: subject.output_video_count || 0,
+        queued_job_count: subject.queued_job_count || 0
       }
     })
     
     logger.info(`✅ Found ${processedSubjects.length} subjects (${totalCount} total)`)
 
-    return {
+    const response: any = {
       subjects: processedSubjects,
-      pagination: {
+      total: totalCount
+    }
+    
+    // Only include pagination info if limit was specified
+    if (limit) {
+      response.pagination = {
         page,
         limit,
         offset: calculatedOffset,
@@ -144,6 +162,8 @@ export default defineEventHandler(async (event) => {
         has_more: calculatedOffset + limit < totalCount
       }
     }
+    
+    return response
     
   } catch (error: any) {
     logger.error('Subjects search error:', error)

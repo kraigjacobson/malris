@@ -287,8 +287,8 @@
 
     <template #footer>
       <div class="flex flex-col gap-3 w-full">
-        <!-- Pagination Row -->
-        <div class="flex justify-center">
+        <!-- Pagination Row (only show for video selection) -->
+        <div v-if="(workflowMode === 'subject-first' && selectedSubject) || (workflowMode === 'video-first' && !selectedVideo)" class="flex justify-center">
           <UPagination
             v-model:page="videoCurrentPage"
             :items-per-page="videoLimit"
