@@ -178,7 +178,8 @@
                 </span>
               </div>
               <UProgress
-                :value="uploadProgress.total > 0 ? (uploadProgress.completed / uploadProgress.total) * 100 : 0"
+                v-model="uploadProgress.completed"
+                :max="uploadProgress.total"
                 class="mb-2"
               />
               <div class="flex justify-between items-center">
