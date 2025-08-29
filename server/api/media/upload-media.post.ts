@@ -9,6 +9,7 @@ import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { logger } from '~/server/utils/logger'
+import { logFailedUpload } from '~/server/utils/failedUploadLogger'
 import busboy from 'busboy'
 
 const execAsync = promisify(exec)
@@ -59,9 +60,26 @@ export default defineEventHandler(async (event) => {
         const file = mediaFiles[i]
         
         try {
-          const fileType = file.type.startsWith('video/') ? 'video' : 'image'
+          // Convert GIFs to video format before processing
+          let processedFilePath = file.tempPath
+          let processedFilename = file.filename
+          let isConvertedGif = false
+          
+          if (file.type === 'image/gif') {
+            logger.info(`🔄 Converting GIF to MP4: ${file.filename}`)
+            const convertedPath = await convertGifToVideo(file.tempPath, tempDir)
+            processedFilePath = convertedPath
+            processedFilename = file.filename.replace(/\.gif$/i, '.mp4')
+            isConvertedGif = true
+            
+            // Clean up original GIF file
+            await unlink(file.tempPath)
+          }
+          
+          // Determine file type (GIFs are now converted to video)
+          const fileType = (file.type.startsWith('video/') || isConvertedGif) ? 'video' : 'image'
           const emoji = fileType === 'video' ? '🎬' : '🖼️'
-          logger.info(`${emoji} Processing ${fileType} ${i + 1}/${mediaFiles.length}: ${file.filename}`)
+          logger.info(`${emoji} Processing ${fileType} ${i + 1}/${mediaFiles.length}: ${processedFilename}`)
 
           // Validate file size
           if (file.size > MAX_FILE_SIZE) {
@@ -72,8 +90,8 @@ export default defineEventHandler(async (event) => {
             continue
           }
 
-          // File is already saved to temp path by streaming parser
-          const tempFilePath = file.tempPath
+          // Use the processed file path (converted if it was a GIF)
+          const tempFilePath = processedFilePath
 
           // Get metadata based on file type
           let metadata
@@ -84,7 +102,7 @@ export default defineEventHandler(async (event) => {
           }
           
           // Strip path from filename for storage and comparison
-          const baseFilename = path.basename(file.filename!)
+          const baseFilename = path.basename(processedFilename)
           
           // Check for duplicates based on dimensions and filename (basename only)
           const existingMedia = await db
@@ -273,10 +291,17 @@ export default defineEventHandler(async (event) => {
           await unlink(tempFilePath)
 
         } catch (error) {
-          logger.error(`❌ Error processing ${file.filename}:`, error)
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          const filename = path.basename(file.filename!)
+          
+          logger.error(`❌ Error processing ${filename}:`, error)
+          
+          // Log failed upload to daily file
+          await logFailedUpload(filename, errorMessage)
+          
           errors.push({
-            filename: path.basename(file.filename!),
-            error: error instanceof Error ? error.message : 'Unknown error'
+            filename: filename,
+            error: errorMessage
           })
         }
       }
@@ -337,7 +362,7 @@ async function parseMultipartStream(event: any): Promise<{
       bb.on('file', (name, file, info) => {
         const { filename, mimeType } = info
         
-        if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/'))) {
+        if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/') || mimeType === 'image/gif')) {
           const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
           const writeStream = createWriteStream(tempPath)
           let fileSize = 0
@@ -499,5 +524,29 @@ async function generateImageThumbnail(imagePath: string): Promise<Buffer> {
     }
     
     throw new Error(`Failed to generate image thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Helper function to convert GIF to MP4 video using ffmpeg
+async function convertGifToVideo(gifPath: string, outputDir: string): Promise<string> {
+  const outputPath = path.join(outputDir, `${path.parse(gifPath).name}.mp4`)
+  
+  try {
+    // Convert GIF to MP4 with optimized settings for web playback
+    // -vf "palettegen" and "paletteuse" maintain color quality from GIF
+    // -movflags +faststart optimizes for web streaming
+    // -pix_fmt yuv420p ensures compatibility with most players
+    await execAsync(`ffmpeg -i "${gifPath}" -vf "fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`)
+    
+    return outputPath
+  } catch (error) {
+    // Clean up output file if it exists
+    try {
+      await unlink(outputPath)
+    } catch {
+      // Ignore cleanup errors
+    }
+    
+    throw new Error(`Failed to convert GIF to video: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

@@ -29,14 +29,14 @@
                 webkitdirectory
                 directory
                 multiple
-                accept="video/*,image/*"
+                accept="video/*,image/*,.gif"
                 class="hidden"
                 @change="handleFolderSelection"
               >
               <input
                 ref="singleFileInput"
                 type="file"
-                accept="video/*,image/*"
+                accept="video/*,image/*,.gif"
                 class="hidden"
                 @change="handleSingleFileSelection"
               >
@@ -88,6 +88,19 @@
                 />
               </div>
 
+              <!-- Batch Size Selection -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Batch Size
+                </label>
+                <USelect
+                  v-model="batchSize"
+                  :items="batchSizeOptions"
+                  placeholder="Select batch size..."
+                  class="w-full"
+                />
+              </div>
+
               <!-- Category Selection -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -128,7 +141,7 @@
                     Ready to upload {{ selectedFiles.length }} file{{ selectedFiles.length === 1 ? '' : 's' }}
                   </p>
                   <p class="text-xs text-gray-500">
-                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ' • Will be processed in batches of 5' : '' }}
+                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ` • Will be processed in batches of ${batchSize.value}` : '' }}
                   </p>
                 </div>
                 <UIcon name="i-heroicons-photo" class="text-2xl text-gray-400" />
@@ -161,16 +174,26 @@
                   Uploading Media Files...
                 </h4>
                 <span class="text-sm text-gray-500">
-                  {{ uploadProgress.completed }} / {{ uploadProgress.total }}
+                  {{ uploadProgress.completed }} / {{ uploadProgress.total }} files
                 </span>
               </div>
               <UProgress
-                :value="(uploadProgress.completed / uploadProgress.total) * 100"
+                :value="uploadProgress.total > 0 ? (uploadProgress.completed / uploadProgress.total) * 100 : 0"
                 class="mb-2"
               />
-              <p class="text-sm text-gray-500">
-                {{ uploadProgress.currentFile || 'Processing...' }}
-              </p>
+              <div class="flex justify-between items-center">
+                <p class="text-sm text-gray-500">
+                  {{ uploadProgress.currentFile || 'Processing...' }}
+                </p>
+                <span class="text-xs text-gray-400">
+                  {{ Math.round(uploadProgress.total > 0 ? (uploadProgress.completed / uploadProgress.total) * 100 : 0) }}%
+                </span>
+              </div>
+              <div v-if="uploadProgress.currentBatch > 0" class="mt-1">
+                <p class="text-xs text-gray-400">
+                  Batch {{ uploadProgress.currentBatch }} of {{ uploadProgress.totalBatches }}
+                </p>
+              </div>
             </div>
 
             <!-- Upload Results -->
@@ -251,13 +274,16 @@ const uploadComplete = ref(false)
 const uploadProgress = ref({
   completed: 0,
   total: 0,
-  currentFile: ''
+  currentFile: '',
+  currentBatch: 0,
+  totalBatches: 0
 })
 const uploadResults = ref([])
 
 // Upload configuration
 const currentPurpose = ref({ label: 'Dest', value: 'dest' })
 const currentCategories = ref([])
+const batchSize = ref({ label: '5', value: 5 })
 
 // Categories management
 const availableCategories = ref([])
@@ -283,6 +309,16 @@ const uploadPurposeOptions = [
   { label: 'Todo', value: 'todo' }
 ]
 
+// Batch size options
+const batchSizeOptions = [
+  { label: '1', value: 1 },
+  { label: '5', value: 5 },
+  { label: '10', value: 10 },
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 }
+]
+
 // Methods
 const handleFolderSelection = (event) => {
   try {
@@ -290,7 +326,7 @@ const handleFolderSelection = (event) => {
     
     // Filter for video and image files
     const mediaFiles = files.filter(file =>
-      (file.type.startsWith('video/') || file.type.startsWith('image/')) &&
+      (file.type.startsWith('video/') || file.type.startsWith('image/') || file.type === 'image/gif') &&
       file.size > 0
     )
     
@@ -314,7 +350,7 @@ const handleSingleFileSelection = (event) => {
     
     // Filter for video and image files
     const mediaFiles = files.filter(file =>
-      (file.type.startsWith('video/') || file.type.startsWith('image/')) &&
+      (file.type.startsWith('video/') || file.type.startsWith('image/') || file.type === 'image/gif') &&
       file.size > 0
     )
     
@@ -355,19 +391,27 @@ const startUpload = async () => {
   
   isUploading.value = true
   uploadComplete.value = false
+  
+  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : batchSize.value.value
+  const totalBatches = Math.ceil(selectedFiles.value.length / BATCH_SIZE)
+  
   uploadProgress.value = {
     completed: 0,
     total: selectedFiles.value.length,
-    currentFile: ''
+    currentFile: '',
+    currentBatch: 0,
+    totalBatches: totalBatches
   }
   uploadResults.value = []
   
   const toast = useToast()
-  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : 5 // Process single files individually, folders in batches of 5
   
   // Process files in batches
   for (let i = 0; i < selectedFiles.value.length; i += BATCH_SIZE) {
     const batch = selectedFiles.value.slice(i, i + BATCH_SIZE)
+    const currentBatchNumber = Math.floor(i / BATCH_SIZE) + 1
+    
+    uploadProgress.value.currentBatch = currentBatchNumber
     
     try {
       // Create FormData for this batch
@@ -390,7 +434,7 @@ const startUpload = async () => {
       if (uploadMode.value === 'single') {
         uploadProgress.value.currentFile = `Uploading ${batch[0].name}...`
       } else {
-        uploadProgress.value.currentFile = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}...`
+        uploadProgress.value.currentFile = `Processing batch ${currentBatchNumber} (${batch.length} files)...`
       }
       
       // Upload batch
@@ -473,7 +517,9 @@ const resetUploadState = () => {
   uploadProgress.value = {
     completed: 0,
     total: 0,
-    currentFile: ''
+    currentFile: '',
+    currentBatch: 0,
+    totalBatches: 0
   }
   uploadResults.value = []
 }
