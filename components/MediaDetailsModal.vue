@@ -1,7 +1,7 @@
 
 <template>
   <!-- Media Detail Modal -->
-  <UModal :open="isOpen" @update:open="$emit('update:isOpen', $event)" fullscreen>
+  <UModal :open="isOpen" @update:open="$emit('update:isOpen', $event)" :fullscreen="isMobile">
     <template #header>
       <div v-if="media" class="flex justify-between items-center w-full">
         <div class="flex items-center gap-1 sm:gap-2">
@@ -92,20 +92,32 @@
           <div class="space-y-4">
             <div class="flex justify-center">
               <div class="w-full relative touch-pan-y">
+                <!-- Image display -->
                 <img
-                  v-if="media.type === 'image'"
+                  v-if="media.type === 'image' && settingsStore.displayImages"
                   :key="`tag-image-${media.uuid}`"
                   :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
                   :alt="media.filename"
-                  class="w-full h-auto max-h-96 object-cover object-top rounded-lg shadow-md"
+                  class="w-full h-96 object-contain rounded-lg shadow-md"
                   @error="handleImageError"
                 >
+                <!-- Image placeholder -->
+                <div
+                  v-else-if="media.type === 'image'"
+                  :key="`tag-image-placeholder-${media.uuid}`"
+                  class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center"
+                >
+                  <div class="text-center">
+                    <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
+                  </div>
+                </div>
+                <!-- Video display -->
                 <div v-else-if="media.type === 'video'" class="relative" :key="`tag-video-${media.uuid}`">
                   <video
-                    v-if="media.thumbnail_uuid"
+                    v-if="settingsStore.displayImages && media.thumbnail_uuid"
                     :key="`video-${media.uuid}`"
                     :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
-                    class="w-full h-auto max-h-96 object-cover object-top rounded-lg shadow-md"
+                    class="w-full h-96 object-contain rounded-lg shadow-md"
                     controls
                     preload="metadata"
                     autoplay
@@ -113,8 +125,14 @@
                     <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
                     Your browser does not support the video tag.
                   </video>
-                  <div v-else class="w-full h-64 bg-neutral-100 dark:bg-neutral-800 rounded-lg flex items-center justify-center">
-                    <UIcon name="i-heroicons-play-circle" class="text-6xl text-neutral-400" />
+                  <!-- Video placeholder (when displayImages is false or no thumbnail) -->
+                  <div
+                    v-else
+                    class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center"
+                  >
+                    <div class="text-center">
+                      <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
+                    </div>
                   </div>
                 </div>
                 
@@ -267,11 +285,13 @@
               v-if="settingsStore.displayImages"
               :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`"
               :alt="media.type"
-              class="w-full h-auto max-h-[80vh] object-cover object-top rounded"
+              class="w-full h-96 object-contain rounded"
               @error="handleImageError"
             >
-            <div v-else class="w-full h-64 flex items-center justify-center">
-              <ImagePlaceholder />
+            <div v-else class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
+              <div class="text-center">
+                <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
+              </div>
             </div>
             
             <!-- Next Button -->
@@ -285,16 +305,17 @@
             />
           </div>
 
-          <!-- Video Display (only show when displayImages is true) -->
-          <div v-else-if="media.type === 'video' && settingsStore.displayImages" :key="`video-display-${media.uuid}`" class="max-w-full">
+          <!-- Video Display -->
+          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}`" class="max-w-full">
             <div class="relative">
               <video
+                v-if="settingsStore.displayImages"
                 :ref="modalVideo"
                 :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
                 controls
                 muted
                 loop
-                class="w-full h-auto max-h-[80vh] rounded"
+                class="w-full h-96 object-contain rounded"
                 preload="metadata"
                 playsinline
                 webkit-playsinline
@@ -307,6 +328,16 @@
                 <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
                 Your browser does not support the video tag.
               </video>
+              
+              <!-- Video placeholder when displayImages is false -->
+              <div
+                v-else
+                class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center"
+              >
+                <div class="text-center">
+                  <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
+                </div>
+              </div>
               
               <!-- Custom Crop overlay (only visible in edit mode) -->
               <div
@@ -347,14 +378,6 @@
                   <div class="absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border border-gray-400 cursor-e-resize" @mousedown.stop="startResize('e')"></div>
                 </div>
               </div>
-            </div>
-          </div>
-          
-          <!-- Video placeholder when displayImages is false -->
-          <div v-else-if="media.type === 'video'" :key="`video-placeholder-${media.uuid}`" class="w-full h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded">
-            <div class="text-center">
-              <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
-              <p class="text-gray-500">Video Hidden</p>
             </div>
           </div>
 
@@ -670,6 +693,9 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+
+// Device detection
+const { isMobile } = useDevice()
 
 // Props
 const props = defineProps({

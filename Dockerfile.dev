@@ -2,8 +2,14 @@ FROM node:20
 
 WORKDIR /app
 
-# Install curl for healthchecks and ffmpeg for video processing
-RUN apt-get update && apt-get install -y curl ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install curl for healthchecks, ffmpeg for video processing, and backup tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    ffmpeg \
+    postgresql-client \
+    gnupg \
+    s3cmd \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package.json and yarn.lock first to leverage layer caching
 COPY package.json yarn.lock ./

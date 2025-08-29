@@ -20,8 +20,15 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB per file
 
 export default defineEventHandler(async (event) => {
   try {
-    // Parse multipart form data using streaming approach
-    const { mediaFiles, uploadCategories, uploadPurpose } = await parseMultipartStream(event)
+    logger.info(`🔍 Starting upload handler - method: ${event.node.req.method}`)
+    
+    // Parse multipart form data using busboy
+    const result = await parseMultipartStream(event)
+    const mediaFiles = result.mediaFiles
+    const uploadCategories = result.uploadCategories
+    const uploadPurpose = result.uploadPurpose
+    
+    logger.info(`🔍 Parsed ${mediaFiles.length} files from multipart data`)
     
     if (mediaFiles.length === 0) {
       throw createError({
@@ -60,14 +67,14 @@ export default defineEventHandler(async (event) => {
         const file = mediaFiles[i]
         
         try {
-          // Convert GIFs to video format before processing
+          // Handle file data
           let processedFilePath = file.tempPath
           let processedFilename = file.filename
           let isConvertedGif = false
           
           if (file.type === 'image/gif') {
             logger.info(`🔄 Converting GIF to MP4: ${file.filename}`)
-            const convertedPath = await convertGifToVideo(file.tempPath, tempDir)
+            const convertedPath = await convertGifToVideo(processedFilePath, tempDir)
             processedFilePath = convertedPath
             processedFilename = file.filename.replace(/\.gif$/i, '.mp4')
             isConvertedGif = true
@@ -295,9 +302,12 @@ export default defineEventHandler(async (event) => {
           const filename = path.basename(file.filename!)
           
           logger.error(`❌ Error processing ${filename}:`, error)
+          logger.info(`🔍 Debug - Error type: ${typeof error}, Error message: "${errorMessage}", Error object: ${JSON.stringify(error)}`)
           
           // Log failed upload to daily file
+          logger.info(`📝 About to log failed upload: ${filename} - ${errorMessage}`)
           await logFailedUpload(filename, errorMessage)
+          logger.info(`📝 Finished logging failed upload for: ${filename}`)
           
           errors.push({
             filename: filename,
@@ -335,7 +345,7 @@ export default defineEventHandler(async (event) => {
 })
 
 /**
- * Parse multipart form data using streaming approach to handle large files
+ * Parse multipart form data using busboy
  */
 async function parseMultipartStream(event: any): Promise<{
   mediaFiles: Array<{ filename: string; tempPath: string; size: number; type: string }>
@@ -351,6 +361,8 @@ async function parseMultipartStream(event: any): Promise<{
     
     // Create temp directory
     mkdir(tempDir, { recursive: true }).then(() => {
+      logger.info(`🔍 Request headers: ${JSON.stringify(event.node.req.headers)}`)
+      
       const bb = busboy({
         headers: event.node.req.headers,
         limits: {
@@ -359,10 +371,15 @@ async function parseMultipartStream(event: any): Promise<{
         }
       })
       
+      logger.info(`🔍 Busboy initialized successfully`)
+      
       bb.on('file', (name, file, info) => {
         const { filename, mimeType } = info
         
+        logger.info(`🔍 Multipart file detected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
+        
         if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/') || mimeType === 'image/gif')) {
+          logger.info(`✅ File accepted for processing: ${filename}`)
           const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
           const writeStream = createWriteStream(tempPath)
           let fileSize = 0
@@ -378,6 +395,7 @@ async function parseMultipartStream(event: any): Promise<{
           })
           
           file.on('end', () => {
+            logger.info(`📁 File processing complete: ${filename} (${fileSize} bytes)`)
             mediaFiles.push({
               filename,
               tempPath,
@@ -395,11 +413,13 @@ async function parseMultipartStream(event: any): Promise<{
           file.pipe(writeStream)
         } else {
           // Skip non-media files
+          logger.info(`❌ File rejected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
           file.resume()
         }
       })
       
       bb.on('field', (name, value) => {
+        logger.info(`🔍 Form field received - name: "${name}", value: "${value}"`)
         if (name === 'categories') {
           try {
             uploadCategories = JSON.parse(value)
@@ -411,17 +431,42 @@ async function parseMultipartStream(event: any): Promise<{
         }
       })
       
+      // Add event listeners for debugging
+      bb.on('part', (part) => {
+        logger.info(`🔍 Busboy part detected - headers: ${JSON.stringify(part.headers)}`)
+      })
+      
       bb.on('close', () => {
+        logger.info(`🔍 Multipart parsing complete - found ${mediaFiles.length} media files`)
         resolve({ mediaFiles, uploadCategories, uploadPurpose })
       })
       
       bb.on('error', (err) => {
-        logger.error('Busboy error:', err)
+        logger.error('🔍 Busboy error:', err)
         reject(err)
       })
       
+      bb.on('partsLimit', () => {
+        logger.warn('🔍 Busboy parts limit reached')
+      })
+      
+      bb.on('filesLimit', () => {
+        logger.warn('🔍 Busboy files limit reached')
+      })
+      
+      bb.on('fieldsLimit', () => {
+        logger.warn('🔍 Busboy fields limit reached')
+      })
+      
+      // Check if request has data
+      logger.info(`🔍 Request method: ${event.node.req.method}`)
+      logger.info(`🔍 Request readable: ${event.node.req.readable}`)
+      logger.info(`🔍 Request destroyed: ${event.node.req.destroyed}`)
+      
       // Pipe the request to busboy
       event.node.req.pipe(bb)
+      
+      logger.info(`🔍 Request piped to busboy`)
     }).catch(reject)
   })
 }

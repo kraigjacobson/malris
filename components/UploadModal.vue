@@ -141,7 +141,7 @@
                     Ready to upload {{ selectedFiles.length }} file{{ selectedFiles.length === 1 ? '' : 's' }}
                   </p>
                   <p class="text-xs text-gray-500">
-                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ` • Will be processed in batches of ${batchSize.value}` : '' }}
+                    {{ formatFileSize(totalSize) }} total{{ selectedFiles.length > 1 ? ` • Will be processed in batches of ${batchSize || 5}` : '' }}
                   </p>
                 </div>
                 <UIcon name="i-heroicons-photo" class="text-2xl text-gray-400" />
@@ -284,7 +284,7 @@ const uploadResults = ref([])
 // Upload configuration
 const currentPurpose = ref({ label: 'Dest', value: 'dest' })
 const currentCategories = ref([])
-const batchSize = ref({ label: '5', value: 5 })
+const batchSize = ref(5)
 
 // Categories management
 const availableCategories = ref([])
@@ -390,11 +390,18 @@ const clearSelection = () => {
 const startUpload = async () => {
   if (selectedFiles.value.length === 0) return
   
+  console.log('🔍 Starting upload with files:', selectedFiles.value.map(f => ({ name: f.name, size: f.size, type: f.type })))
+  console.log('🔍 selectedFiles.value length:', selectedFiles.value.length)
+  console.log('🔍 selectedFiles.value:', selectedFiles.value)
+  
   isUploading.value = true
   uploadComplete.value = false
   
-  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : batchSize.value.value
+  const BATCH_SIZE = uploadMode.value === 'single' ? 1 : batchSize.value || 5
   const totalBatches = Math.ceil(selectedFiles.value.length / BATCH_SIZE)
+  
+  console.log('🔍 BATCH_SIZE:', BATCH_SIZE)
+  console.log('🔍 totalBatches:', totalBatches)
   
   uploadProgress.value = {
     completed: 0,
@@ -409,15 +416,22 @@ const startUpload = async () => {
   
   // Process files in batches
   for (let i = 0; i < selectedFiles.value.length; i += BATCH_SIZE) {
+    console.log('🔍 Loop iteration i:', i, 'BATCH_SIZE:', BATCH_SIZE, 'selectedFiles.value.length:', selectedFiles.value.length)
     const batch = selectedFiles.value.slice(i, i + BATCH_SIZE)
     const currentBatchNumber = Math.floor(i / BATCH_SIZE) + 1
+    
+    console.log('🔍 Slicing from', i, 'to', i + BATCH_SIZE)
+    console.log('🔍 selectedFiles.value at slice time:', selectedFiles.value)
+    console.log('🔍 Processing batch:', batch.map(f => ({ name: f.name, size: f.size, type: f.type })))
+    console.log('🔍 Batch length:', batch.length)
     
     uploadProgress.value.currentBatch = currentBatchNumber
     
     try {
       // Create FormData for this batch
       const formData = new FormData()
-      batch.forEach(file => {
+      batch.forEach((file, index) => {
+        console.log(`🔍 Appending file ${index}:`, { name: file.name, size: file.size, type: file.type })
         formData.append('media', file)
       })
       
@@ -430,6 +444,16 @@ const startUpload = async () => {
         typeof cat === 'object' ? cat.value || cat.label : cat
       )
       formData.append('categories', JSON.stringify(categoryValues))
+      
+      // Debug FormData contents
+      console.log('🔍 FormData contents:')
+      for (const [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`)
+        } else {
+          console.log(`  ${key}: ${value}`)
+        }
+      }
       
       // Update progress
       if (uploadMode.value === 'single') {

@@ -270,7 +270,7 @@
               @error="handleImageError"
               @load="handleImageLoad"
             >
-            <ImagePlaceholder v-else />
+            <ImagePlaceholder v-else class="w-full h-full" />
             <!-- Delete Button - Top Right Corner -->
             <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
               <UButton
@@ -285,17 +285,18 @@
             </div>
           </div>
           
-          <!-- Video Preview (only show when displayImages is true) -->
+          <!-- Video Preview -->
           <div
-            v-else-if="media.type === 'video' && settingsStore.displayImages"
+            v-else-if="media.type === 'video'"
             class="aspect-[3/4] relative cursor-pointer"
             :data-video-uuid="media.uuid"
             @click="openModal(media)"
-            @mouseenter="handleVideoHover(media.uuid, true)"
-            @mouseleave="handleVideoHover(media.uuid, false)"
+            @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null"
+            @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null"
           >
-            <!-- Video element -->
+            <!-- Video element (only when displayImages is true) -->
             <video
+              v-if="settingsStore.displayImages"
               :ref="`video-${media.uuid}`"
               :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
               class="w-full h-full object-cover object-top"
@@ -311,10 +312,18 @@
               Your browser does not support the video tag.
             </video>
             
-            <!-- Fallback for videos without thumbnails -->
+            <!-- Fallback for videos without thumbnails (when displayImages is true) -->
             <div
-              v-if="!media.thumbnail_uuid"
+              v-if="settingsStore.displayImages && !media.thumbnail_uuid"
               class="absolute inset-0 bg-gray-800 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
+            </div>
+            
+            <!-- Video placeholder (when displayImages is false) -->
+            <div
+              v-if="!settingsStore.displayImages"
+              class="w-full h-full bg-gray-800 flex items-center justify-center"
             >
               <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
             </div>
@@ -346,6 +355,7 @@
           <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
             <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 shrink-0 cursor-pointer" @click="openModal(media)">
+              <!-- Image thumbnail -->
               <img
                 v-if="media.type === 'image' && settingsStore.displayImages"
                 :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
@@ -354,7 +364,14 @@
                 loading="lazy"
                 @error="handleImageError"
               >
-              <ImagePlaceholder v-else-if="media.type === 'image'" />
+              <!-- Image placeholder -->
+              <div
+                v-else-if="media.type === 'image'"
+                class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center"
+              >
+                <UIcon name="i-heroicons-photo" class="text-2xl text-gray-400" />
+              </div>
+              <!-- Video thumbnail (when displayImages is true) -->
               <div
                 v-else-if="media.type === 'video' && settingsStore.displayImages"
                 class="w-full h-full relative"
@@ -387,10 +404,12 @@
                   <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
                 </div>
               </div>
-              <div v-else-if="media.type === 'video'" class="w-full h-full flex items-center justify-center">
+              <!-- Video placeholder (when displayImages is false) -->
+              <div v-else-if="media.type === 'video'" class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                 <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
               </div>
-              <div v-else class="w-full h-full flex items-center justify-center">
+              <!-- Other media types -->
+              <div v-else class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                 <UIcon name="i-heroicons-document" class="text-2xl text-gray-400" />
               </div>
             </div>
