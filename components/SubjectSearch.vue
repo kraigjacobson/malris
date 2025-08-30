@@ -59,17 +59,26 @@ const searchQuery = ref('')
 const subjectItems = computed(() => {
   const allSubjects = subjectsStore.subjectItems
   
+  // Always include "None" option at the top
+  const noneOption = { value: '', label: 'None' }
+  
   if (!searchQuery.value || !searchQuery.value.trim()) {
-    return allSubjects
+    return [noneOption, ...allSubjects]
   }
   
   const query = searchQuery.value.toLowerCase().trim()
+  
+  // If searching for "none", show only the none option
+  if (query === 'none') {
+    return [noneOption]
+  }
+  
   const filtered = allSubjects.filter(subject =>
     subject.label.toLowerCase().includes(query)
   )
   
   // Sort results: exact matches first, then partial matches
-  return filtered.sort((a, b) => {
+  const sorted = filtered.sort((a, b) => {
     const aExact = a.label.toLowerCase() === query
     const bExact = b.label.toLowerCase() === query
     const aStarts = a.label.toLowerCase().startsWith(query)
@@ -82,6 +91,9 @@ const subjectItems = computed(() => {
     
     return a.label.localeCompare(b.label)
   })
+  
+  // Include "None" option if it matches the search or if there are results
+  return [noneOption, ...sorted]
 })
 
 // Handle selection

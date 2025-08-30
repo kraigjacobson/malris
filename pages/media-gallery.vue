@@ -603,8 +603,8 @@ const isUploadModalOpen = ref(false)
 
 
 
-// Subject selection state
-const selectedSubject = ref(null)
+// Subject selection state - default to "None" option
+const selectedSubject = ref({ value: '', label: 'None' })
 
 // Filename search state
 const filenameSearch = ref('')
@@ -916,6 +916,10 @@ const clearFilters = () => {
   hasSearched.value = false
   currentPage.value = 1
   
+  // Reset subject selection to "None"
+  selectedSubject.value = { value: '', label: 'None' }
+  subjectUuid.value = ''
+  
   // Reset pagination
   pagination.value = {
     total: 0,
@@ -929,7 +933,7 @@ const clearFilters = () => {
 const handleSubjectSelection = (selected) => {
   
   // Update filters
-  if (selected && selected.value) {
+  if (selected && selected.value && selected.value !== '') {
     subjectUuid.value = selected.value // Use the UUID
   } else {
     subjectUuid.value = ''
