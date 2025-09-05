@@ -125,6 +125,7 @@
             <!-- Video Search Filters - Compact -->
             <div class="flex-shrink-0 mb-2">
               <VideoSearchFilters
+                ref="videoSearchFilters"
                 @search="searchVideos"
                 @clear="clearVideoFilters"
                 :loading="videoLoading"
@@ -179,6 +180,7 @@
             <!-- Video Search Filters - Compact -->
             <div class="flex-shrink-0 mb-2">
               <VideoSearchFilters
+                ref="videoSearchFiltersVideoFirst"
                 @search="searchVideos"
                 @clear="clearVideoFilters"
                 :loading="videoLoading"
@@ -493,6 +495,10 @@ const isSubmitting = ref(false)
 // Thumbnail loading states
 const selectedVideoThumbnailLoaded = ref(false)
 
+// Component refs
+const videoSearchFilters = ref(null)
+const videoSearchFiltersVideoFirst = ref(null)
+
 // Subject-first workflow state
 const selectedSubject = ref(null)
 const selectedVideos = ref([])
@@ -684,6 +690,14 @@ const storeVideoTags = (video) => {
 const searchVideos = () => {
   videoCurrentPage.value = 1
   loadVideos(true)
+  
+  // Collapse the video search filters after searching
+  if (videoSearchFilters.value) {
+    videoSearchFilters.value.collapse()
+  }
+  if (videoSearchFiltersVideoFirst.value) {
+    videoSearchFiltersVideoFirst.value.collapse()
+  }
 }
 
 const clearVideoFilters = () => {

@@ -17,118 +17,129 @@
     </div>
 
     <!-- Search Filters -->
-    <UCard class="mb-3 sm:mb-6">
-      <template #header>
+    <div class="mb-3 sm:mb-6">
+      <!-- Collapsible Header -->
+      <div
+        class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        @click="toggleFiltersCollapse"
+      >
         <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
           Search Filters
         </h2>
-      </template>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-        <!-- Search Term -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Search Name
-          </label>
-          <UInputMenu
-            v-model="selectedSearchSubject"
-            v-model:search-term="dropdownSearchTerm"
-            :items="searchSubjectItems"
-            placeholder="Search subjects by name..."
-            class="w-full"
-            by="value"
-            option-attribute="label"
-            searchable
-            @update:model-value="handleSearchSubjectSelection"
-          />
-        </div>
-
-        <!-- Tags Filter -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Tags Search
-          </label>
-          <div class="space-y-2">
-            <UInputTags
-              v-model="selectedTags"
-              placeholder="Add tags (e.g., portrait, landscape)"
+        <UIcon
+          :name="isFiltersCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
+          class="w-5 h-5 text-gray-500"
+        />
+      </div>
+      
+      <!-- Collapsible Content -->
+      <UCard v-show="!isFiltersCollapsed" class="mt-2">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          <!-- Search Term -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Search Name
+            </label>
+            <UInputMenu
+              v-model="selectedSearchSubject"
+              v-model:search-term="dropdownSearchTerm"
+              :items="searchSubjectItems"
+              placeholder="Search subjects by name..."
               class="w-full"
-              :ui="{ trailing: 'pe-1' }"
-            >
-              <template v-if="selectedTags?.length" #trailing>
-                <UButton
-                  color="neutral"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-circle-x"
-                  aria-label="Clear all tags"
-                  @click="selectedTags = []"
-                />
-              </template>
-            </UInputTags>
-            
-            <!-- Tag Search Options -->
-            <!-- <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Search Mode
-              </label>
-              <USelectMenu
-                v-model="tagSearchMode"
-                :items="tagSearchModeOptions"
+              by="value"
+              option-attribute="label"
+              searchable
+              @update:model-value="handleSearchSubjectSelection"
+            />
+          </div>
+
+          <!-- Tags Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Tags Search
+            </label>
+            <div class="space-y-2">
+              <UInputTags
+                v-model="selectedTags"
+                placeholder="Add tags (e.g., portrait, landscape)"
                 class="w-full"
-                size="sm"
-              />
-            </div> -->
+                :ui="{ trailing: 'pe-1' }"
+              >
+                <template v-if="selectedTags?.length" #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    icon="i-lucide-circle-x"
+                    aria-label="Clear all tags"
+                    @click="selectedTags = []"
+                  />
+                </template>
+              </UInputTags>
+              
+              <!-- Tag Search Options -->
+              <!-- <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Search Mode
+                </label>
+                <USelectMenu
+                  v-model="tagSearchMode"
+                  :items="tagSearchModeOptions"
+                  class="w-full"
+                  size="sm"
+                />
+              </div> -->
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Sort Options and Limit -->
-      <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Sort By
-          </label>
-          <USelect
-            v-model="sortOptions.sort_by"
-            :items="sortByOptions"
-            placeholder="Sort by..."
-            class="w-full"
-          />
+        <!-- Sort Options and Limit -->
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sort By
+            </label>
+            <USelect
+              v-model="sortOptions.sort_by"
+              :items="sortByOptions"
+              placeholder="Sort by..."
+              class="w-full"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Sort Order
+            </label>
+            <USelect
+              v-model="sortOptions.sort_order"
+              :items="sortOrderOptions"
+              placeholder="Sort order..."
+              class="w-full"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Results Per Page
+            </label>
+            <USelect
+              v-model="pagination.limit"
+              :items="limitOptions"
+              placeholder="Results per page..."
+              class="w-full"
+            />
+          </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Sort Order
-          </label>
-          <USelect
-            v-model="sortOptions.sort_order"
-            :items="sortOrderOptions"
-            placeholder="Sort order..."
-            class="w-full"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Results Per Page
-          </label>
-          <USelect
-            v-model="pagination.limit"
-            :items="limitOptions"
-            placeholder="Results per page..."
-            class="w-full"
-          />
-        </div>
-      </div>
 
-      <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
-        <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
-          Search
-        </UButton>
-        <UButton @click="clearFilters" variant="outline" size="sm">
-          Clear
-        </UButton>
-      </div>
-    </UCard>
+        <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
+          <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
+            Search
+          </UButton>
+          <UButton @click="clearFilters" variant="outline" size="sm">
+            Clear
+          </UButton>
+        </div>
+      </UCard>
+    </div>
 
     <!-- Loading State -->
     <div v-if="isLoading" class="flex justify-center py-8">
@@ -261,8 +272,11 @@
     <ManageSubjectModal
       v-model="isManageSubjectModalOpen"
       :subject="selectedSubjectForManagement"
+      :subjects="subjectResults"
+      :current-subject-index="currentSubjectIndex"
       @subject-created="handleSubjectCreated"
       @subject-updated="handleSubjectUpdated"
+      @subject-changed="handleSubjectChanged"
     />
   </div>
 </template>
@@ -337,7 +351,9 @@ const isLoading = ref(false)
 const hasSearched = ref(false)
 const viewMode = ref('grid')
 const isManageSubjectModalOpen = ref(false)
+const isFiltersCollapsed = ref(false)
 const selectedSubjectForManagement = ref(null)
+const currentSubjectIndex = ref(0)
 const currentPage = ref(1)
 const pagination = ref({
   total: 0,
@@ -383,9 +399,16 @@ const handleSearchSubjectSelection = (selectedSubject) => {
 }
 
 // Methods
+const toggleFiltersCollapse = () => {
+  isFiltersCollapsed.value = !isFiltersCollapsed.value
+}
+
 const searchSubjects = async () => {
   isLoading.value = true
   hasSearched.value = true
+  
+  // Collapse the search filters after searching
+  isFiltersCollapsed.value = true
 
   try {
     // First try to get cached data from the store
@@ -514,7 +537,26 @@ const clearFilters = () => {
 
 const openManageSubjectModal = (subject = null) => {
   selectedSubjectForManagement.value = subject
+  
+  // Find the index of the selected subject in the results
+  if (subject && subjectResults.value.length > 0) {
+    const index = subjectResults.value.findIndex(s => s.id === subject.id)
+    currentSubjectIndex.value = index !== -1 ? index : 0
+  } else {
+    currentSubjectIndex.value = 0
+  }
+  
   isManageSubjectModalOpen.value = true
+}
+
+const handleSubjectChanged = ({ subject, index }) => {
+  console.log('🔥 [SUBJECTS GALLERY DEBUG] handleSubjectChanged called', { subject, index })
+  
+  // Update the selected subject and index
+  selectedSubjectForManagement.value = subject
+  currentSubjectIndex.value = index
+  
+  console.log('🔥 [SUBJECTS GALLERY DEBUG] Updated selectedSubjectForManagement to:', subject.name)
 }
 
 const handleSubjectCreated = (newSubject) => {

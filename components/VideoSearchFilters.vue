@@ -113,6 +113,22 @@ const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
+const collapse = () => {
+  isCollapsed.value = true
+}
+
+const expand = () => {
+  isCollapsed.value = false
+}
+
+// Expose methods to parent component
+defineExpose({
+  isCollapsed,
+  toggleCollapse,
+  collapse,
+  expand
+})
+
 
 // Sort type options (separate from order)
 const sortTypeItems = [

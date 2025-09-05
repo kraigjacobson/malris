@@ -479,9 +479,9 @@ const { isDeletingJob, deleteJob } = useJobActions()
 
 // Job navigation gesture handling
 const {
-  handleTouchStart: handleJobSwipeTouchStart,
-  handleTouchMove: handleJobSwipeTouchMove,
-  handleTouchEnd: handleJobSwipeTouchEnd
+  handleTouchStart: originalJobSwipeTouchStart,
+  handleTouchMove: originalJobSwipeTouchMove,
+  handleTouchEnd: originalJobSwipeTouchEnd
 } = useGesture({
   minSwipeDistance: 50,
   onSwipeLeft: () => {
@@ -496,6 +496,37 @@ const {
   },
   debug: true
 })
+
+// Wrapper functions that check for image container interference
+const handleJobSwipeTouchStart = (event) => {
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [JOB SWIPE DEBUG] Touch started within image container, ignoring for job swipe')
+    return
+  }
+  
+  originalJobSwipeTouchStart(event)
+}
+
+const handleJobSwipeTouchMove = (event) => {
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [JOB SWIPE DEBUG] Touch moved within image container, ignoring for job swipe')
+    return
+  }
+  
+  originalJobSwipeTouchMove(event)
+}
+
+const handleJobSwipeTouchEnd = (event) => {
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [JOB SWIPE DEBUG] Touch ended within image container, ignoring for job swipe')
+    return
+  }
+  
+  originalJobSwipeTouchEnd(event)
+}
 
 
 // Computed
@@ -1429,7 +1460,7 @@ const getTouchDistance = (touches) => {
 }
 
 
-const handleTouchStart = (event) => {
+const handleImageTouchStart = (event) => {
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
@@ -1454,7 +1485,7 @@ const handleTouchStart = (event) => {
   }
 }
 
-const handleTouchMove = (event) => {
+const handleImageTouchMove = (event) => {
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
@@ -1508,7 +1539,7 @@ const handleTouchMove = (event) => {
   }
 }
 
-const handleTouchEnd = (event) => {
+const handleImageTouchEnd = (event) => {
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
@@ -1558,7 +1589,7 @@ const handlePointerDown = (event) => {
       stopPropagation: () => event.stopPropagation(),
       stopImmediatePropagation: () => event.stopImmediatePropagation()
     }
-    handleTouchStart(fakeEvent)
+    handleImageTouchStart(fakeEvent)
   }
 }
 
@@ -1572,7 +1603,7 @@ const handlePointerMove = (event) => {
       stopPropagation: () => event.stopPropagation(),
       stopImmediatePropagation: () => event.stopImmediatePropagation()
     }
-    handleTouchMove(fakeEvent)
+    handleImageTouchMove(fakeEvent)
   }
 }
 
@@ -1586,7 +1617,7 @@ const handlePointerUp = (event) => {
       stopPropagation: () => event.stopPropagation(),
       stopImmediatePropagation: () => event.stopImmediatePropagation()
     }
-    handleTouchEnd(fakeEvent)
+    handleImageTouchEnd(fakeEvent)
   }
 }
 

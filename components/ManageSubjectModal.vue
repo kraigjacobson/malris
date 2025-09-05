@@ -5,6 +5,9 @@
         <h3 class="text-lg font-semibold">
           {{ isEditMode ? `Manage Subject: ${subjectData.name}` : 'Add New Subject' }}
         </h3>
+        <div v-if="hasMultipleSubjects && currentSubjectInfo" class="text-sm text-gray-600 dark:text-gray-400 font-medium">
+          Subject {{ currentSubjectInfo.current }} of {{ currentSubjectInfo.total }}
+        </div>
         <UButton
           variant="ghost"
           size="lg"
@@ -17,12 +20,15 @@
     </template>
 
     <template #body>
-      <div class="space-y-6 h-[600px] overflow-y-auto custom-scrollbar">
+      <div
+        class="space-y-6 h-[600px] overflow-y-auto custom-scrollbar"
+        @touchstart="handleSubjectSwipeTouchStart"
+        @touchmove="handleSubjectSwipeTouchMove"
+        @touchend="handleSubjectSwipeTouchEnd"
+      >
         
         <!-- Subject Form -->
         <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <h4 class="text-sm font-semibold text-blue-700 dark:text-blue-400">Subject Information</h4>
-          
           <!-- Name Field -->
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -59,53 +65,6 @@
                 />
               </template>
             </UInputTags>
-          </div>
-
-          <!-- Note Field -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Note
-            </label>
-            <UTextarea
-              v-model="subjectData.note"
-              placeholder="Optional note about this subject..."
-              :disabled="isUploading || isSaving"
-              class="w-full"
-              rows="3"
-            />
-          </div>
-        </div>
-
-        <!-- Image Upload Section -->
-        <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <h4 class="text-sm font-semibold text-green-700 dark:text-green-400">Subject Images</h4>
-          
-          <!-- File Upload -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Upload Images
-            </label>
-            <input
-              ref="fileInput"
-              type="file"
-              multiple
-              accept="image/*"
-              @change="handleFileSelection"
-              :disabled="isUploading || isSaving || !canUpload"
-              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              {{ isEditMode ? 'Select images to add to this subject' : 'Select images for the new subject (you can add more later)' }}
-            </p>
-          </div>
-
-          <!-- Upload Progress -->
-          <div v-if="isUploading" class="space-y-2">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-heroicons-arrow-path" class="animate-spin" />
-              <span class="text-sm">Uploading images...</span>
-            </div>
-            <UProgress :value="uploadProgress" />
           </div>
         </div>
 
@@ -238,6 +197,41 @@
           </p>
         </div>
 
+        
+
+        <!-- Image Upload Section -->
+        <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <h4 class="text-sm font-semibold text-green-700 dark:text-green-400">Subject Images</h4>
+          
+          <!-- File Upload -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Upload Images
+            </label>
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              accept="image/*"
+              @change="handleFileSelection"
+              :disabled="isUploading || isSaving || !canUpload"
+              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              {{ isEditMode ? 'Select images to add to this subject' : 'Select images for the new subject (you can add more later)' }}
+            </p>
+          </div>
+
+          <!-- Upload Progress -->
+          <div v-if="isUploading" class="space-y-2">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-heroicons-arrow-path" class="animate-spin" />
+              <span class="text-sm">Uploading images...</span>
+            </div>
+            <UProgress :value="uploadProgress" />
+          </div>
+        </div>
+
         <!-- Loading State -->
         <div v-if="isLoadingImages" class="text-center py-8">
           <UIcon name="i-heroicons-arrow-path" class="animate-spin text-2xl mb-4" />
@@ -252,6 +246,29 @@
           <UButton variant="outline" @click="closeModal" :disabled="isUploading || isSaving">
             Cancel
           </UButton>
+          <!-- Subject Navigation Buttons -->
+          <div v-if="hasMultipleSubjects" class="flex gap-2">
+            <UButton
+              variant="outline"
+              size="lg"
+              :disabled="isUploading || isSaving"
+              @click="goToPreviousSubject"
+              square
+              class="w-12 h-12 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-chevron-left" class="w-6 h-6" />
+            </UButton>
+            <UButton
+              variant="outline"
+              size="lg"
+              :disabled="isUploading || isSaving"
+              @click="goToNextSubject"
+              square
+              class="w-12 h-12 flex items-center justify-center"
+            >
+              <UIcon name="i-heroicons-chevron-right" class="w-6 h-6" />
+            </UButton>
+          </div>
         </div>
         <div class="flex gap-2">
           <UButton 
@@ -280,6 +297,7 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+import { useGesture } from '~/composables/useGesture'
 
 // Use Nuxt's device detection
 const { isMobile } = useDevice()
@@ -293,11 +311,19 @@ const props = defineProps({
   subject: {
     type: Object,
     default: null
+  },
+  subjects: {
+    type: Array,
+    default: () => []
+  },
+  currentSubjectIndex: {
+    type: Number,
+    default: 0
   }
 })
 
 // Emits
-const emit = defineEmits(['update:modelValue', 'subjectCreated', 'subjectUpdated'])
+const emit = defineEmits(['update:modelValue', 'subjectCreated', 'subjectUpdated', 'subjectChanged'])
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
@@ -358,6 +384,17 @@ const imageTransformStyle = computed(() => {
   return {
     transform: `scale(${state.scale}) translate(${state.translateX}px, ${state.translateY}px)`,
     transformOrigin: 'center center'
+  }
+})
+
+// Subject navigation computed properties
+const hasMultipleSubjects = computed(() => props.subjects.length > 1)
+
+const currentSubjectInfo = computed(() => {
+  if (props.subjects.length === 0) return null
+  return {
+    current: props.currentSubjectIndex + 1,
+    total: props.subjects.length
   }
 })
 
@@ -862,9 +899,146 @@ const handleTouchEnd = (event) => {
   }
 }
 
+// Subject navigation gesture handling
+const {
+  handleTouchStart: originalSubjectSwipeTouchStart,
+  handleTouchMove: originalSubjectSwipeTouchMove,
+  handleTouchEnd: originalSubjectSwipeTouchEnd
+} = useGesture({
+  minSwipeDistance: 50,
+  onSwipeLeft: () => {
+    console.log('🔥 [GESTURE DEBUG] onSwipeLeft callback triggered', {
+      hasMultipleSubjects: hasMultipleSubjects.value,
+      subjects: props.subjects,
+      currentIndex: props.currentSubjectIndex
+    })
+    if (hasMultipleSubjects.value) {
+      console.log('🔥 [GESTURE DEBUG] Calling goToNextSubject')
+      goToNextSubject()
+    } else {
+      console.log('🔥 [GESTURE DEBUG] Not calling goToNextSubject - hasMultipleSubjects is false')
+    }
+  },
+  onSwipeRight: () => {
+    console.log('🔥 [GESTURE DEBUG] onSwipeRight callback triggered', {
+      hasMultipleSubjects: hasMultipleSubjects.value,
+      subjects: props.subjects,
+      currentIndex: props.currentSubjectIndex
+    })
+    if (hasMultipleSubjects.value) {
+      console.log('🔥 [GESTURE DEBUG] Calling goToPreviousSubject')
+      goToPreviousSubject()
+    } else {
+      console.log('🔥 [GESTURE DEBUG] Not calling goToPreviousSubject - hasMultipleSubjects is false')
+    }
+  },
+  debug: true
+})
+
+// Wrapper functions that check for image container interference
+const handleSubjectSwipeTouchStart = (event) => {
+  console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchStart called', {
+    target: event.target,
+    imageContainer: imageContainer.value,
+    contains: imageContainer.value?.contains(event.target),
+    targetClasses: event.target?.className
+  })
+  
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch started within image container, ignoring for subject swipe')
+    return
+  }
+  
+  console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch start handler')
+  originalSubjectSwipeTouchStart(event)
+}
+
+const handleSubjectSwipeTouchMove = (event) => {
+  console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchMove called')
+  
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch moved within image container, ignoring for subject swipe')
+    return
+  }
+  
+  console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch move handler')
+  originalSubjectSwipeTouchMove(event)
+}
+
+const handleSubjectSwipeTouchEnd = (event) => {
+  console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchEnd called')
+  
+  // Check if the touch is within the image container or its children
+  if (imageContainer.value && imageContainer.value.contains(event.target)) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch ended within image container, ignoring for subject swipe')
+    return
+  }
+  
+  console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch end handler')
+  originalSubjectSwipeTouchEnd(event)
+}
+
+// Subject navigation methods
+const goToPreviousSubject = () => {
+  console.log('🔥 [SUBJECT NAV DEBUG] goToPreviousSubject called', {
+    hasMultipleSubjects: hasMultipleSubjects.value,
+    currentIndex: props.currentSubjectIndex,
+    totalSubjects: props.subjects.length,
+    subjects: props.subjects
+  })
+  
+  if (hasMultipleSubjects.value) {
+    let newIndex
+    if (props.currentSubjectIndex > 0) {
+      newIndex = props.currentSubjectIndex - 1
+    } else {
+      // Wrap to last subject
+      newIndex = props.subjects.length - 1
+    }
+    const newSubject = props.subjects[newIndex]
+    console.log('🔥 [SUBJECT NAV DEBUG] Emitting subjectChanged', { newSubject, newIndex })
+    emit('subjectChanged', { subject: newSubject, index: newIndex })
+  } else {
+    console.log('🔥 [SUBJECT NAV DEBUG] Cannot navigate - no multiple subjects')
+  }
+}
+
+const goToNextSubject = () => {
+  console.log('🔥 [SUBJECT NAV DEBUG] goToNextSubject called', {
+    hasMultipleSubjects: hasMultipleSubjects.value,
+    currentIndex: props.currentSubjectIndex,
+    totalSubjects: props.subjects.length,
+    subjects: props.subjects
+  })
+  
+  if (hasMultipleSubjects.value) {
+    let newIndex
+    if (props.currentSubjectIndex < props.subjects.length - 1) {
+      newIndex = props.currentSubjectIndex + 1
+    } else {
+      // Wrap to first subject
+      newIndex = 0
+    }
+    const newSubject = props.subjects[newIndex]
+    console.log('🔥 [SUBJECT NAV DEBUG] Emitting subjectChanged', { newSubject, newIndex })
+    emit('subjectChanged', { subject: newSubject, index: newIndex })
+  } else {
+    console.log('🔥 [SUBJECT NAV DEBUG] Cannot navigate - no multiple subjects')
+  }
+}
+
 // Watch for modal opening/closing
 watch(() => props.modelValue, (isOpen) => {
   if (isOpen) {
+    console.log('🔥 [MODAL DEBUG] Modal opened with props:', {
+      subject: props.subject,
+      subjects: props.subjects,
+      currentSubjectIndex: props.currentSubjectIndex,
+      hasMultipleSubjects: hasMultipleSubjects.value,
+      currentSubjectInfo: currentSubjectInfo.value
+    })
     loadSubjectData()
     resetZoom()
   } else {
@@ -873,14 +1047,75 @@ watch(() => props.modelValue, (isOpen) => {
   }
 })
 
+// Watch for subject prop changes to reload data when navigating between subjects
+watch(() => props.subject, (newSubject, oldSubject) => {
+  if (newSubject && oldSubject && newSubject.id !== oldSubject.id) {
+    console.log('🔥 [SUBJECT CHANGE DEBUG] Subject prop changed, reloading data', {
+      oldSubject: oldSubject?.name,
+      newSubject: newSubject?.name
+    })
+    loadSubjectData()
+    resetZoom()
+  }
+}, { deep: true })
+
 // Watch for currentImageIndex changes to auto-scroll thumbnail strip
 watch(() => currentImageIndex.value, () => {
   scrollToCurrentThumbnail()
 })
 
+// Keyboard navigation handler
+const handleKeydown = (event) => {
+  // Only handle keys when modal is open
+  if (!isOpen.value) return
+
+  switch (event.key) {
+    case 'ArrowLeft':
+      event.preventDefault()
+      if (event.ctrlKey || event.metaKey) {
+        // Ctrl/Cmd + Left Arrow: Previous subject
+        if (hasMultipleSubjects.value) {
+          goToPreviousSubject()
+        }
+      } else if (subjectImages.value.length > 0) {
+        // Left Arrow: Previous image
+        goToPreviousImage()
+      }
+      break
+    case 'ArrowRight':
+      event.preventDefault()
+      if (event.ctrlKey || event.metaKey) {
+        // Ctrl/Cmd + Right Arrow: Next subject
+        if (hasMultipleSubjects.value) {
+          goToNextSubject()
+        }
+      } else if (subjectImages.value.length > 0) {
+        // Right Arrow: Next image
+        goToNextImage()
+      }
+      break
+    case 'Escape':
+      event.preventDefault()
+      closeModal()
+      break
+    case '0':
+    case 'r':
+    case 'R':
+      // Reset zoom with '0' or 'r' key
+      event.preventDefault()
+      resetZoom()
+      break
+  }
+}
+
 // Initialize settings on mount
 onMounted(async () => {
   await settingsStore.initializeSettings()
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 

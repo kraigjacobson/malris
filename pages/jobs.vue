@@ -1,10 +1,5 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6">
-    <div class="mb-4 sm:mb-8">
-      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Jobs
-      </h1>
-    </div>
 
     <!-- Queue Status Card -->
     <UCard class="mb-3 sm:mb-6">
@@ -300,62 +295,6 @@
       </div>
 
       
-      <!-- Enhanced System Status Display -->
-      <div v-if="jobsStore.systemStatus" class="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          <!-- Overall System Health -->
-          <div class="flex items-center gap-2">
-            <UIcon
-              :name="getSystemHealthIcon(jobsStore.systemStatus.systemHealth)"
-              :class="getSystemHealthColor(jobsStore.systemStatus.systemHealth)"
-              class="w-4 h-4"
-            />
-            <span class="font-medium">System:</span>
-            <span :class="getSystemHealthColor(jobsStore.systemStatus.systemHealth)">
-              {{ jobsStore.systemStatus.systemHealth.toUpperCase() }}
-            </span>
-          </div>
-          
-          <!-- RunPod Worker Status -->
-          <div class="flex items-center gap-2">
-            <UIcon
-              :name="getWorkerStatusIcon(jobsStore.systemStatus.runpodWorker.status)"
-              :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)"
-              class="w-4 h-4"
-            />
-            <span class="font-medium">RunPod:</span>
-            <span :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)">
-              {{ jobsStore.systemStatus.runpodWorker.status.toUpperCase() }}
-            </span>
-          </div>
-          
-          <!-- ComfyUI Status -->
-          <div class="flex items-center gap-2">
-            <UIcon
-              :name="getWorkerStatusIcon(jobsStore.systemStatus.comfyui.status)"
-              :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)"
-              class="w-4 h-4"
-            />
-            <span class="font-medium">ComfyUI:</span>
-            <span :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)">
-              {{ jobsStore.systemStatus.comfyui.status.toUpperCase() }}
-            </span>
-          </div>
-          
-          <!-- ComfyUI Processing Status -->
-          <div class="flex items-center gap-2">
-            <UIcon
-              :name="getProcessingStatusIcon(jobsStore.systemStatus.comfyuiProcessing.status)"
-              :class="getProcessingStatusColor(jobsStore.systemStatus.comfyuiProcessing.status)"
-              class="w-4 h-4"
-            />
-            <span class="font-medium">Processing:</span>
-            <span :class="getProcessingStatusColor(jobsStore.systemStatus.comfyuiProcessing.status)">
-              {{ jobsStore.systemStatus.comfyuiProcessing.status.toUpperCase() }}
-            </span>
-          </div>
-        </div>
-      </div>
     </UCard>
 
     <!-- Subject Filter -->
@@ -1791,57 +1730,5 @@ useHead({
   ]
 })
 
-// System status helper functions
-const getSystemHealthIcon = (health) => {
-  switch (health) {
-    case 'healthy': return 'i-heroicons-check-circle'
-    case 'degraded': return 'i-heroicons-exclamation-triangle'
-    case 'unhealthy': return 'i-heroicons-x-circle'
-    default: return 'i-heroicons-question-mark-circle'
-  }
-}
-
-const getSystemHealthColor = (health) => {
-  switch (health) {
-    case 'healthy': return 'text-green-600 dark:text-green-400'
-    case 'degraded': return 'text-yellow-600 dark:text-yellow-400'
-    case 'unhealthy': return 'text-red-600 dark:text-red-400'
-    default: return 'text-gray-600 dark:text-gray-400'
-  }
-}
-
-const getWorkerStatusIcon = (status) => {
-  switch (status) {
-    case 'healthy': return 'i-heroicons-check-circle'
-    case 'unhealthy': return 'i-heroicons-x-circle'
-    default: return 'i-heroicons-question-mark-circle'
-  }
-}
-
-const getWorkerStatusColor = (status) => {
-  switch (status) {
-    case 'healthy': return 'text-green-600 dark:text-green-400'
-    case 'unhealthy': return 'text-red-600 dark:text-red-400'
-    default: return 'text-gray-600 dark:text-gray-400'
-  }
-}
-
-const getProcessingStatusIcon = (status) => {
-  switch (status) {
-    case 'idle': return 'i-heroicons-pause-circle'
-    case 'processing': return 'i-heroicons-play-circle'
-    case 'queued': return 'i-heroicons-clock'
-    default: return 'i-heroicons-question-mark-circle'
-  }
-}
-
-const getProcessingStatusColor = (status) => {
-  switch (status) {
-    case 'idle': return 'text-gray-600 dark:text-gray-400'
-    case 'processing': return 'text-blue-600 dark:text-blue-400'
-    case 'queued': return 'text-yellow-600 dark:text-yellow-400'
-    default: return 'text-gray-600 dark:text-gray-400'
-  }
-}
 </script>
 

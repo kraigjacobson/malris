@@ -7,31 +7,6 @@
       <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 py-3" :class="filtersCollapsed ? 'rounded-lg' : 'rounded-t-lg'">
         <div class="flex justify-between items-center">
           <div class="flex gap-2 items-center">
-            <!-- Search and Clear Buttons -->
-            <UButton
-              v-if="!isLoading"
-              color="primary"
-              size="sm"
-              @click="searchMedia"
-            >
-              Search
-            </UButton>
-            <UButton
-              v-else
-              color="error"
-              variant="outline"
-              size="sm"
-              @click="cancelSearch"
-            >
-              <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
-              <span class="hidden sm:inline">Cancel Search</span>
-              <span class="sm:hidden">Cancel</span>
-            </UButton>
-            <UButton variant="outline" size="sm" @click="clearFilters">
-              Clear Results
-            </UButton>
-          </div>
-          <div class="flex gap-2 items-center">
             <!-- Upload Videos Button -->
             <UButton
               color="green"
@@ -51,6 +26,31 @@
             >
               <UIcon name="i-heroicons-play" />
               <span class="hidden sm:inline">Slideshow</span>
+            </UButton>
+          </div>
+          <div class="flex gap-2 items-center">
+            <!-- Search and Clear Buttons -->
+            <UButton variant="outline" size="sm" @click="clearFilters">
+              Clear
+            </UButton>
+            <UButton
+              v-if="!isLoading"
+              color="primary"
+              size="sm"
+              @click="searchMedia"
+            >
+              Search
+            </UButton>
+            <UButton
+              v-else
+              color="error"
+              variant="outline"
+              size="sm"
+              @click="cancelSearch"
+            >
+              <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
+              <span class="hidden sm:inline">Cancel Search</span>
+              <span class="sm:hidden">Cancel</span>
             </UButton>
             <!-- Collapse Button -->
             <UButton
@@ -240,7 +240,7 @@
       <!-- Results Header -->
       <div class="flex justify-between items-center mb-3 sm:mb-4">
         <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          Found {{ mediaResults.length }} media files
+          Found {{ mediaResults.length }} of {{ totalDbCount }}
         </p>
         <div class="flex gap-1 sm:gap-2">
           <UButton
@@ -635,6 +635,9 @@ const pagination = ref({
   has_more: false
 })
 
+// Store the actual total count from database
+const totalDbCount = ref(0)
+
 // Video hover state
 const hoveredVideoId = ref(null)
 
@@ -874,6 +877,11 @@ const searchMedia = async () => {
     // Update pagination
     updatePagination(response, searchType)
     
+    // Store the total database count if available
+    if (response.total_count !== undefined) {
+      totalDbCount.value = response.total_count
+    }
+    
   } catch (err) {
     // Don't show error if search was cancelled
     if (err.name === 'AbortError') {
@@ -939,6 +947,9 @@ const clearFilters = () => {
     offset: 0,
     has_more: false
   }
+  
+  // Reset total database count
+  totalDbCount.value = 0
 }
 
 // Subject selection handler
