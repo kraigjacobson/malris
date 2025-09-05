@@ -46,7 +46,19 @@
               placeholder="Add tags (e.g., portrait, landscape, anime)"
               :disabled="isUploading || isSaving"
               class="w-full"
-            />
+              :ui="{ trailing: 'pe-1' }"
+            >
+              <template v-if="subjectData.tags?.length" #trailing>
+                <UButton
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-lucide-circle-x"
+                  aria-label="Clear all tags"
+                  @click="subjectData.tags = []"
+                />
+              </template>
+            </UInputTags>
           </div>
 
           <!-- Note Field -->

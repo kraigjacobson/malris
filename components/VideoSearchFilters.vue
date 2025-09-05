@@ -24,7 +24,19 @@
             enterkeyhint="enter"
             inputmode="text"
             size="sm"
-          />
+            :ui="{ trailing: 'pe-1' }"
+          >
+            <template v-if="searchStore.videoSearch.selectedTags?.length" #trailing>
+              <UButton
+                color="neutral"
+                variant="link"
+                size="sm"
+                icon="i-lucide-circle-x"
+                aria-label="Clear all tags"
+                @click="searchStore.videoSearch.selectedTags = []"
+              />
+            </template>
+          </UInputTags>
           <UCheckbox
             v-model="searchStore.videoSearch.excludeAssignedVideos"
             label="Hide Used"

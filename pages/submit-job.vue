@@ -79,7 +79,19 @@
                 placeholder="Add tags (e.g., portrait, landscape)"
                 class="w-full"
                 enterkeyhint="enter"
-              />
+                :ui="{ trailing: 'pe-1' }"
+              >
+                <template v-if="searchStore.subjectSearch.selectedTags?.length" #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    icon="i-lucide-circle-x"
+                    aria-label="Clear all tags"
+                    @click="searchStore.subjectSearch.selectedTags = []"
+                  />
+                </template>
+              </UInputTags>
             </div>
             
             <!-- Search and Clear Buttons -->

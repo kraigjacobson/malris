@@ -53,7 +53,19 @@
               v-model="selectedTags"
               placeholder="Add tags (e.g., portrait, landscape)"
               class="w-full"
-            />
+              :ui="{ trailing: 'pe-1' }"
+            >
+              <template v-if="selectedTags?.length" #trailing>
+                <UButton
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-lucide-circle-x"
+                  aria-label="Clear all tags"
+                  @click="selectedTags = []"
+                />
+              </template>
+            </UInputTags>
             
             <!-- Tag Search Options -->
             <!-- <div>

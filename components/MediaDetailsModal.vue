@@ -256,9 +256,11 @@
                 <template #trailing>
                   <UButton
                     v-if="selectedTags.length > 0"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-heroicons-x-mark"
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    icon="i-lucide-circle-x"
+                    aria-label="Clear all tags"
                     @click="clearAllTags"
                   />
                 </template>

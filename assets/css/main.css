@@ -21,3 +21,13 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
 .subject-count-badge {
   background-color: rgba(0, 0, 0, 0.4);
 }
+
+/* Overlay button backgrounds with opacity */
+.overlay-button-bg {
+  background-color: rgba(0, 0, 0, 0.4);
+  transition: background-color 0.2s ease;
+}
+
+.overlay-button-bg:hover {
+  background-color: rgba(0, 0, 0, 0.6);
+}

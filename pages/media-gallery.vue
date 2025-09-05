@@ -172,7 +172,19 @@
                 placeholder="Tags..."
                 class="w-full"
                 :disabled="!!mediaUuid"
-              />
+                :ui="{ trailing: 'pe-1' }"
+              >
+                <template v-if="selectedTags?.length" #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    icon="i-lucide-circle-x"
+                    aria-label="Clear all tags"
+                    @click="selectedTags = []"
+                  />
+                </template>
+              </UInputTags>
               <UCheckbox
                 v-model="onlyShowUntagged"
                 label="Only show untagged"

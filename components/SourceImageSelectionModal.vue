@@ -118,20 +118,11 @@
 
               <!-- Overlay Action Buttons - Left Side -->
               <div class="absolute left-4 bottom-4 flex flex-col gap-2 opacity-100 transition-opacity duration-200 pointer-events-auto z-10">
-                <!-- Delete Job Button -->
-                <div v-if="currentImage"
-                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
-                  @click="handleDeleteJob"
-                  :class="{ 'opacity-50 cursor-not-allowed': isDeletingJob }">
-                  <UIcon name="i-heroicons-x-mark"
-                    class="w-8 h-8 text-white drop-shadow-lg" />
-                </div>
-                
                 <!-- Navigation Buttons (only show if multiple images) -->
                 <template v-if="sourceImages.length > 1">
                   <!-- Next Button -->
                   <div
-                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full"
                     @click="goToNextImage">
                     <UIcon name="i-heroicons-chevron-right"
                       class="w-8 h-8 text-white drop-shadow-lg" />
@@ -139,7 +130,7 @@
                   
                   <!-- Previous Button -->
                   <div
-                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                    class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full"
                     @click="goToPreviousImage">
                     <UIcon name="i-heroicons-chevron-left"
                       class="w-8 h-8 text-white drop-shadow-lg" />
@@ -148,10 +139,21 @@
                 
                 <!-- Select Button -->
                 <div v-if="currentImage"
-                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full"
                   @click="selectCurrentImage"
                   :class="{ 'opacity-50 cursor-not-allowed': isSubmittingSource || isDeletingJob }">
                   <UIcon name="i-heroicons-check"
+                    class="w-8 h-8 text-white drop-shadow-lg" />
+                </div>
+              </div>
+
+              <!-- Delete Job Button - Bottom Right -->
+              <div v-if="currentImage" class="absolute right-4 bottom-4 pointer-events-auto z-10">
+                <div
+                  class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full"
+                  @click="handleDeleteJob"
+                  :class="{ 'opacity-50 cursor-not-allowed': isDeletingJob }">
+                  <UIcon name="i-heroicons-x-mark"
                     class="w-8 h-8 text-white drop-shadow-lg" />
                 </div>
               </div>
@@ -166,27 +168,21 @@
               <!-- Video/Image Toggle Button -->
               <div
                 v-if="job?.dest_media_uuid"
-                class="absolute top-0 right-0 w-16 h-16 flex items-center justify-center cursor-pointer"
+                class="absolute top-4 right-4 w-12 h-12 flex items-center justify-center cursor-pointer overlay-button-bg rounded-full transition-all"
                 @click="toggleVideoView">
-                <UButton
-                  :color="showingVideo ? 'primary' : 'gray'"
-                  variant="solid"
-                  size="sm"
-                  :icon="showingVideo ? 'i-heroicons-photo' : 'i-heroicons-film'"
-                  class="opacity-80 hover:opacity-100 transition-opacity pointer-events-none"
+                <UIcon
+                  :name="showingVideo ? 'i-heroicons-photo' : 'i-heroicons-film'"
+                  class="w-6 h-6 text-white drop-shadow-lg"
                   :title="showingVideo ? 'Show Output Image' : 'Show Destination Video'" />
               </div>
               <div
                 v-else
-                class="absolute top-0 right-0 w-16 h-16 flex items-center justify-center cursor-pointer"
+                class="absolute top-4 right-4 w-12 h-12 flex items-center justify-center cursor-pointer overlay-button-bg rounded-full transition-all"
                 @click="deleteCurrentImage">
-                <UButton
-                  color="error"
-                  variant="solid"
-                  size="sm"
-                  icon="i-heroicons-trash"
-                  :loading="isDeletingImage"
-                  class="opacity-80 hover:opacity-100 transition-opacity pointer-events-none" />
+                <UIcon
+                  name="i-heroicons-trash"
+                  class="w-6 h-6 text-white drop-shadow-lg"
+                  :class="{ 'animate-spin': isDeletingImage }" />
               </div>
 
 
@@ -237,115 +233,129 @@
               </div>
             </div>
 
-            <!-- Consolidated Information Panel -->
-            <div class="mt-4 bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-              <div class="space-y-4 text-left">
-                
-                <!-- Job Information -->
-                <div>
-                  <h4 class="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">Job Information</h4>
-                  <div class="space-y-1 text-sm">
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Job ID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.id || 'N/A' }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.subject_uuid || 'N/A' }}</div>
+            <!-- Job Details Collapsible -->
+            <div class="mt-4">
+              <UCollapsible class="flex flex-col gap-2">
+                <UButton
+                  label="Job Details"
+                  color="neutral"
+                  variant="subtle"
+                  trailing-icon="i-lucide-chevron-down"
+                  block
+                />
+
+                <template #content>
+                  <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div class="space-y-4 text-left">
+                      
+                      <!-- Job Information -->
+                      <div>
+                        <h4 class="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2">Job Information</h4>
+                        <div class="space-y-1 text-sm">
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Job ID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.id || 'N/A' }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ job?.subject_uuid || 'N/A' }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Output Image Information -->
+                      <div v-if="currentImage">
+                        <h4 class="text-sm font-semibold text-green-700 dark:text-green-400 mb-2">Output Image Details</h4>
+                        <div class="space-y-1 text-sm">
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.uuid }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Source Reference:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.source_media_uuid_ref || 'N/A' }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                            <div class="text-gray-800 dark:text-gray-200 break-all">{{ currentImage.filename }}</div>
+                          </div>
+                          <div v-if="currentImage.width && currentImage.height">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ currentImage.width }} × {{ currentImage.height }}</div>
+                          </div>
+                          <div v-if="currentImage.file_size">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(currentImage.file_size) }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ currentImage.purpose || 'N/A' }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Source Image Information -->
+                      <div v-if="sourceImages[currentImageIndex]">
+                        <h4 class="text-sm font-semibold text-purple-700 dark:text-purple-400 mb-2">Source Image Details</h4>
+                        <div class="space-y-1 text-sm">
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].uuid }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].subject_uuid || 'N/A' }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                            <div class="text-gray-800 dark:text-gray-200 break-all">{{ sourceImages[currentImageIndex].filename }}</div>
+                          </div>
+                          <div v-if="sourceImages[currentImageIndex].width && sourceImages[currentImageIndex].height">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].width }} × {{ sourceImages[currentImageIndex].height }}</div>
+                          </div>
+                          <div v-if="sourceImages[currentImageIndex].file_size">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(sourceImages[currentImageIndex].file_size) }}</div>
+                          </div>
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].purpose || 'N/A' }}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Video Information (if available) -->
+                      <div v-if="destVideo">
+                        <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2">Destination Video</h4>
+                        <div class="space-y-1 text-sm">
+                          <div>
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Video UUID:</span>
+                            <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ destVideo.uuid }}</div>
+                          </div>
+                          <div v-if="destVideo.duration">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Duration:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ destVideo.duration }}s</div>
+                          </div>
+                          <div v-if="destVideo.file_size">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(destVideo.file_size) }}</div>
+                          </div>
+                          <div v-if="destVideo.metadata?.codec">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Codec:</span>
+                            <div class="text-gray-800 dark:text-gray-200">{{ destVideo.metadata.codec }}</div>
+                          </div>
+                          <div v-if="destVideo.filename">
+                            <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
+                            <div class="text-gray-800 dark:text-gray-200 break-all">{{ destVideo.filename }}</div>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   </div>
-                </div>
-
-                <!-- Output Image Information -->
-                <div v-if="currentImage">
-                  <h4 class="text-sm font-semibold text-green-700 dark:text-green-400 mb-2">Output Image Details</h4>
-                  <div class="space-y-1 text-sm">
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.uuid }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Source Reference:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.source_media_uuid_ref || 'N/A' }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
-                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ currentImage.filename }}</div>
-                    </div>
-                    <div v-if="currentImage.width && currentImage.height">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ currentImage.width }} × {{ currentImage.height }}</div>
-                    </div>
-                    <div v-if="currentImage.file_size">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(currentImage.file_size) }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ currentImage.purpose || 'N/A' }}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Source Image Information -->
-                <div v-if="sourceImages[currentImageIndex]">
-                  <h4 class="text-sm font-semibold text-purple-700 dark:text-purple-400 mb-2">Source Image Details</h4>
-                  <div class="space-y-1 text-sm">
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].uuid }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Subject UUID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ sourceImages[currentImageIndex].subject_uuid || 'N/A' }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
-                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ sourceImages[currentImageIndex].filename }}</div>
-                    </div>
-                    <div v-if="sourceImages[currentImageIndex].width && sourceImages[currentImageIndex].height">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].width }} × {{ sourceImages[currentImageIndex].height }}</div>
-                    </div>
-                    <div v-if="sourceImages[currentImageIndex].file_size">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(sourceImages[currentImageIndex].file_size) }}</div>
-                    </div>
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Purpose:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ sourceImages[currentImageIndex].purpose || 'N/A' }}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Video Information (if available) -->
-                <div v-if="destVideo">
-                  <h4 class="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2">Destination Video</h4>
-                  <div class="space-y-1 text-sm">
-                    <div>
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Video UUID:</span>
-                      <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ destVideo.uuid }}</div>
-                    </div>
-                    <div v-if="destVideo.duration">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Duration:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ destVideo.duration }}s</div>
-                    </div>
-                    <div v-if="destVideo.file_size">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ formatFileSize(destVideo.file_size) }}</div>
-                    </div>
-                    <div v-if="destVideo.metadata?.codec">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Codec:</span>
-                      <div class="text-gray-800 dark:text-gray-200">{{ destVideo.metadata.codec }}</div>
-                    </div>
-                    <div v-if="destVideo.filename">
-                      <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
-                      <div class="text-gray-800 dark:text-gray-200 break-all">{{ destVideo.filename }}</div>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
+                </template>
+              </UCollapsible>
             </div>
           </div>
         </div>
