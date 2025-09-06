@@ -25,7 +25,6 @@
 </template>
 
 <script setup>
-import { useSubjectsStore } from '~/stores/subjects'
 
 const props = defineProps({
   modelValue: {
@@ -48,8 +47,8 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
-// Use the subjects store
-const subjectsStore = useSubjectsStore()
+// Use the subjects composable
+const { getSubjectItems } = useSubjects()
 
 // Internal state
 const selectedSubject = ref(props.modelValue)
@@ -57,43 +56,19 @@ const searchQuery = ref('')
 
 // Filter subjects locally based on search query
 const subjectItems = computed(() => {
-  const allSubjects = subjectsStore.subjectItems
-  
+  // Get filtered subjects from cache
+  const filteredSubjects = getSubjectItems(searchQuery.value)
+
   // Always include "None" option at the top
   const noneOption = { value: '', label: 'None' }
-  
-  if (!searchQuery.value || !searchQuery.value.trim()) {
-    return [noneOption, ...allSubjects]
-  }
-  
-  const query = searchQuery.value.toLowerCase().trim()
-  
+
   // If searching for "none", show only the none option
-  if (query === 'none') {
+  if (searchQuery.value && searchQuery.value.toLowerCase().trim() === 'none') {
     return [noneOption]
   }
-  
-  const filtered = allSubjects.filter(subject =>
-    subject.label.toLowerCase().includes(query)
-  )
-  
-  // Sort results: exact matches first, then partial matches
-  const sorted = filtered.sort((a, b) => {
-    const aExact = a.label.toLowerCase() === query
-    const bExact = b.label.toLowerCase() === query
-    const aStarts = a.label.toLowerCase().startsWith(query)
-    const bStarts = b.label.toLowerCase().startsWith(query)
-    
-    if (aExact && !bExact) return -1
-    if (!aExact && bExact) return 1
-    if (aStarts && !bStarts) return -1
-    if (!aStarts && bStarts) return 1
-    
-    return a.label.localeCompare(b.label)
-  })
-  
-  // Include "None" option if it matches the search or if there are results
-  return [noneOption, ...sorted]
+
+  // Include "None" option with filtered results
+  return [noneOption, ...filteredSubjects]
 })
 
 // Handle selection
@@ -115,8 +90,5 @@ watch(() => props.modelValue, (newValue) => {
   selectedSubject.value = newValue
 })
 
-// Initialize subjects store on mount
-onMounted(() => {
-  subjectsStore.initializeSubjects()
-})
+// No need to initialize - subjects are loaded globally in app.vue
 </script>

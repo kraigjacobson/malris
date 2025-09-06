@@ -58,7 +58,11 @@ export default defineEventHandler(async (event) => {
       media_type,
       purpose,
       job_id,
-      limit
+      limit,
+      sort_by,
+      sort_order,
+      tags,
+      exclude_subject_uuid
     })
 
     const db = getDb()

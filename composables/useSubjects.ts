@@ -1,65 +1,90 @@
-import { ref, watch, computed } from 'vue'
 import { useSubjectsStore } from '~/stores/subjects'
-
-interface SubjectItem {
-  value: string
-  label: string
-}
 
 export const useSubjects = () => {
   const subjectsStore = useSubjectsStore()
-  const selectedSubject = ref<SubjectItem | null>(null)
-  const searchQuery = ref('')
 
-  // Use computed properties to get reactive data from the store
-  const subjectItems = computed(() => subjectsStore.subjectItems)
-  const isLoading = computed(() => subjectsStore.isLoading)
-
-  const loadSubjects = async () => {
-    await subjectsStore.searchSubjects(searchQuery.value)
+  /**
+   * Get subjects with full data (including thumbnails)
+   * Filters from cache only - no API calls after initial load
+   */
+  const getSubjects = (tags: string[] = []): any[] => {
+    // Get from cache only
+    const cachedSubjects = subjectsStore.getCachedFullSubjects(tags) || []
+    console.log('✅ Using cached subjects:', cachedSubjects.length, 'for tags:', tags)
+    return cachedSubjects
   }
 
-  const handleSubjectSelection = (selected: SubjectItem | null) => {
-    selectedSubject.value = selected
-  }
-
-  const clearSubject = () => {
-    selectedSubject.value = null
-    searchQuery.value = ''
-  }
-
-  const resetSubjects = () => {
-    selectedSubject.value = null
-    searchQuery.value = ''
-    // Don't clear the store data, just reset local state
-  }
-
-  // Debounced search - wait 300ms after user stops typing
-  let debounceTimeout: NodeJS.Timeout | null = null
-  const debouncedSearch = () => {
-    if (debounceTimeout) {
-      clearTimeout(debounceTimeout)
+  /**
+   * Get subject items for dropdowns/search (derived from full subjects cache)
+   * Filters locally - no API calls
+   */
+  const getSubjectItems = (searchQuery: string = ''): any[] => {
+    // Get all cached full subjects
+    const allSubjects = subjectsStore.getCachedFullSubjects([]) || []
+    
+    // Convert to items format and filter by search query
+    let items = allSubjects.map(subject => ({
+      value: subject.id,
+      label: subject.name
+    }))
+    
+    // Filter by search query if provided
+    if (searchQuery && searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      items = items.filter(item =>
+        item.label.toLowerCase().includes(query)
+      )
     }
-    debounceTimeout = setTimeout(() => {
-      loadSubjects()
-    }, 300)
+    
+    // Sort alphabetically
+    items.sort((a, b) => a.label.localeCompare(b.label))
+    
+    console.log('✅ Generated subject items from cache:', items.length)
+    return items
   }
 
-  // Auto-load subjects when search query changes with debounce
-  watch(searchQuery, () => {
-    debouncedSearch()
-  })
+  /**
+   * Initialize subjects cache (called once globally on app start)
+   * Only loads full subjects since that's all we need
+   */
+  const initializeSubjects = async (): Promise<void> => {
+    try {
+      console.log('🚀 Initializing subjects cache...')
+      await subjectsStore.initializeFullSubjects()
+      console.log('✅ Subjects cache initialized')
+    } catch (error) {
+      console.error('❌ Failed to initialize subjects cache:', error)
+      throw error
+    }
+  }
 
-  // Initialize subjects store on first use
-  subjectsStore.initializeSubjects()
+  /**
+   * Get a specific subject by ID from cache
+   */
+  const getSubjectById = (id: string): any | null => {
+    const cachedSubjects = subjectsStore.getCachedFullSubjects([])
+    if (cachedSubjects) {
+      const found = cachedSubjects.find(s => s.id === id)
+      if (found) {
+        console.log('✅ Found subject in cache:', id)
+        return found
+      }
+    }
+    
+    console.log('❌ Subject not found in cache:', id)
+    return null
+  }
+
   return {
-    selectedSubject,
-    searchQuery,
-    subjectItems,
-    isLoading,
-    loadSubjects,
-    handleSubjectSelection,
-    clearSubject,
-    resetSubjects
+    // Main functions
+    getSubjects,
+    getSubjectItems,
+    getSubjectById,
+    
+    // Initialization (called once globally)
+    initializeSubjects,
+    
+    // Store access (for reactive state)
+    store: subjectsStore
   }
 }

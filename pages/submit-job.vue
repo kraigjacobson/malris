@@ -386,7 +386,6 @@
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 import { useSearchStore } from '~/stores/search'
-import { useSubjectsStore } from '~/stores/subjects'
 import VideoSearchFilters from '~/components/VideoSearchFilters.vue'
 import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 
@@ -399,7 +398,7 @@ definePageMeta({
 const { setSubjectTags, setVideoTags, getVideoHairTags, clearTags } = useTags()
 const { displayImages } = useSettings()
 const searchStore = useSearchStore()
-const subjectsStore = useSubjectsStore()
+const { getSubjects } = useSubjects()
 
 // Reactive form data
 const form = ref({
@@ -500,8 +499,14 @@ const handleSubjectSelection = (selected) => {
   
   if (selected) {
     storeSubjectTags(selected)
+    // Auto-populate video search tags with all subject tags
+    if (selected.tags && selected.tags.tags && Array.isArray(selected.tags.tags)) {
+      searchStore.videoSearch.selectedTags = [...selected.tags.tags]
+    }
   } else {
     setSubjectTags([])
+    // Clear video search tags when subject is cleared
+    searchStore.videoSearch.selectedTags = []
   }
 }
 
@@ -517,6 +522,8 @@ const handleSubjectGridSelection = (subject) => {
 const clearSelectedSubject = () => {
   selectedSubject.value = null
   setSubjectTags([])
+  // Clear video search tags when subject is cleared
+  searchStore.videoSearch.selectedTags = []
 }
 
 const toggleSubjectSelection = (subject) => {
@@ -635,8 +642,9 @@ const loadVideos = async (reset = false) => {
     const sortOrder = typeof searchStore.videoSearch.sortOrder === 'object' ? searchStore.videoSearch.sortOrder.value : searchStore.videoSearch.sortOrder
     
     console.log('🔍 submit-job.vue sort type:', sortType, 'order:', sortOrder)
+    console.log('🔍 submit-job.vue searchStore.videoSearch:', JSON.stringify(searchStore.videoSearch, null, 2))
     
-    // Check if random sorting is selected
+    // Always append sort parameters - check if random sorting is selected
     if (sortType === 'random') {
       params.append('sort_by', 'random')
       params.append('sort_order', 'asc') // Order doesn't matter for random, but API expects it
@@ -647,6 +655,8 @@ const loadVideos = async (reset = false) => {
       params.append('sort_order', sortOrder || 'desc')
       console.log('✅ Using sort in submit-job.vue:', sortType, sortOrder)
     }
+    
+    console.log('🔍 Final params before API call:', params.toString())
 
     // Add selected tags
     if (searchStore.videoSearch.selectedTags.length > 0) {
@@ -695,8 +705,8 @@ const handleVideoPageChange = (page) => {
   loadVideos(false)
 }
 
-// Load subjects function - use cached subjects from store
-const loadSubjects = async () => {
+// Load subjects function - use cached subjects from composable
+const loadSubjects = () => {
   subjectLoading.value = true
   subjects.value = []
   subjectCurrentPage.value = 1
@@ -705,20 +715,8 @@ const loadSubjects = async () => {
   subjectHasSearched.value = true
 
   try {
-    // Check if we have cached subjects first
-    const cachedSubjects = subjectsStore.getCachedFullSubjects(searchStore.subjectSearch.selectedTags)
-    
-    if (cachedSubjects) {
-      console.log('✅ Using cached subjects:', cachedSubjects.length)
-      subjects.value = cachedSubjects
-    } else {
-      console.log('🔄 Loading subjects from API...')
-      const loadedSubjects = await subjectsStore.loadFullSubjects(searchStore.subjectSearch.selectedTags)
-      subjects.value = loadedSubjects
-    }
-    
-    // No pagination needed since we load all subjects at once
-
+    // Get subjects from cache (filtered by tags)
+    subjects.value = getSubjects(searchStore.subjectSearch.selectedTags)
   } catch (err) {
     console.error('Error loading subjects:', err)
     subjectError.value = err.message || 'Failed to load subjects'
@@ -823,18 +821,12 @@ const createBatchJobs = async () => {
   }
 }
 
-// Initialize search store and preload subjects cache on mount
+// Initialize search store on mount (subjects cache is handled globally in app.vue)
 onMounted(async () => {
   try {
     if (searchStore.initializeSearch) {
       await searchStore.initializeSearch()
     }
-    
-    // Preload subjects cache in the background for instant search results
-    console.log('🚀 Preloading subjects cache for faster search...')
-    subjectsStore.initializeFullSubjects().catch(error => {
-      console.warn('Failed to preload subjects cache:', error)
-    })
   } catch (error) {
     console.error('Failed to initialize search store on mount:', error)
   }

@@ -46,27 +46,6 @@
           </div>
         </div>
         
-        <!-- Search and Clear Buttons -->
-        <div class="flex justify-center gap-3 mt-3">
-          <UButton
-            color="primary"
-            size="sm"
-            icon="i-heroicons-magnifying-glass"
-            @click="performSearch"
-          >
-            Search Subjects
-          </UButton>
-          <UButton
-            v-if="hasSearched || searchQuery || searchStore.subjectSearch.selectedTags.length > 0"
-            color="gray"
-            variant="outline"
-            size="sm"
-            icon="i-heroicons-x-mark"
-            @click="clearAll"
-          >
-            Clear
-          </UButton>
-        </div>
       </div>
 
       <!-- Selected Video Preview (if video is selected and images are enabled) -->
@@ -112,13 +91,35 @@
         />
       </div>
     </template>
+
+    <template #footer>
+      <div class="flex justify-center gap-3">
+        <UButton
+          color="primary"
+          size="sm"
+          icon="i-heroicons-magnifying-glass"
+          @click="performSearch"
+        >
+          Search Subjects
+        </UButton>
+        <UButton
+          v-if="hasSearched || searchQuery || searchStore.subjectSearch.selectedTags.length > 0"
+          color="gray"
+          variant="outline"
+          size="sm"
+          icon="i-heroicons-x-mark"
+          @click="clearAll"
+        >
+          Clear
+        </UButton>
+      </div>
+    </template>
   </UModal>
 </template>
 
 <script setup>
 import { nextTick } from 'vue'
 import { useSearchStore } from '~/stores/search'
-import { useSubjectsStore } from '~/stores/subjects'
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 
@@ -139,9 +140,9 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select'])
 
-// Use the search store, subjects store, tags composable, and settings
+// Use the search store, subjects composable, tags composable, and settings
 const searchStore = useSearchStore()
-const subjectsStore = useSubjectsStore()
+const { getSubjects } = useSubjects()
 const { filterHairTags } = useTags()
 const { displayImages } = useSettings()
 
@@ -235,29 +236,21 @@ const handleVideoHover = () => {
 
 
 
-// Load subjects function - use cached subjects from store
-const loadSubjects = async () => {
+// Load subjects function - use cached subjects from composable
+const loadSubjects = () => {
   loading.value = true
   subjects.value = []
   currentPage.value = 1
   loadingMore.value = false
-  
+
   error.value = null
   hasSearched.value = true
 
   try {
-    // Check if we have cached subjects first
-    const cachedSubjects = subjectsStore.getCachedFullSubjects(searchStore.subjectSearch.selectedTags)
-    
-    if (cachedSubjects) {
-      console.log('✅ Using cached subjects:', cachedSubjects.length)
-      subjects.value = filterSubjects(cachedSubjects)
-    } else {
-      console.log('🔄 Loading subjects from API...')
-      const loadedSubjects = await subjectsStore.loadFullSubjects(searchStore.subjectSearch.selectedTags)
-      subjects.value = filterSubjects(loadedSubjects)
-    }
-    
+    // Get subjects from cache (filtered by tags)
+    const cachedSubjects = getSubjects(searchStore.subjectSearch.selectedTags)
+    subjects.value = filterSubjects(cachedSubjects)
+
     // No more pagination needed since we load all at once
     hasMore.value = false
 

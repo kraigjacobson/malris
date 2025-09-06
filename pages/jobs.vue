@@ -766,7 +766,7 @@ const handleSourceTypeFilterSelection = async (selected) => {
         selectedSourceTypeFilter.value = selected
         pageNumber.value = 1
         const statusFilter = currentFilter.value || ''
-        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        const subjectUuid = selectedSubjectFilter?.value?.value || ''
         
         console.log(`📁 [SOURCE TYPE DEBUG] Starting jobs API call for source type filter...`)
         const apiStartTime = performance.now()
@@ -797,7 +797,7 @@ const clearSourceTypeFilter = async () => {
   selectedSourceTypeFilter.value = 'all'
   pageNumber.value = 1
   const statusFilter = currentFilter.value || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  const subjectUuid = selectedSubjectFilter?.value?.value || ''
   
   await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all')
 }
@@ -903,7 +903,7 @@ const filterByStatus = async (status) => {
         jobs.value = []
         
         // Fetch fresh jobs for this status
-        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        const subjectUuid = selectedSubjectFilter?.value?.value || ''
         const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
         
         await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter)
@@ -938,7 +938,7 @@ const refreshJobsWithCurrentState = async () => {
     const performRefresh = async () => {
       try {
         const statusFilter = currentFilter.value || ''
-        const subjectUuid = selectedSubjectFilter.value?.value || ''
+        const subjectUuid = selectedSubjectFilter?.value?.value || ''
         const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
         
         // Only fetch jobs for refresh - queue status is updated via WebSocket
@@ -1089,7 +1089,7 @@ const handlePageChange = async (newPage) => {
   
   pageNumber.value = newPage
   const statusFilter = currentFilter.value || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  const subjectUuid = selectedSubjectFilter?.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   
   console.log(`📄 [PAGE DEBUG] Starting jobs API call for page change...`)
@@ -1110,7 +1110,7 @@ const handleLimitChange = async () => {
   
   pageNumber.value = 1 // Reset to first page when changing limit
   const statusFilter = currentFilter.value || ''
-  const subjectUuid = selectedSubjectFilter.value?.value || ''
+  const subjectUuid = selectedSubjectFilter?.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
   
   console.log(`📊 [LIMIT DEBUG] Starting parallel API calls for limit change...`)

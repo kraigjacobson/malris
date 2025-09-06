@@ -1,23 +1,33 @@
 <template>
-  <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
-    <div class="mb-4 sm:mb-8">
-      <div class="flex justify-between items-center">
-        <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
+  <UModal v-model:open="isModalOpen" :ui="{ width: 'max-w-6xl' }" :fullscreen="isMobile">
+    <template #header>
+      <div class="flex justify-between items-center w-full">
+        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
           Subjects
         </h1>
-        <UButton
-          @click="openManageSubjectModal()"
-          color="primary"
-          icon="i-heroicons-plus"
-          size="sm"
-        >
-          Add Subject
-        </UButton>
+        <div class="flex items-center gap-2">
+          <UButton
+            @click="openManageSubjectModal()"
+            color="primary"
+            icon="i-heroicons-plus"
+            size="sm"
+          >
+            Add Subject
+          </UButton>
+          <UButton
+            variant="ghost"
+            size="sm"
+            icon="i-heroicons-x-mark"
+            @click="isModalOpen = false"
+          />
+        </div>
       </div>
-    </div>
+    </template>
 
-    <!-- Search Filters -->
-    <div class="mb-3 sm:mb-6">
+    <template #body>
+      <div class="space-y-6 max-h-[70vh] overflow-y-auto">
+        <!-- Search Filters -->
+        <div>
       <!-- Collapsible Header -->
       <div
         class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -130,14 +140,6 @@
           </div>
         </div>
 
-        <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
-          <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
-            Search
-          </UButton>
-          <UButton @click="clearFilters" variant="outline" size="sm">
-            Clear
-          </UButton>
-        </div>
       </UCard>
     </div>
 
@@ -241,18 +243,6 @@
         </div>
       </div>
 
-      <!-- Pagination -->
-      <div v-if="pagination.total > pagination.limit" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4 z-50">
-        <div class="flex justify-center">
-          <UPagination
-            v-model:page="currentPage"
-            :items-per-page="pagination.limit"
-            :total="pagination.total"
-            show-last
-            show-first
-          />
-        </div>
-      </div>
     </div>
 
     <!-- No Results -->
@@ -268,31 +258,72 @@
     </div>
 
 
-    <!-- Manage Subject Modal -->
-    <ManageSubjectModal
-      v-model="isManageSubjectModalOpen"
-      :subject="selectedSubjectForManagement"
-      :subjects="subjectResults"
-      :current-subject-index="currentSubjectIndex"
-      @subject-created="handleSubjectCreated"
-      @subject-updated="handleSubjectUpdated"
-      @subject-changed="handleSubjectChanged"
-    />
-  </div>
+        <!-- Manage Subject Modal -->
+        <ManageSubjectModal
+          v-model="isManageSubjectModalOpen"
+          :subject="selectedSubjectForManagement"
+          :subjects="subjectResults"
+          :current-subject-index="currentSubjectIndex"
+          @subject-created="handleSubjectCreated"
+          @subject-updated="handleSubjectUpdated"
+          @subject-changed="handleSubjectChanged"
+        />
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="w-full space-y-3">
+        <!-- Pagination -->
+        <div v-if="pagination.total > pagination.limit" class="w-full flex justify-center">
+          <UPagination
+            v-model:page="currentPage"
+            :items-per-page="pagination.limit"
+            :total="pagination.total"
+            show-last
+            show-first
+          />
+        </div>
+        
+        <!-- Action Buttons Row -->
+        <div class="w-full flex justify-between items-center">
+          <!-- Close Button (Left) -->
+          <UButton
+            @click="isModalOpen = false"
+            variant="outline"
+            size="sm"
+            icon="i-heroicons-x-mark"
+          >
+            Close
+          </UButton>
+          
+          <!-- Search and Clear Buttons (Right) -->
+          <div class="flex gap-3">
+            <UButton @click="clearFilters" variant="outline" size="sm">
+              Clear
+            </UButton>
+            <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
+              Search
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
-import { useSubjectsStore } from '~/stores/subjects'
 
 // Page metadata
 definePageMeta({
   title: 'Subjects Gallery'
 })
 
+// Use Nuxt's device detection
+const { isMobile } = useDevice()
+
 // Initialize stores
 const settingsStore = useSettingsStore()
-const subjectsStore = useSubjectsStore()
 
 // Date formatting utility
 const formatDate = (dateString) => {
@@ -326,16 +357,12 @@ const filters = ref({
 })
 
 // Subject search using composable for dropdown
-const {
-  selectedSubject: _selectedDropdownSubject,
-  searchQuery: dropdownSearchTerm,
-  subjectItems: baseSearchSubjectItems,
-  handleSubjectSelection: _handleDropdownSubjectSelection
-} = useSubjects()
+const { getSubjects, getSubjectItems } = useSubjects()
+const dropdownSearchTerm = ref('')
 
 // Map composable items to match the expected format (name as value)
 const searchSubjectItems = computed(() =>
-  baseSearchSubjectItems.value.map(item => ({
+  getSubjectItems(dropdownSearchTerm.value).map(item => ({
     value: item.label, // Use name as value for subjects gallery
     label: item.label
   }))
@@ -351,6 +378,7 @@ const isLoading = ref(false)
 const hasSearched = ref(false)
 const viewMode = ref('grid')
 const isManageSubjectModalOpen = ref(false)
+const isModalOpen = ref(true)
 const isFiltersCollapsed = ref(false)
 const selectedSubjectForManagement = ref(null)
 const currentSubjectIndex = ref(0)
@@ -411,8 +439,8 @@ const searchSubjects = async () => {
   isFiltersCollapsed.value = true
 
   try {
-    // First try to get cached data from the store
-    const cachedSubjects = subjectsStore.getCachedFullSubjects(selectedTags.value)
+    // Get cached subjects using composable
+    const cachedSubjects = getSubjects(selectedTags.value)
     
     if (cachedSubjects && cachedSubjects.length > 0) {
       console.log('🚀 Using cached subjects data for faster loading')
@@ -446,16 +474,14 @@ const searchSubjects = async () => {
         })
       }
       
-      // Apply pagination
-      const startIndex = (currentPage.value - 1) * pagination.value.limit
-      const endIndex = startIndex + pagination.value.limit
-      subjectResults.value = filteredSubjects.slice(startIndex, endIndex)
+      // Display all subjects without pagination
+      subjectResults.value = filteredSubjects
       
       // Update pagination info
       pagination.value = {
         ...pagination.value,
         total: filteredSubjects.length,
-        has_more: endIndex < filteredSubjects.length
+        has_more: false
       }
       
       isLoading.value = false
@@ -601,15 +627,9 @@ watch(currentPage, (newPage, oldPage) => {
   }
 })
 
-// Initialize settings and preload subjects cache on mount
+// Initialize settings on mount (subjects cache is handled globally in app.vue)
 onMounted(async () => {
   await settingsStore.initializeSettings()
-  
-  // Preload subjects cache in the background for instant search results
-  console.log('🚀 Preloading subjects cache for faster search...')
-  subjectsStore.initializeFullSubjects().catch(error => {
-    console.warn('Failed to preload subjects cache:', error)
-  })
 })
 
 // Page head

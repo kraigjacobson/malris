@@ -72,6 +72,7 @@
             class="w-full"
             size="sm"
             placeholder="Sort By"
+            @update:model-value="handleSortTypeChange"
           />
           <USelect
             v-model="searchStore.videoSearch.sortOrder"
@@ -79,6 +80,7 @@
             class="w-full"
             size="sm"
             placeholder="Order"
+            @update:model-value="handleSortOrderChange"
           />
           <USelect
             v-model="searchStore.videoSearch.limitOptions"
@@ -86,6 +88,7 @@
             class="w-full"
             size="sm"
             placeholder="Limit"
+            @update:model-value="handleLimitChange"
           />
         </div>
       </div>
@@ -119,6 +122,22 @@ const collapse = () => {
 
 const expand = () => {
   isCollapsed.value = false
+}
+
+// Handle explicit change events to ensure reactivity on mobile
+const handleSortTypeChange = (value) => {
+  console.log('🔄 Sort type changed to:', value)
+  searchStore.videoSearch.sortType = value
+}
+
+const handleSortOrderChange = (value) => {
+  console.log('🔄 Sort order changed to:', value)
+  searchStore.videoSearch.sortOrder = value
+}
+
+const handleLimitChange = (value) => {
+  console.log('🔄 Limit changed to:', value)
+  searchStore.videoSearch.limitOptions = value
 }
 
 // Expose methods to parent component
