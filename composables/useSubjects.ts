@@ -92,7 +92,59 @@ export const useSubjects = () => {
     return null
   }
 
+  // Reactive state for subject filtering (used by jobs page)
+  const selectedSubject = ref(null)
+  const searchQuery = ref('')
+  
+  // Computed subject items that updates when search query changes
+  const subjectItems = computed(() => {
+    // Get all cached full subjects
+    const allSubjects = subjectsStore.getCachedFullSubjects([]) || []
+    
+    // If no cached subjects, return empty array
+    if (!allSubjects || allSubjects.length === 0) {
+      return []
+    }
+    
+    // Convert to items format and filter by search query
+    let items = allSubjects.map(subject => ({
+      value: subject.id,
+      label: subject.name
+    }))
+    
+    // Filter by search query if provided
+    if (searchQuery.value && searchQuery.value.trim()) {
+      const query = searchQuery.value.toLowerCase().trim()
+      items = items.filter(item =>
+        item.label.toLowerCase().includes(query)
+      )
+    }
+    
+    // Sort alphabetically
+    items.sort((a, b) => a.label.localeCompare(b.label))
+    
+    return items
+  })
+
+  // Handle subject selection
+  const handleSubjectSelection = (selected: any) => {
+    selectedSubject.value = selected
+  }
+
+  // Clear subject selection
+  const clearSubject = () => {
+    selectedSubject.value = null
+    searchQuery.value = ''
+  }
+
   return {
+    // Reactive state for filtering (used by jobs page)
+    selectedSubject,
+    searchQuery,
+    subjectItems,
+    handleSubjectSelection,
+    clearSubject,
+    
     // Main functions
     getSubjects,
     getSubjectItems,

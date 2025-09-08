@@ -782,7 +782,7 @@ const handleVideoPageChange = (page) => {
   loadVideos(false)
 }
 
-// Load subjects function - now uses API with filtering
+// Load subjects function - uses cached data with local filtering only
 const loadSubjects = async () => {
   subjectLoading.value = true
   subjects.value = []
@@ -792,23 +792,116 @@ const loadSubjects = async () => {
   subjectHasSearched.value = true
 
   try {
-    // Parse sort options
+    // Get subjects from cache ONLY - no API calls
+    const { store } = useSubjects()
+    const cachedSubjects = store.getCachedFullSubjects([]) || []
+    
+    if (cachedSubjects.length === 0) {
+      // If no cache, show error instead of making API call
+      throw new Error('Subjects cache not loaded. Please refresh the page.')
+    }
+    
+    // Apply LOCAL filtering to cached data (no API calls)
+    let filteredSubjects = [...cachedSubjects]
+    
+    // Apply name category filters locally
+    filteredSubjects = filteredSubjects.filter(subject => {
+      const name = subject.name.toLowerCase()
+      const isCeleb = name.includes('celeb')
+      const isAsmr = name.includes('asmr')
+      
+      // If celeb filter is on and this is a celeb subject, include it
+      if (searchStore.subjectSearch.nameFilters.celeb && isCeleb) {
+        return true
+      }
+      
+      // If asmr filter is on and this is an asmr subject, include it
+      if (searchStore.subjectSearch.nameFilters.asmr && isAsmr) {
+        return true
+      }
+      
+      // If real filter is on and this is NOT celeb or asmr, include it
+      if (searchStore.subjectSearch.nameFilters.real && !isCeleb && !isAsmr) {
+        return true
+      }
+      
+      // If none of the filters match, exclude this subject
+      return false
+    })
+    
+    // Apply tag filtering locally (only if tags are selected)
+    if (searchStore.subjectSearch.selectedTags.length > 0) {
+      filteredSubjects = filteredSubjects.filter(subject => {
+        if (!subject.tags || !subject.tags.tags) return false
+        
+        const subjectTags = subject.tags.tags.map(tag => tag.toLowerCase())
+        return searchStore.subjectSearch.selectedTags.some(selectedTag =>
+          subjectTags.some(subjectTag =>
+            subjectTag.includes(selectedTag.toLowerCase())
+          )
+        )
+      })
+    }
+    
+    // Apply local sorting
     const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object'
       ? searchStore.subjectSearch.sortOptions.value
       : searchStore.subjectSearch.sortOptions
     
-    const [sortBy, sortOrder] = sortValue.includes('_')
-      ? sortValue.split('_')
-      : ['total_jobs', 'desc']
-
-    // Get subjects with new filtering using the composable
-    const { getSubjects } = useSubjects()
-    subjects.value = await getSubjects({
-      tags: searchStore.subjectSearch.selectedTags,
-      nameFilters: searchStore.subjectSearch.nameFilters,
-      sortBy,
-      sortOrder
+    // Fix parsing - split on last underscore, not first
+    let sortBy, sortOrder
+    if (sortValue.includes('_')) {
+      const lastUnderscoreIndex = sortValue.lastIndexOf('_')
+      sortBy = sortValue.substring(0, lastUnderscoreIndex)
+      sortOrder = sortValue.substring(lastUnderscoreIndex + 1)
+    } else {
+      sortBy = 'total_jobs'
+      sortOrder = 'desc'
+    }
+    
+    filteredSubjects.sort((a, b) => {
+      let aVal, bVal
+      
+      switch (sortBy) {
+        case 'name':
+          aVal = a.name || ''
+          bVal = b.name || ''
+          break
+        case 'created_at':
+          aVal = new Date(a.created_at || 0)
+          bVal = new Date(b.created_at || 0)
+          break
+        case 'updated_at':
+          aVal = new Date(a.updated_at || 0)
+          bVal = new Date(b.updated_at || 0)
+          break
+        case 'total_jobs':
+        default:
+          // Use the correct field name from cached subjects
+          aVal = Number(a.total_job_count) || 0
+          bVal = Number(b.total_job_count) || 0
+          break
+      }
+      
+      if (sortOrder === 'desc') {
+        if (sortBy === 'total_jobs') {
+          // For numeric values, use proper numeric comparison
+          return bVal - aVal
+        } else {
+          return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
+        }
+      } else {
+        if (sortBy === 'total_jobs') {
+          // For numeric values, use proper numeric comparison
+          return aVal - bVal
+        } else {
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+        }
+      }
     })
+    
+    subjects.value = filteredSubjects
+    
   } catch (err) {
     console.error('Error loading subjects:', err)
     subjectError.value = err.message || 'Failed to load subjects'
