@@ -27,121 +27,13 @@
     <template #body>
       <div class="space-y-6 max-h-[70vh] overflow-y-auto">
         <!-- Search Filters -->
-        <div>
-      <!-- Collapsible Header -->
-      <div
-        class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        @click="toggleFiltersCollapse"
-      >
-        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-          Search Filters
-        </h2>
-        <UIcon
-          :name="isFiltersCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
-          class="w-5 h-5 text-gray-500"
+        <SubjectSearchFilters
+          :selected-subject="selectedSearchSubject"
+          @search="searchSubjects"
+          @clear="clearFilters"
+          @subject-select="handleSubjectSelection"
+          :loading="isLoading"
         />
-      </div>
-      
-      <!-- Collapsible Content -->
-      <UCard v-show="!isFiltersCollapsed" class="mt-2">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          <!-- Search Term -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Search Name
-            </label>
-            <UInputMenu
-              v-model="selectedSearchSubject"
-              v-model:search-term="dropdownSearchTerm"
-              :items="searchSubjectItems"
-              placeholder="Search subjects by name..."
-              class="w-full"
-              by="value"
-              option-attribute="label"
-              searchable
-              @update:model-value="handleSearchSubjectSelection"
-            />
-          </div>
-
-          <!-- Tags Filter -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Tags Search
-            </label>
-            <div class="space-y-2">
-              <UInputTags
-                v-model="selectedTags"
-                placeholder="Add tags (e.g., portrait, landscape)"
-                class="w-full"
-                :ui="{ trailing: 'pe-1' }"
-              >
-                <template v-if="selectedTags?.length" #trailing>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-circle-x"
-                    aria-label="Clear all tags"
-                    @click="selectedTags = []"
-                  />
-                </template>
-              </UInputTags>
-              
-              <!-- Tag Search Options -->
-              <!-- <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Search Mode
-                </label>
-                <USelectMenu
-                  v-model="tagSearchMode"
-                  :items="tagSearchModeOptions"
-                  class="w-full"
-                  size="sm"
-                />
-              </div> -->
-            </div>
-          </div>
-        </div>
-
-        <!-- Sort Options and Limit -->
-        <div class="grid grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Sort By
-            </label>
-            <USelect
-              v-model="sortOptions.sort_by"
-              :items="sortByOptions"
-              placeholder="Sort by..."
-              class="w-full"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Sort Order
-            </label>
-            <USelect
-              v-model="sortOptions.sort_order"
-              :items="sortOrderOptions"
-              placeholder="Sort order..."
-              class="w-full"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Results Per Page
-            </label>
-            <USelect
-              v-model="pagination.limit"
-              :items="limitOptions"
-              placeholder="Results per page..."
-              class="w-full"
-            />
-          </div>
-        </div>
-
-      </UCard>
-    </div>
 
     <!-- Loading State -->
     <div v-if="isLoading" class="flex justify-center py-8">
@@ -313,6 +205,8 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+import { useSearchStore } from '~/stores/search'
+import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 
 // Page metadata
 definePageMeta({
@@ -324,6 +218,7 @@ const { isMobile } = useDevice()
 
 // Initialize stores
 const settingsStore = useSettingsStore()
+const searchStore = useSearchStore()
 
 // Date formatting utility
 const formatDate = (dateString) => {
@@ -348,30 +243,10 @@ const handleImageError = (event) => {
 }
 
 // Reactive data
-const searchTerm = ref('')
 const selectedSearchSubject = ref(null)
-const selectedTags = ref([])
-const tagSearchMode = ref({ label: 'Partial Match', value: 'partial' })
-const filters = ref({
-  tags: ''
-})
 
-// Subject search using composable for dropdown
-const { getSubjects, getSubjectItems } = useSubjects()
-const dropdownSearchTerm = ref('')
-
-// Map composable items to match the expected format (name as value)
-const searchSubjectItems = computed(() =>
-  getSubjectItems(dropdownSearchTerm.value).map(item => ({
-    value: item.label, // Use name as value for subjects gallery
-    label: item.label
-  }))
-)
-
-const sortOptions = ref({
-  sort_by: 'name',
-  sort_order: 'asc'
-})
+// Subject search using composable
+const { getSubjects } = useSubjects()
 
 const subjectResults = ref([])
 const isLoading = ref(false)
@@ -379,7 +254,6 @@ const hasSearched = ref(false)
 const viewMode = ref('grid')
 const isManageSubjectModalOpen = ref(false)
 const isModalOpen = ref(true)
-const isFiltersCollapsed = ref(false)
 const selectedSubjectForManagement = ref(null)
 const currentSubjectIndex = ref(0)
 const currentPage = ref(1)
@@ -390,148 +264,55 @@ const pagination = ref({
   has_more: false
 })
 
-// Sort options
-const sortByOptions = [
-  { label: 'Name', value: 'name' },
-  { label: 'Created Date', value: 'created_at' },
-  { label: 'Updated Date', value: 'updated_at' }
-]
-
-const sortOrderOptions = [
-  { label: 'Ascending', value: 'asc' },
-  { label: 'Descending', value: 'desc' }
-]
-
-const limitOptions = [
-  { label: '16 per page', value: 16 },
-  { label: '32 per page', value: 32 },
-  { label: '48 per page', value: 48 },
-  { label: '64 per page', value: 64 }
-]
-
-// const tagSearchModeOptions = [
-//   { label: 'Partial Match', value: 'partial' },
-//   { label: 'Exact Match', value: 'exact' }
-// ]
-
-// Handle subject selection from dropdown
-const handleSearchSubjectSelection = (selectedSubject) => {
-  console.log('🎯 Selected subject from dropdown:', selectedSubject)
-  if (selectedSubject && selectedSubject.value) {
-    searchTerm.value = selectedSubject.value
-    console.log('✅ Updated searchTerm to:', searchTerm.value)
-    // Don't auto-search, let user click Search button
-  } else {
-    console.log('❌ No valid selection')
-  }
-}
 
 // Methods
-const toggleFiltersCollapse = () => {
-  isFiltersCollapsed.value = !isFiltersCollapsed.value
-}
-
 const searchSubjects = async () => {
   isLoading.value = true
   hasSearched.value = true
-  
-  // Collapse the search filters after searching
-  isFiltersCollapsed.value = true
 
   try {
-    // Get cached subjects using composable
-    const cachedSubjects = getSubjects(selectedTags.value)
+    // Parse sort options from search store
+    const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object'
+      ? searchStore.subjectSearch.sortOptions.value
+      : searchStore.subjectSearch.sortOptions
     
-    if (cachedSubjects && cachedSubjects.length > 0) {
-      console.log('🚀 Using cached subjects data for faster loading')
-      
-      // Filter cached data based on search criteria
-      let filteredSubjects = cachedSubjects
-      
-      // Apply name filter if provided
-      if (searchTerm.value && searchTerm.value.trim()) {
-        const searchLower = searchTerm.value.trim().toLowerCase()
-        filteredSubjects = filteredSubjects.filter(subject =>
-          subject.name.toLowerCase().includes(searchLower)
-        )
-      }
-      
-      // Apply sorting
-      const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
-      const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
-      
-      if (sortBy === 'name') {
-        filteredSubjects.sort((a, b) => {
-          const comparison = a.name.localeCompare(b.name)
-          return sortOrder === 'desc' ? -comparison : comparison
-        })
-      } else if (sortBy === 'created_at') {
-        filteredSubjects.sort((a, b) => {
-          const aDate = new Date(a.created_at || 0).getTime()
-          const bDate = new Date(b.created_at || 0).getTime()
-          const comparison = aDate - bDate
-          return sortOrder === 'desc' ? -comparison : comparison
-        })
-      }
-      
-      // Display all subjects without pagination
-      subjectResults.value = filteredSubjects
-      
-      // Update pagination info
-      pagination.value = {
-        ...pagination.value,
-        total: filteredSubjects.length,
-        has_more: false
-      }
-      
-      isLoading.value = false
-      return
+    const [sortBy, sortOrder] = sortValue.includes('_')
+      ? sortValue.split('_')
+      : ['total_jobs', 'desc']
+
+    // Get subjects with new filtering using the composable
+    const filteredSubjects = await getSubjects({
+      tags: searchStore.subjectSearch.selectedTags,
+      nameFilters: searchStore.subjectSearch.nameFilters,
+      sortBy,
+      sortOrder
+    })
+
+    // Apply name filter if a subject is selected
+    let finalSubjects = filteredSubjects
+    if (selectedSearchSubject.value && selectedSearchSubject.value.label) {
+      const searchLower = selectedSearchSubject.value.label.toLowerCase()
+      finalSubjects = filteredSubjects.filter(subject =>
+        subject.name.toLowerCase().includes(searchLower)
+      )
     }
+
+    subjectResults.value = finalSubjects
     
-    // Fallback to API call if no cached data
-    console.log('📡 No cached data available, fetching from API')
-    const params = new URLSearchParams()
-    
-    console.log('🔍 Search term being used:', searchTerm.value)
-    if (searchTerm.value) params.append('name_pattern', searchTerm.value)
-    
-    // Add selected tags if provided
-    if (selectedTags.value.length > 0) {
-      params.append('tags', selectedTags.value.join(','))
-      
-      // Use the selected tag match mode
-      const searchMode = typeof tagSearchMode.value === 'object' ? tagSearchMode.value.value : tagSearchMode.value
-      params.append('tag_match_mode', searchMode)
+    // Update pagination info
+    pagination.value = {
+      ...pagination.value,
+      total: finalSubjects.length,
+      has_more: false
     }
-    
-    params.append('limit', pagination.value.limit.toString())
-    params.append('page', currentPage.value.toString())
-    
-    // Add sort parameters
-    const sortBy = typeof sortOptions.value.sort_by === 'object' ? sortOptions.value.sort_by.value : sortOptions.value.sort_by
-    const sortOrder = typeof sortOptions.value.sort_order === 'object' ? sortOptions.value.sort_order.value : sortOptions.value.sort_order
-    
-    if (sortBy) params.append('sort_by', sortBy)
-    if (sortOrder) params.append('sort_order', sortOrder)
-    const response = await useApiFetch(`subjects/search?${params.toString()}`)
-    
-    subjectResults.value = response.subjects || []
-    pagination.value = response.pagination || pagination.value
     
   } catch (err) {
     console.error('Search error:', err)
     const toast = useToast()
     
-    let errorMessage = 'Failed to search subjects'
-    if (err.statusCode === 503) {
-      errorMessage = 'Media API is not available. Please ensure the service is running on localhost:8000'
-    } else if (err.data?.message) {
-      errorMessage = err.data.message
-    }
-    
     toast.add({
       title: 'Subjects Search Error',
-      description: errorMessage,
+      description: err.message || 'Failed to search subjects',
       color: 'red',
       timeout: 5000
     })
@@ -543,19 +324,8 @@ const searchSubjects = async () => {
 }
 
 const clearFilters = () => {
-  searchTerm.value = ''
-  dropdownSearchTerm.value = ''
   selectedSearchSubject.value = null
-  selectedTags.value = []
-  tagSearchMode.value = { label: 'Partial Match', value: 'partial' }
-  filters.value = {
-    tags: ''
-  }
-  sortOptions.value = {
-    sort_by: 'name',
-    sort_order: 'asc'
-  }
-  pagination.value.limit = 16
+  searchStore.resetSubjectFilters()
   currentPage.value = 1
   subjectResults.value = []
   hasSearched.value = false

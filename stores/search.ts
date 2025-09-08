@@ -18,7 +18,12 @@ export const useSearchStore = defineStore('search', () => {
   const subjectSearch = ref({
     selectedTags: [] as string[],
     tagSearchMode: { label: 'Partial Match', value: 'partial' },
-    sortOptions: { label: 'Name (A-Z)', value: 'name_asc' }
+    sortOptions: { label: 'Total Jobs (Most)', value: 'total_jobs_desc' },
+    nameFilters: {
+      celeb: false,
+      asmr: false,
+      real: true
+    }
   })
 
   // Media gallery filters state
@@ -127,7 +132,12 @@ export const useSearchStore = defineStore('search', () => {
     subjectSearch.value = {
       selectedTags: [],
       tagSearchMode: { label: 'Partial Match', value: 'partial' },
-      sortOptions: { label: 'Name (A-Z)', value: 'name_asc' }
+      sortOptions: { label: 'Total Jobs (Most)', value: 'total_jobs_desc' },
+      nameFilters: {
+        celeb: false,
+        asmr: false,
+        real: true
+      }
     }
     await saveSubjectSearch()
   }

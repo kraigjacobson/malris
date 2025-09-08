@@ -58,64 +58,14 @@
         <div v-if="!selectedSubject" class="space-y-4">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 1: Select Subject</h3>
           
-          <!-- Subject Search -->
-          <div class="w-full">
-            <SubjectSearch
-              v-model="selectedSubject"
-              placeholder="Search by subject name..."
-              :disabled="isSubmitting"
-              @select="handleSubjectSelection"
-            />
-          </div>
-          
           <!-- Subject Search Filters -->
-          <div class="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Search by Tags
-              </label>
-              <UInputTags
-                v-model="searchStore.subjectSearch.selectedTags"
-                placeholder="Add tags (e.g., portrait, landscape)"
-                class="w-full"
-                enterkeyhint="enter"
-                :ui="{ trailing: 'pe-1' }"
-              >
-                <template v-if="searchStore.subjectSearch.selectedTags?.length" #trailing>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-circle-x"
-                    aria-label="Clear all tags"
-                    @click="searchStore.subjectSearch.selectedTags = []"
-                  />
-                </template>
-              </UInputTags>
-            </div>
-            
-            <!-- Search and Clear Buttons -->
-            <div class="flex justify-center gap-3">
-              <UButton
-                color="primary"
-                size="sm"
-                icon="i-heroicons-magnifying-glass"
-                @click="searchSubjects"
-              >
-                Search Subjects
-              </UButton>
-              <UButton
-                v-if="subjectHasSearched || searchStore.subjectSearch.selectedTags.length > 0"
-                color="gray"
-                variant="outline"
-                size="sm"
-                icon="i-heroicons-x-mark"
-                @click="clearSubjectFilters"
-              >
-                Clear
-              </UButton>
-            </div>
-          </div>
+          <SubjectSearchFilters
+            :selected-subject="selectedSubject"
+            @search="searchSubjects"
+            @clear="clearSubjectFilters"
+            @subject-select="handleSubjectSelection"
+            :loading="subjectLoading"
+          />
           
           <!-- Subject Grid -->
           <div v-if="subjectHasSearched || subjectLoading" class="max-h-[60vh] overflow-y-auto">
@@ -300,9 +250,11 @@
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 2: Select Subjects</h3>
           
           <!-- Subject Search Filters -->
-          <SubjectSearchFilters 
+          <SubjectSearchFilters
+            :selected-subject="selectedSubject"
             @search="searchSubjects"
             @clear="clearSubjectFilters"
+            @subject-select="handleSubjectSelection"
             :loading="subjectLoading"
           />
 
@@ -599,10 +551,10 @@ const clearVideoFilters = () => {
   videoHasSearched.value = false
 }
 
-const searchSubjects = () => {
+const searchSubjects = async () => {
   subjectCurrentPage.value = 1
   subjectHasMore.value = true
-  loadSubjects()
+  await loadSubjects()
 }
 
 const clearSubjectFilters = () => {
@@ -705,8 +657,8 @@ const handleVideoPageChange = (page) => {
   loadVideos(false)
 }
 
-// Load subjects function - use cached subjects from composable
-const loadSubjects = () => {
+// Load subjects function - now uses API with filtering
+const loadSubjects = async () => {
   subjectLoading.value = true
   subjects.value = []
   subjectCurrentPage.value = 1
@@ -715,8 +667,22 @@ const loadSubjects = () => {
   subjectHasSearched.value = true
 
   try {
-    // Get subjects from cache (filtered by tags)
-    subjects.value = getSubjects(searchStore.subjectSearch.selectedTags)
+    // Parse sort options
+    const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object'
+      ? searchStore.subjectSearch.sortOptions.value
+      : searchStore.subjectSearch.sortOptions
+    
+    const [sortBy, sortOrder] = sortValue.includes('_')
+      ? sortValue.split('_')
+      : ['total_jobs', 'desc']
+
+    // Get subjects with new filtering
+    subjects.value = await getSubjects({
+      tags: searchStore.subjectSearch.selectedTags,
+      nameFilters: searchStore.subjectSearch.nameFilters,
+      sortBy,
+      sortOrder
+    })
   } catch (err) {
     console.error('Error loading subjects:', err)
     subjectError.value = err.message || 'Failed to load subjects'

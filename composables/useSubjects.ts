@@ -5,10 +5,27 @@ export const useSubjects = () => {
 
   /**
    * Get subjects with full data (including thumbnails)
-   * Filters from cache only - no API calls after initial load
+   * Now supports API calls with filtering and sorting
    */
-  const getSubjects = (tags: string[] = []): any[] => {
-    // Get from cache only
+  const getSubjects = async (options: {
+    tags?: string[],
+    nameFilters?: { celeb: boolean, asmr: boolean, real: boolean },
+    sortBy?: string,
+    sortOrder?: string
+  } = {}): Promise<any[]> => {
+    const { tags = [], nameFilters, sortBy, sortOrder } = options
+    
+    // If we have name filters or custom sorting, make an API call
+    if (nameFilters || sortBy || sortOrder) {
+      return await subjectsStore.loadFullSubjectsWithFilters({
+        tags,
+        nameFilters,
+        sortBy,
+        sortOrder
+      })
+    }
+    
+    // Otherwise use cached data
     const cachedSubjects = subjectsStore.getCachedFullSubjects(tags) || []
     console.log('✅ Using cached subjects:', cachedSubjects.length, 'for tags:', tags)
     return cachedSubjects

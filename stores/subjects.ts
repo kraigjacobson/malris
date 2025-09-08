@@ -154,8 +154,8 @@ export const useSubjectsStore = defineStore('subjects', () => {
       const params = new URLSearchParams()
       params.append('include_images', 'true')
       params.append('image_size', 'thumb')
-      params.append('sort_by', 'name')
-      params.append('sort_order', 'asc')
+      params.append('sort_by', 'total_jobs')
+      params.append('sort_order', 'desc')
       
       // Add tags if provided
       if (tags.length > 0) {
@@ -183,6 +183,58 @@ export const useSubjectsStore = defineStore('subjects', () => {
       const emptyResult: Subject[] = []
       fullSubjectsCache.value.set(cacheKey, emptyResult)
       return emptyResult
+    } finally {
+      fullSubjectsLoading.value = false
+    }
+  }
+
+  // Load full subjects with advanced filtering and sorting
+  const loadFullSubjectsWithFilters = async (options: {
+    tags?: string[],
+    nameFilters?: { celeb: boolean, asmr: boolean, real: boolean },
+    sortBy?: string,
+    sortOrder?: string
+  }): Promise<Subject[]> => {
+    const { tags = [], nameFilters, sortBy, sortOrder } = options
+    
+    fullSubjectsLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      params.append('include_images', 'true')
+      params.append('image_size', 'thumb')
+      
+      // Add sorting
+      if (sortBy && sortOrder) {
+        params.append('sort_by', sortBy)
+        params.append('sort_order', sortOrder)
+      } else {
+        params.append('sort_by', 'total_jobs')
+        params.append('sort_order', 'desc')
+      }
+      
+      // Add tags if provided
+      if (tags.length > 0) {
+        params.append('tags', tags.join(','))
+        params.append('tag_match_mode', 'partial')
+      }
+      
+      // Add name filters
+      if (nameFilters) {
+        if (nameFilters.celeb) params.append('name_filter_celeb', 'true')
+        if (nameFilters.asmr) params.append('name_filter_asmr', 'true')
+        if (nameFilters.real) params.append('name_filter_real', 'true')
+      }
+
+      const response = await $fetch(`/api/subjects/search?${params.toString()}`)
+      const subjects = (response.subjects || []).map((subject: any) => ({
+        ...subject,
+        uuid: subject.uuid || subject.id // Ensure uuid is available
+      }))
+      
+      return subjects
+    } catch (error) {
+      console.error('Failed to load full subjects with filters:', error)
+      return []
     } finally {
       fullSubjectsLoading.value = false
     }
@@ -230,6 +282,7 @@ export const useSubjectsStore = defineStore('subjects', () => {
     fetchSubjectWithTags,
     getSubjectItems,
     loadFullSubjects,
+    loadFullSubjectsWithFilters,
     getCachedFullSubjects,
     initializeFullSubjects,
     clearAllCaches

@@ -153,11 +153,16 @@
               <div ref="thumbnailStrip" class="flex gap-2 overflow-x-auto py-2 scroll-smooth">
                 <div v-for="(image, index) in subjectImages" :key="image.uuid"
                   :ref="el => { if (el) thumbnailRefs[index] = el }"
-                  class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors"
+                  class="shrink-0 w-16 h-16 rounded cursor-pointer border-2 transition-colors relative"
                   :class="index === currentImageIndex ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'"
                   @click="currentImageIndex = index">
                   <img :src="getThumbnailUrl(image)" :alt="image.filename"
                     class="w-full h-full object-cover object-top rounded" />
+                  <!-- Job Count Overlay -->
+                  <div v-if="imageJobCounts[image.uuid] > 0"
+                    class="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-lg">
+                    {{ imageJobCounts[image.uuid] }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -346,6 +351,7 @@ const fileInput = ref(null)
 const thumbnailStrip = ref(null)
 const thumbnailRefs = ref({})
 const createdSubject = ref(null)
+const imageJobCounts = ref({})
 
 // Zoom functionality reactive data
 const imageContainer = ref(null)
@@ -451,6 +457,9 @@ const loadSubjectImages = async () => {
 
     subjectImages.value = response.results || []
     currentImageIndex.value = 0
+    
+    // Fetch job counts for the loaded images
+    await fetchImageJobCounts()
   } catch (error) {
     console.error('Failed to load subject images:', error)
     subjectImages.value = []
@@ -517,7 +526,7 @@ const uploadImages = async (files) => {
         timeout: 3000
       })
 
-      // Reload images
+      // Reload images (this will also fetch job counts)
       await loadSubjectImages()
       
       // Clear file input
@@ -670,8 +679,8 @@ const deleteCurrentImage = async () => {
     toast.add({
       title: 'Success',
       description: 'Image deleted successfully',
-      color: 'green',
-      timeout: 3000
+      color: 'success',
+      duration: 500
     })
   } catch (error) {
     console.error('Failed to delete image:', error)
@@ -679,8 +688,8 @@ const deleteCurrentImage = async () => {
     toast.add({
       title: 'Error',
       description: 'Failed to delete image',
-      color: 'red',
-      timeout: 5000
+      color: 'error',
+      duration: 2000
     })
   } finally {
     isDeletingImage.value = false
@@ -744,6 +753,27 @@ const getImageUrl = (image, size = 'md') => {
 const getThumbnailUrl = (image) => {
   if (!image || !image.uuid) return ''
   return `/api/media/${image.uuid}/image?size=thumbnail`
+}
+
+const fetchImageJobCounts = async () => {
+  if (subjectImages.value.length === 0) return
+  
+  try {
+    const imageUuids = subjectImages.value.map(image => image.uuid)
+    const response = await $fetch('/api/media/job-counts', {
+      method: 'POST',
+      body: {
+        image_uuids: imageUuids
+      }
+    })
+    
+    if (response.success) {
+      imageJobCounts.value = response.job_counts
+    }
+  } catch (error) {
+    console.error('Failed to fetch image job counts:', error)
+    // Don't show error to user as this is supplementary information
+  }
 }
 
 // Zoom functionality methods
@@ -935,18 +965,21 @@ const {
   debug: true
 })
 
-// Wrapper functions that check for image container interference
+// Wrapper functions that check for image container and thumbnail strip interference
 const handleSubjectSwipeTouchStart = (event) => {
   console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchStart called', {
     target: event.target,
     imageContainer: imageContainer.value,
-    contains: imageContainer.value?.contains(event.target),
+    thumbnailStrip: thumbnailStrip.value,
+    imageContainerContains: imageContainer.value?.contains(event.target),
+    thumbnailStripContains: thumbnailStrip.value?.contains(event.target),
     targetClasses: event.target?.className
   })
   
-  // Check if the touch is within the image container or its children
-  if (imageContainer.value && imageContainer.value.contains(event.target)) {
-    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch started within image container, ignoring for subject swipe')
+  // Check if the touch is within the image container or thumbnail strip
+  if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
+      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch started within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
   
@@ -957,9 +990,10 @@ const handleSubjectSwipeTouchStart = (event) => {
 const handleSubjectSwipeTouchMove = (event) => {
   console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchMove called')
   
-  // Check if the touch is within the image container or its children
-  if (imageContainer.value && imageContainer.value.contains(event.target)) {
-    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch moved within image container, ignoring for subject swipe')
+  // Check if the touch is within the image container or thumbnail strip
+  if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
+      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch moved within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
   
@@ -970,9 +1004,10 @@ const handleSubjectSwipeTouchMove = (event) => {
 const handleSubjectSwipeTouchEnd = (event) => {
   console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchEnd called')
   
-  // Check if the touch is within the image container or its children
-  if (imageContainer.value && imageContainer.value.contains(event.target)) {
-    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch ended within image container, ignoring for subject swipe')
+  // Check if the touch is within the image container or thumbnail strip
+  if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
+      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    console.log('🔥 [SUBJECT SWIPE DEBUG] Touch ended within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
   

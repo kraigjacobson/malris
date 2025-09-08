@@ -52,36 +52,15 @@
         <div v-if="workflowMode === 'subject-first'" class="flex flex-col flex-1 min-h-0">
           <!-- Step 1: Subject Selection -->
           <div v-if="!selectedSubject" class="flex flex-col flex-1 min-h-0">
-            <!-- Subject Search - Compact -->
-            <div class="flex-shrink-0 mb-2">
-              <SubjectSearch
-                v-model="selectedSubject"
-                placeholder="Search by subject name..."
-                :disabled="isSubmitting"
-                @select="handleSubjectSelection"
-              />
-            </div>
-            
             <!-- Subject Search Filters - Compact -->
-            <div class="flex-shrink-0 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <UInputTags
-                v-model="searchStore.subjectSearch.selectedTags"
-                placeholder="Add tags (e.g., portrait, landscape)"
-                class="w-full"
-                enterkeyhint="enter"
-                :ui="{ trailing: 'pe-1' }"
-              >
-                <template v-if="searchStore.subjectSearch.selectedTags?.length" #trailing>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-circle-x"
-                    aria-label="Clear all tags"
-                    @click="searchStore.subjectSearch.selectedTags = []"
-                  />
-                </template>
-              </UInputTags>
+            <div class="flex-shrink-0 mb-2">
+              <SubjectSearchFilters
+                :selected-subject="selectedSubject"
+                @search="searchSubjects"
+                @clear="clearSubjectFilters"
+                @subject-select="handleSubjectSelection"
+                :loading="subjectLoading"
+              />
             </div>
             
             <!-- Subject Grid - Scrollable -->
@@ -259,8 +238,10 @@
             <!-- Subject Search Filters - Compact -->
             <div class="flex-shrink-0 mb-2">
               <SubjectSearchFilters
+                :selected-subject="selectedSubject"
                 @search="searchSubjects"
                 @clear="clearSubjectFilters"
+                @subject-select="handleSubjectSelection"
                 :loading="subjectLoading"
               />
             </div>
@@ -453,7 +434,6 @@
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 import { useSearchStore } from '~/stores/search'
-import { useSubjectsStore } from '~/stores/subjects'
 import VideoSearchFilters from '~/components/VideoSearchFilters.vue'
 import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 
@@ -475,7 +455,6 @@ const emit = defineEmits(['update:modelValue', 'jobsCreated'])
 const { setSubjectTags, setVideoTags, getSubjectHairTags, getVideoHairTags, clearTags } = useTags()
 const { displayImages } = useSettings()
 const searchStore = useSearchStore()
-const subjectsStore = useSubjectsStore()
 
 // Computed
 const isOpen = computed({
@@ -690,14 +669,6 @@ const storeVideoTags = (video) => {
 const searchVideos = () => {
   videoCurrentPage.value = 1
   loadVideos(true)
-  
-  // Collapse the video search filters after searching
-  if (videoSearchFilters.value) {
-    videoSearchFilters.value.collapse()
-  }
-  if (videoSearchFiltersVideoFirst.value) {
-    videoSearchFiltersVideoFirst.value.collapse()
-  }
 }
 
 const clearVideoFilters = () => {
@@ -811,7 +782,7 @@ const handleVideoPageChange = (page) => {
   loadVideos(false)
 }
 
-// Load subjects function - use cached subjects from store
+// Load subjects function - now uses API with filtering
 const loadSubjects = async () => {
   subjectLoading.value = true
   subjects.value = []
@@ -821,18 +792,23 @@ const loadSubjects = async () => {
   subjectHasSearched.value = true
 
   try {
-    // Check if we have cached subjects first
-    const cachedSubjects = subjectsStore.getCachedFullSubjects(searchStore.subjectSearch.selectedTags)
+    // Parse sort options
+    const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object'
+      ? searchStore.subjectSearch.sortOptions.value
+      : searchStore.subjectSearch.sortOptions
     
-    if (cachedSubjects) {
-      console.log('✅ Using cached subjects:', cachedSubjects.length)
-      subjects.value = cachedSubjects
-    } else {
-      console.log('🔄 Loading subjects from API...')
-      const loadedSubjects = await subjectsStore.loadFullSubjects(searchStore.subjectSearch.selectedTags)
-      subjects.value = loadedSubjects
-    }
+    const [sortBy, sortOrder] = sortValue.includes('_')
+      ? sortValue.split('_')
+      : ['total_jobs', 'desc']
 
+    // Get subjects with new filtering using the composable
+    const { getSubjects } = useSubjects()
+    subjects.value = await getSubjects({
+      tags: searchStore.subjectSearch.selectedTags,
+      nameFilters: searchStore.subjectSearch.nameFilters,
+      sortBy,
+      sortOrder
+    })
   } catch (err) {
     console.error('Error loading subjects:', err)
     subjectError.value = err.message || 'Failed to load subjects'

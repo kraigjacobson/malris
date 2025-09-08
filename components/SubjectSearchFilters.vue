@@ -1,18 +1,62 @@
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-medium text-gray-900 dark:text-white">Subject Search Filters</h4>
-        <UButton
-          variant="ghost"
-          size="xs"
-          :icon="isCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
-          @click="toggleCollapse"
+  <UCollapsible v-model:open="isOpen" class="flex flex-col gap-2">
+    <UButton
+      label="Subject Search Filters"
+      color="neutral"
+      variant="subtle"
+      trailing-icon="i-lucide-chevron-down"
+      block
+    />
+
+    <template #content>
+      <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <!-- Subject Name Search -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Search by Subject Name
+          </label>
+          <SubjectSearch
+            :model-value="selectedSubject"
+            placeholder="Search by subject name..."
+            :disabled="loading"
+            @update:model-value="$emit('subjectSelect', $event)"
+            @select="$emit('subjectSelect', $event)"
+          />
+        </div>
+
+        <!-- Name Category Filters -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Subject Categories
+          </label>
+          <div class="flex gap-4">
+            <UCheckbox
+              v-model="searchStore.subjectSearch.nameFilters.celeb"
+              label="Celeb"
+            />
+            <UCheckbox
+              v-model="searchStore.subjectSearch.nameFilters.asmr"
+              label="ASMR"
+            />
+            <UCheckbox
+              v-model="searchStore.subjectSearch.nameFilters.real"
+              label="Real"
+            />
+          </div>
+        </div>
+
+      <!-- Sort Options -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Sort By
+        </label>
+        <USelectMenu
+          v-model="searchStore.subjectSearch.sortOptions"
+          :items="sortOptions"
+          class="w-full"
         />
       </div>
-    </template>
-    
-    <div v-show="!isCollapsed" class="space-y-3">
+      
       <!-- Tags Search -->
       <div>
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -50,7 +94,7 @@
           Search Subjects
         </UButton>
         <UButton
-          v-if="searchStore.subjectSearch.selectedTags.length > 0"
+          v-if="hasActiveFilters"
           color="gray"
           variant="outline"
           size="sm"
@@ -60,34 +104,52 @@
           Clear
         </UButton>
       </div>
-    </div>
-  </UCard>
+      </div>
+    </template>
+  </UCollapsible>
 </template>
 
 <script setup>
 import { useSearchStore } from '~/stores/search'
+import SubjectSearch from '~/components/SubjectSearch.vue'
 
 defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  selectedSubject: {
+    type: Object,
+    default: null
   }
 })
 
-const emit = defineEmits(['search', 'clear'])
+const emit = defineEmits(['search', 'clear', 'subjectSelect'])
 
 const searchStore = useSearchStore()
 
-// Collapse state
-const isCollapsed = ref(false)
+// Collapsible state - start collapsed
+const isOpen = ref(false)
 
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
-}
+// Sort options
+const sortOptions = [
+  { label: 'Total Jobs (Most)', value: 'total_jobs_desc' },
+  { label: 'Total Jobs (Least)', value: 'total_jobs_asc' },
+  { label: 'Name (A-Z)', value: 'name_asc' },
+  { label: 'Name (Z-A)', value: 'name_desc' },
+  { label: 'Created Date (Newest)', value: 'created_at_desc' },
+  { label: 'Created Date (Oldest)', value: 'created_at_asc' }
+]
 
-// Auto-collapse when search is performed
+// Check if any filters are active
+const hasActiveFilters = computed(() => {
+  return searchStore.subjectSearch.selectedTags.length > 0 ||
+         searchStore.subjectSearch.nameFilters.celeb ||
+         searchStore.subjectSearch.nameFilters.asmr ||
+         !searchStore.subjectSearch.nameFilters.real
+})
+
 const handleSearch = () => {
   emit('search')
-  isCollapsed.value = true
 }
 </script>

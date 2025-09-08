@@ -1,4 +1,4 @@
-import { ilike, and, isNotNull, isNull, sql, desc, asc, eq } from 'drizzle-orm'
+import { ilike, and, or, isNotNull, isNull, sql, desc, asc, eq } from 'drizzle-orm'
 import { subjects, mediaRecords, jobs } from '~/server/utils/schema'
 import { getDb } from '~/server/utils/database'
 import { logger } from '~/server/utils/logger'
@@ -16,14 +16,21 @@ export default defineEventHandler(async (event) => {
     const offset = parseInt(query.offset as string) || 0
     const page = parseInt(query.page as string) || 1
     
+    // Name category filters
+    const name_filters = {
+      celeb: query.name_filter_celeb === 'true',
+      asmr: query.name_filter_asmr === 'true',
+      real: query.name_filter_real === 'true'
+    }
+    
     // Calculate offset from page if provided - only if limit is specified
     const calculatedOffset = limit && page > 1 ? (page - 1) * limit : offset
     
     // Add sorting parameters with validation
-    const sortBy = (query.sort_by as string) || 'name'
-    const sortOrder = (query.sort_order as string) || 'asc'
+    const sortBy = (query.sort_by as string) || 'total_jobs'
+    const sortOrder = (query.sort_order as string) || 'desc'
     
-    logger.info('🔍 Subjects search params:', { name_pattern, tags, tag_match_mode, has_hero_image, limit, page })
+    logger.info('🔍 Subjects search params:', { name_pattern, tags, tag_match_mode, has_hero_image, limit, page, name_filters, sortBy, sortOrder })
     
     logger.info('🔍 Searching subjects via ORM...')
 
@@ -34,6 +41,32 @@ export default defineEventHandler(async (event) => {
 
     if (name_pattern) {
       whereConditions.push(ilike(subjects.name, `%${name_pattern}%`))
+    }
+
+    // Add name category filtering
+    if (name_filters.celeb || name_filters.asmr || name_filters.real) {
+      const nameConditions = []
+      
+      if (name_filters.celeb) {
+        nameConditions.push(ilike(subjects.name, '%celeb%'))
+      }
+      
+      if (name_filters.asmr) {
+        nameConditions.push(ilike(subjects.name, '%asmr%'))
+      }
+      
+      if (name_filters.real) {
+        // Real means names that don't contain 'celeb' or 'asmr'
+        nameConditions.push(and(
+          sql`${subjects.name} NOT ILIKE '%celeb%'`,
+          sql`${subjects.name} NOT ILIKE '%asmr%'`
+        ))
+      }
+      
+      // Use OR logic for name filters - any of the selected categories
+      if (nameConditions.length > 0) {
+        whereConditions.push(or(...nameConditions))
+      }
     }
 
     if (has_hero_image !== undefined) {
@@ -71,7 +104,9 @@ export default defineEventHandler(async (event) => {
         updatedAt: subjects.updatedAt,
         has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
         output_video_count: sql<number>`COUNT(DISTINCT CASE WHEN ${mediaRecords.purpose} = 'output' AND ${mediaRecords.type} = 'video' THEN ${mediaRecords.uuid} END)`,
-        queued_job_count: sql<number>`COUNT(DISTINCT CASE WHEN ${jobs.status} = 'queued' THEN ${jobs.id} END)`
+        pending_job_count: sql<number>`COUNT(DISTINCT CASE WHEN ${jobs.status} IN ('queued', 'active', 'need_input') THEN ${jobs.id} END)`,
+        completed_job_count: sql<number>`COUNT(DISTINCT CASE WHEN ${jobs.status} = 'completed' THEN ${jobs.id} END)`,
+        total_job_count: sql<number>`COUNT(DISTINCT CASE WHEN ${jobs.id} IS NOT NULL THEN ${jobs.id} END)`
       })
       .from(subjects)
       .leftJoin(mediaRecords, eq(subjects.id, mediaRecords.subjectUuid))
@@ -88,20 +123,24 @@ export default defineEventHandler(async (event) => {
     const sortDirection = ['asc', 'desc'].includes(sortOrder.toLowerCase()) ? sortOrder.toLowerCase() : 'asc'
     
     if (sortBy === 'name') {
-      queryWithSort = sortDirection === 'desc' 
+      queryWithSort = sortDirection === 'desc'
         ? queryWithWhere.orderBy(desc(subjects.name))
         : queryWithWhere.orderBy(asc(subjects.name))
     } else if (sortBy === 'created_at') {
-      queryWithSort = sortDirection === 'desc' 
+      queryWithSort = sortDirection === 'desc'
         ? queryWithWhere.orderBy(desc(subjects.createdAt))
         : queryWithWhere.orderBy(asc(subjects.createdAt))
     } else if (sortBy === 'updated_at') {
-      queryWithSort = sortDirection === 'desc' 
+      queryWithSort = sortDirection === 'desc'
         ? queryWithWhere.orderBy(desc(subjects.updatedAt))
         : queryWithWhere.orderBy(asc(subjects.updatedAt))
+    } else if (sortBy === 'total_jobs') {
+      queryWithSort = sortDirection === 'desc'
+        ? queryWithWhere.orderBy(desc(sql`COUNT(DISTINCT ${jobs.id})`))
+        : queryWithWhere.orderBy(asc(sql`COUNT(DISTINCT ${jobs.id})`))
     } else {
-      // Default to name sorting
-      queryWithSort = queryWithWhere.orderBy(asc(subjects.name))
+      // Default to total job count descending (most jobs first)
+      queryWithSort = queryWithWhere.orderBy(desc(sql`COUNT(DISTINCT ${jobs.id})`))
     }
 
     // Apply pagination only if limit is specified
@@ -141,7 +180,9 @@ export default defineEventHandler(async (event) => {
         has_thumbnail: subject.has_thumbnail,
         thumbnail_url,
         output_video_count: subject.output_video_count || 0,
-        queued_job_count: subject.queued_job_count || 0
+        pending_job_count: subject.pending_job_count || 0,
+        completed_job_count: subject.completed_job_count || 0,
+        total_job_count: subject.total_job_count || 0
       }
     })
     

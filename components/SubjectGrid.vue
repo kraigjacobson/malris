@@ -51,13 +51,13 @@
           </div>
         </div>
         
-        <!-- Queued/Output Count Badge (bottom left) -->
+        <!-- Pending/Total Job Count Badge (bottom left) -->
         <div
-          v-if="displayImages && (subject.queued_job_count > 0 || subject.output_video_count > 0)"
+          v-if="displayImages && (subject.pending_job_count > 0 || subject.total_job_count > 0)"
           class="absolute bottom-1 left-1 z-10"
         >
           <div class="subject-count-badge text-white text-xs font-medium px-1.5 py-0.5 rounded">
-            {{ subject.queued_job_count || 0 }}/{{ subject.output_video_count || 0 }}
+            {{ subject.pending_job_count || 0 }}/{{ subject.total_job_count || 0 }}
           </div>
         </div>
         

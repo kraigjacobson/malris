@@ -1,20 +1,15 @@
 <template>
-  <div>
-    <!-- Collapsible Header -->
-    <div
-      class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-      @click="toggleCollapse"
-    >
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">Video Search Filters</h4>
-      <UIcon
-        :name="isCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'"
-        class="w-4 h-4 text-gray-500"
-      />
-    </div>
-    
-    <!-- Collapsible Content -->
-    <UCard v-show="!isCollapsed" class="mt-2">
-      <div class="space-y-2">
+  <UCollapsible v-model:open="isOpen" class="flex flex-col gap-2">
+    <UButton
+      label="Video Search Filters"
+      color="neutral"
+      variant="subtle"
+      trailing-icon="i-lucide-chevron-down"
+      block
+    />
+
+    <template #content>
+      <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
         <!-- Tags and Hide Used in one row -->
         <div class="grid grid-cols-1 gap-2">
           <UInputTags
@@ -92,8 +87,8 @@
           />
         </div>
       </div>
-    </UCard>
-  </div>
+    </template>
+  </UCollapsible>
 </template>
 
 <script setup>
@@ -109,20 +104,8 @@ defineProps({
 
 const searchStore = useSearchStore()
 
-// Collapse state - start collapsed to save space
-const isCollapsed = ref(true)
-
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
-}
-
-const collapse = () => {
-  isCollapsed.value = true
-}
-
-const expand = () => {
-  isCollapsed.value = false
-}
+// Collapsible state - start collapsed
+const isOpen = ref(false)
 
 // Handle explicit change events to ensure reactivity on mobile
 const handleSortTypeChange = (value) => {
@@ -140,13 +123,7 @@ const handleLimitChange = (value) => {
   searchStore.videoSearch.limitOptions = value
 }
 
-// Expose methods to parent component
-defineExpose({
-  isCollapsed,
-  toggleCollapse,
-  collapse,
-  expand
-})
+// No need to expose collapse methods with UCollapsible
 
 
 // Sort type options (separate from order)
