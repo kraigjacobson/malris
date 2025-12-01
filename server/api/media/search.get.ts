@@ -1,55 +1,14 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords, jobs, subjects } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, notInArray, notExists, sql } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, notInArray, notExists, inArray, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { logger } from '~/server/utils/logger'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const {
-      uuid,
-      media_type,
-      purpose,
-      status,
-      exclude_statuses,
-      tags,
-      only_untagged,
-      filename_pattern,
-      subject_uuid,
-      exclude_subject_uuid,
-      job_id,
-      dest_media_uuid_ref,
-      has_subject,
-      min_file_size,
-      max_file_size,
-      min_width,
-      max_width,
-      min_height,
-      max_height,
-      min_duration,
-      max_duration,
-      created_after,
-      created_before,
-      updated_after,
-      updated_before,
-      accessed_after,
-      accessed_before,
-      min_access_count,
-      max_access_count,
-      min_completions,
-      max_completions,
-      tags_confirmed,
-      sort_by = 'created_at',
-      sort_order = 'desc',
-      limit = 100,
-      offset = 0,
-      page,
-      pick_random = false,
-      include_thumbnails = false,
-      include_images = false
-    } = query
+    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, dest_media_uuid_ref, has_subject, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
 
     // Debug logging for include_thumbnails parameter
     logger.info('🔍 Media search parameters:', {
@@ -70,7 +29,7 @@ export default defineEventHandler(async (event) => {
     // Handle UUID-based search - if UUID is provided, ignore all other filters
     if (uuid) {
       logger.info('🔍 UUID-based search for:', uuid)
-      
+
       // Create aliases for the different media record joins
       const videoThumbnailMedia = alias(mediaRecords, 'video_thumbnail_media')
       const subjectThumbnailMedia = alias(mediaRecords, 'subject_thumbnail_media')
@@ -95,6 +54,7 @@ export default defineEventHandler(async (event) => {
           codec: mediaRecords.codec,
           bitrate: mediaRecords.bitrate,
           tags: mediaRecords.tags,
+          rating: mediaRecords.rating,
           subject_uuid: mediaRecords.subjectUuid,
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
@@ -118,15 +78,11 @@ export default defineEventHandler(async (event) => {
 
       // Add thumbnail joins only if thumbnails are requested
       if (shouldIncludeThumbnails) {
-        queryBuilder = queryBuilder
-          .leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid))
-          .leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
+        queryBuilder = queryBuilder.leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid)).leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
       }
 
       // Execute the query with UUID filter
-      const results = await queryBuilder
-        .where(eq(mediaRecords.uuid, uuid as string))
-        .limit(1)
+      const results = await queryBuilder.where(eq(mediaRecords.uuid, uuid as string)).limit(1)
 
       if (results.length === 0) {
         return {
@@ -154,6 +110,7 @@ export default defineEventHandler(async (event) => {
         codec: result.codec,
         bitrate: result.bitrate,
         tags: result.tags,
+        rating: result.rating,
         subject_uuid: result.subject_uuid,
         source_media_uuid_ref: result.source_media_uuid_ref,
         dest_media_uuid_ref: result.dest_media_uuid_ref,
@@ -167,9 +124,7 @@ export default defineEventHandler(async (event) => {
         completions: result.completions,
         tags_confirmed: result.tags_confirmed,
         // Add thumbnail processing flags - prioritize output thumbnail for output videos, subject thumbnail for others
-        has_thumbnail: result.type === 'video' ?
-          (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) :
-          !!result.thumbnail_uuid,
+        has_thumbnail: result.type === 'video' ? (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) : !!result.thumbnail_uuid,
         thumbnail: null as string | null,
         // Include raw thumbnail data for processing
         _video_thumbnail_data: result.video_thumbnail_data,
@@ -181,12 +136,12 @@ export default defineEventHandler(async (event) => {
       // Process thumbnails if include_thumbnails or include_images is explicitly true
       if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
         logger.info('🖼️ Setting thumbnail URLs for UUID search result...')
-        
+
         for (const result of transformedResults) {
           // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
           if (result.type === 'video') {
             let thumbnailUuid = null
-            
+
             // For destination videos, ONLY use video thumbnails - never subject thumbnails
             if (result.purpose === 'dest') {
               thumbnailUuid = result.thumbnail_uuid
@@ -198,19 +153,19 @@ export default defineEventHandler(async (event) => {
               // For other videos (source, intermediate), prioritize subject thumbnail
               thumbnailUuid = result.subject_thumbnail_uuid || result.thumbnail_uuid
             }
-            
+
             if (thumbnailUuid) {
               result.thumbnail = `/api/media/${thumbnailUuid}/image?size=md`
             } else {
               logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
             }
           }
-          
+
           // Handle image data directly - images use their own data as thumbnail
           else if (result.type === 'image') {
             result.thumbnail = `/api/media/${result.uuid}/image?size=md`
           }
-          
+
           // Clean up internal fields
           const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
           Object.assign(result, cleanResult)
@@ -235,11 +190,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Validate sort parameters
-    const validMediaSortFields = [
-      'filename', 'type', 'purpose', 'status', 'file_size', 'original_size',
-      'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random'
-    ]
-    
+    const validMediaSortFields = ['filename', 'type', 'purpose', 'status', 'file_size', 'original_size', 'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random']
+
     if (!validMediaSortFields.includes(sort_by as string)) {
       throw createError({
         statusCode: 400,
@@ -276,10 +228,7 @@ export default defineEventHandler(async (event) => {
         // Exclude null values and other specified statuses
         const nonNullExcludes = excludeList.filter(s => s !== 'null')
         if (nonNullExcludes.length > 0) {
-          conditions.push(and(
-            isNotNull(mediaRecords.status),
-            notInArray(mediaRecords.status, nonNullExcludes)
-          ))
+          conditions.push(and(isNotNull(mediaRecords.status), notInArray(mediaRecords.status, nonNullExcludes)))
         } else {
           conditions.push(isNotNull(mediaRecords.status))
         }
@@ -288,7 +237,22 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    if (subject_uuid) {
+    // Handle subject filtering - support both single and multiple subjects
+    if (subject_uuids) {
+      const subjectList = (subject_uuids as string)
+        .split(',')
+        .map(uuid => uuid.trim())
+        .filter(uuid => uuid.length > 0)
+
+      if (subjectList.length > 0) {
+        if (subjectList.length === 1) {
+          conditions.push(eq(mediaRecords.subjectUuid, subjectList[0]))
+        } else {
+          conditions.push(inArray(mediaRecords.subjectUuid, subjectList))
+        }
+      }
+    } else if (subject_uuid) {
+      // Backward compatibility with single subject_uuid parameter
       conditions.push(eq(mediaRecords.subjectUuid, subject_uuid as string))
     }
 
@@ -297,10 +261,10 @@ export default defineEventHandler(async (event) => {
     if (exclude_subject_uuid) {
       conditions.push(
         notExists(
-          db.select().from(jobs).where(and(
-            eq(jobs.subjectUuid, exclude_subject_uuid as string),
-            eq(jobs.destMediaUuid, mediaRecords.uuid)
-          ))
+          db
+            .select()
+            .from(jobs)
+            .where(and(eq(jobs.subjectUuid, exclude_subject_uuid as string), eq(jobs.destMediaUuid, mediaRecords.uuid)))
         )
       )
     }
@@ -402,14 +366,15 @@ export default defineEventHandler(async (event) => {
 
     // Tag filtering using JSONB array element search like subjects
     if (tags) {
-      const tagList = (tags as string).split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
-      
+      const tagList = (tags as string)
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0)
+
       if (tagList.length > 0) {
         // Use JSONB array element text search for partial matching (AND logic)
-        const tagConditions = tagList.map(tag =>
-          sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${mediaRecords.tags}->'tags') AS tag_elem WHERE tag_elem ILIKE ${`%${tag}%`})`
-        )
-        
+        const tagConditions = tagList.map(tag => sql`EXISTS (SELECT 1 FROM jsonb_array_elements_text(${mediaRecords.tags}->'tags') AS tag_elem WHERE tag_elem ILIKE ${`%${tag}%`})`)
+
         // Use AND logic - all tags must be found
         conditions.push(and(...tagConditions))
       }
@@ -417,9 +382,28 @@ export default defineEventHandler(async (event) => {
 
     // Only show untagged filter - records with no tags or empty tags array
     if (only_untagged === 'true' || only_untagged === true) {
-      conditions.push(
-        sql`(${mediaRecords.tags} IS NULL OR ${mediaRecords.tags}->'tags' IS NULL OR jsonb_array_length(${mediaRecords.tags}->'tags') = 0)`
-      )
+      conditions.push(sql`(${mediaRecords.tags} IS NULL OR ${mediaRecords.tags}->'tags' IS NULL OR jsonb_array_length(${mediaRecords.tags}->'tags') = 0)`)
+    }
+
+    // Only show orphans filter - output images with no job association
+    if (only_orphans === 'true' || only_orphans === true) {
+      conditions.push(and(eq(mediaRecords.purpose, 'output'), eq(mediaRecords.type, 'image'), isNull(mediaRecords.jobId), sql`${mediaRecords.uuid} NOT IN (SELECT output_uuid FROM jobs WHERE output_uuid IS NOT NULL)`))
+    }
+
+    // Rating filtering
+    if (unrated_only === 'true' || unrated_only === true) {
+      // Show only records without ratings (rating IS NULL)
+      conditions.push(isNull(mediaRecords.rating))
+    } else if (ratings) {
+      // Show records with specific ratings
+      const ratingList = (ratings as string)
+        .split(',')
+        .map(r => parseInt(r.trim()))
+        .filter(r => r >= 1 && r <= 5)
+
+      if (ratingList.length > 0) {
+        conditions.push(inArray(mediaRecords.rating, ratingList))
+      }
     }
 
     // Handle pagination
@@ -438,7 +422,7 @@ export default defineEventHandler(async (event) => {
         .select({ count: count() })
         .from(mediaRecords)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
-      
+
       const totalCount = countResult[0].count
       if (totalCount === 0) {
         throw createError({
@@ -449,7 +433,7 @@ export default defineEventHandler(async (event) => {
 
       // Use random offset
       const randomOffset = Math.floor(Math.random() * totalCount)
-      
+
       const randomResult = await db
         .select({
           uuid: mediaRecords.uuid,
@@ -466,6 +450,7 @@ export default defineEventHandler(async (event) => {
           codec: mediaRecords.codec,
           bitrate: mediaRecords.bitrate,
           tags: mediaRecords.tags,
+          rating: mediaRecords.rating,
           subject_uuid: mediaRecords.subjectUuid,
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
@@ -504,7 +489,7 @@ export default defineEventHandler(async (event) => {
     // Create the order by clause
     let orderByClause
     const sortDirection = (sort_order as string).toLowerCase() === 'desc' ? desc : asc
-    
+
     switch (sort_by) {
       case 'random':
         orderByClause = sql`RANDOM()`
@@ -574,6 +559,7 @@ export default defineEventHandler(async (event) => {
         codec: mediaRecords.codec,
         bitrate: mediaRecords.bitrate,
         tags: mediaRecords.tags,
+        rating: mediaRecords.rating,
         subject_uuid: mediaRecords.subjectUuid,
         source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
         dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
@@ -597,9 +583,7 @@ export default defineEventHandler(async (event) => {
 
     // Add thumbnail joins only if thumbnails are requested
     if (shouldIncludeThumbnails) {
-      queryBuilder = queryBuilder
-        .leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid))
-        .leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
+      queryBuilder = queryBuilder.leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid)).leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
     }
 
     // Execute the query
@@ -614,7 +598,7 @@ export default defineEventHandler(async (event) => {
       .select({ count: count() })
       .from(mediaRecords)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-    
+
     const totalCount = totalCountResult[0].count
 
     // Transform results to match expected format
@@ -633,6 +617,7 @@ export default defineEventHandler(async (event) => {
       codec: result.codec,
       bitrate: result.bitrate,
       tags: result.tags,
+      rating: result.rating,
       subject_uuid: result.subject_uuid,
       source_media_uuid_ref: result.source_media_uuid_ref,
       dest_media_uuid_ref: result.dest_media_uuid_ref,
@@ -646,9 +631,7 @@ export default defineEventHandler(async (event) => {
       completions: result.completions,
       tags_confirmed: result.tags_confirmed,
       // Add thumbnail processing flags - prioritize output thumbnail for output videos, subject thumbnail for others
-      has_thumbnail: result.type === 'video' ?
-        (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) :
-        !!result.thumbnail_uuid,
+      has_thumbnail: result.type === 'video' ? (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) : !!result.thumbnail_uuid,
       thumbnail: null as string | null,
       // Include raw thumbnail data for processing
       _video_thumbnail_data: result.video_thumbnail_data,
@@ -660,12 +643,12 @@ export default defineEventHandler(async (event) => {
     // Process thumbnails and images if include_thumbnails or include_images is explicitly true
     if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
       logger.info('🖼️ Setting thumbnail URLs for media results...')
-      
+
       for (const result of transformedResults) {
         // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
         if (result.type === 'video') {
           let thumbnailUuid = null
-          
+
           // For destination videos, ONLY use video thumbnails - never subject thumbnails
           if (result.purpose === 'dest') {
             thumbnailUuid = result.thumbnail_uuid
@@ -677,19 +660,19 @@ export default defineEventHandler(async (event) => {
             // For other videos (source, intermediate), prioritize subject thumbnail
             thumbnailUuid = result.subject_thumbnail_uuid || result.thumbnail_uuid
           }
-          
+
           if (thumbnailUuid) {
             result.thumbnail = `/api/media/${thumbnailUuid}/image?size=thumbnail`
           } else {
             logger.warn(`⚠️ Video ${result.uuid} has no thumbnail available`)
           }
         }
-        
+
         // Handle image data directly - images use their own data as thumbnail
         else if (result.type === 'image') {
           result.thumbnail = `/api/media/${result.uuid}/image?size=thumbnail`
         }
-        
+
         // Clean up internal fields
         const { _video_thumbnail_data, _video_thumbnail_filename, _subject_thumbnail_data, _subject_thumbnail_filename, ...cleanResult } = result
         Object.assign(result, cleanResult)
@@ -713,10 +696,9 @@ export default defineEventHandler(async (event) => {
     })
 
     return response
-
   } catch (error: any) {
     logger.error('Error searching media from database:', error)
-    
+
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {
       throw error

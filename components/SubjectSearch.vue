@@ -1,39 +1,18 @@
 <template>
-  <UInputMenu
-    v-model="selectedSubject"
-    v-model:search-term="searchQuery"
-    :items="subjectItems"
-    :placeholder="placeholder"
-    :class="inputClass"
-    by="value"
-    option-attribute="label"
-    searchable
-    :disabled="disabled"
-    @update:model-value="handleSelection"
-  >
-    <template #trailing>
-      <UButton
-        v-if="selectedSubject && selectedSubject.value"
-        variant="ghost"
-        size="xs"
-        icon="i-heroicons-x-mark"
-        @click="clearSelection"
-        :disabled="disabled"
-      />
-    </template>
-  </UInputMenu>
+  <USelect v-model="selectedSubjects" :items="subjectItems" multiple :placeholder="placeholder" :class="inputClass"
+    :disabled="disabled" @update:model-value="handleSelection" />
 </template>
 
 <script setup>
 
 const props = defineProps({
   modelValue: {
-    type: Object,
-    default: null
+    type: Array,
+    default: () => []
   },
   placeholder: {
     type: String,
-    default: 'Search for a subject...'
+    default: 'Select subjects...'
   },
   disabled: {
     type: Boolean,
@@ -51,43 +30,36 @@ const emit = defineEmits(['update:modelValue', 'select'])
 const { getSubjectItems } = useSubjects()
 
 // Internal state
-const selectedSubject = ref(props.modelValue)
-const searchQuery = ref('')
+const selectedSubjects = ref(props.modelValue || [])
 
-// Filter subjects locally based on search query
+// Get all subject items with "None" option at the top
 const subjectItems = computed(() => {
-  // Get filtered subjects from cache
-  const filteredSubjects = getSubjectItems(searchQuery.value)
+  // Get all subjects from cache
+  const allSubjects = getSubjectItems('')
 
-  // Always include "None" option at the top
-  const noneOption = { value: '', label: 'None' }
+  // Add "None" option at the top
+  const noneOption = { value: undefined, label: 'None' }
 
-  // If searching for "none", show only the none option
-  if (searchQuery.value && searchQuery.value.toLowerCase().trim() === 'none') {
-    return [noneOption]
-  }
-
-  // Include "None" option with filtered results
-  return [noneOption, ...filteredSubjects]
+  return [noneOption, ...allSubjects]
 })
 
 // Handle selection
 const handleSelection = (selected) => {
-  selectedSubject.value = selected
-  emit('update:modelValue', selected)
-  emit('select', selected)
-}
-
-// Clear selection
-const clearSelection = () => {
-  selectedSubject.value = null
-  emit('update:modelValue', null)
-  emit('select', null)
+  // If "None" (undefined) is selected, clear the array
+  if (selected.includes(undefined)) {
+    selectedSubjects.value = []
+    emit('update:modelValue', [])
+    emit('select', [])
+  } else {
+    selectedSubjects.value = selected
+    emit('update:modelValue', selected)
+    emit('select', selected)
+  }
 }
 
 // Watch for prop changes
 watch(() => props.modelValue, (newValue) => {
-  selectedSubject.value = newValue
+  selectedSubjects.value = newValue || []
 })
 
 // No need to initialize - subjects are loaded globally in app.vue

@@ -1,88 +1,41 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6">
-
     <!-- Queue Status Card -->
     <UCard class="mb-3 sm:mb-6">
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-            Queue Status
-          </h2>
+          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
           <div class="flex items-center gap-1 sm:gap-2">
             <!-- Submit Job Button -->
-            <UButton
-              type="button"
-              size="lg"
-              variant="solid"
-              color="primary"
-              @click="showSubmitJobModal = true"
-            >
-              <UIcon
-                name="i-heroicons-plus"
-                class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
-              />
+            <UButton type="button" size="lg" variant="solid" color="primary" @click="showSubmitJobModal = true">
+              <UIcon name="i-heroicons-plus" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
               <span class="hidden sm:inline">Submit Job</span>
             </UButton>
-            
+
             <!-- Processing Control Buttons -->
             <template v-if="!isAnyProcessingActive">
               <!-- Single Job Processing Button (▶️) -->
-              <UButton
-                type="button"
-                size="lg"
-                variant="outline"
-                color="primary"
-                :loading="isStartingSingle"
-                @click.prevent="startSingleProcessing()"
-              >
-                <UIcon
-                  name="i-heroicons-play"
-                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
-                />
+              <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingSingle" @click.prevent="startSingleProcessing()">
+                <UIcon name="i-heroicons-play" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
                 <span class="hidden sm:inline">Process One</span>
               </UButton>
-              
+
               <!-- Continuous Processing Button (🔄) -->
-              <UButton
-                type="button"
-                size="lg"
-                variant="outline"
-                color="primary"
-                :loading="isStartingContinuous"
-                @click.prevent="startContinuousProcessing()"
-              >
-                <UIcon
-                  name="i-heroicons-arrow-path"
-                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
-                />
+              <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingContinuous" @click.prevent="startContinuousProcessing()">
+                <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
                 <span class="hidden sm:inline">Process All</span>
               </UButton>
             </template>
-            
+
             <!-- Stop Button (⏹️) - shown when any processing is active -->
             <template v-else>
-              <UButton
-                type="button"
-                size="lg"
-                variant="outline"
-                color="error"
-                :loading="isStopping"
-                @click.prevent="stopAllProcessing()"
-              >
-                <UIcon
-                  name="i-heroicons-stop"
-                  class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2"
-                />
+              <UButton type="button" size="lg" variant="outline" color="error" :loading="isStopping" @click.prevent="stopAllProcessing()">
+                <UIcon name="i-heroicons-stop" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
                 <span class="hidden sm:inline">Stop Processing</span>
               </UButton>
-              
+
               <!-- Processing Mode Indicator -->
-              <UBadge
-                :color="processingMode === 'single' ? 'primary' : 'blue'"
-                variant="soft"
-                size="xs"
-                class="hidden sm:inline-flex"
-              >
+              <UBadge :color="processingMode === 'single' ? 'primary' : 'blue'" variant="soft" size="xs" class="hidden sm:inline-flex">
                 {{ processingMode === 'single' ? 'Processing One' : 'Processing All' }}
               </UBadge>
             </template>
@@ -293,168 +246,85 @@
           <div class="text-sm text-gray-700 dark:text-gray-300">Canceled</div>
         </div>
       </div>
-
-      
     </UCard>
 
     <!-- Subject Filter -->
     <UCard class="mb-3 sm:mb-6">
-
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <div>
-          <UInputMenu
-            v-model="selectedSubjectFilter"
-            v-model:search-term="subjectSearchQuery"
-            :items="subjectFilterItems"
-            placeholder="Search for a subject to filter jobs..."
-            class="w-full"
-            by="value"
-            option-attribute="label"
-            searchable
-            @update:model-value="handleSubjectFilterSelection"
-          />
+          <UInputMenu v-model="selectedSubjectFilter" v-model:search-term="subjectSearchQuery" :items="subjectFilterItems" placeholder="Search for a subject to filter jobs..." class="w-full" by="value" option-attribute="label" searchable @update:model-value="handleSubjectFilterSelection" />
         </div>
-        
+
         <div>
-          <USelect
-            v-model="selectedSourceTypeFilter"
-            :items="sourceTypeOptions"
-            placeholder="Filter by job type..."
-            class="w-full"
-            @update:model-value="handleSourceTypeFilterSelection"
-          />
+          <USelect v-model="selectedSourceTypeFilter" :items="sourceTypeOptions" placeholder="Filter by job type..." class="w-full" @update:model-value="handleSourceTypeFilterSelection" />
         </div>
-        
+
         <div class="flex items-end gap-2">
-          <UButton
-            type="button"
-            variant="outline"
-            size="xs"
-            :disabled="!selectedSubjectFilter"
-            @click="clearSubjectFilter"
-          >
+          <UButton type="button" variant="outline" size="xs" :disabled="!selectedSubjectFilter" @click="clearSubjectFilter">
             <span class="inline">Clear Subject</span>
           </UButton>
-          <UButton
-            type="button"
-            variant="outline"
-            size="xs"
-            :disabled="selectedSourceTypeFilter === 'all'"
-            @click="clearSourceTypeFilter"
-          >
+          <UButton type="button" variant="outline" size="xs" :disabled="selectedSourceTypeFilter === 'all'" @click="clearSourceTypeFilter">
             <span class="inline">Clear Type</span>
           </UButton>
         </div>
       </div>
+
+      <!-- Star Rating Filter -->
+      <div class="mt-3 sm:mt-4 flex items-center gap-1">
+        <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-6 h-6 cursor-pointer transition-colors" :class="selectedRatings.includes(star) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500'" @click="toggleRating(star)" />
+      </div>
     </UCard>
 
     <!-- Jobs List -->
-    <UCard>
+    <UCard :ui="{ body: 'p-0' }">
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <UCheckbox
-              :model-value="allVisibleSelected"
-              :indeterminate="hasPartialSelection"
-              @update:model-value="toggleSelectAll"
-            />
+            <UCheckbox :model-value="allVisibleSelected" :indeterminate="hasPartialSelection" @update:model-value="toggleSelectAll" />
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               Jobs
-              <span v-if="hasSelectedJobs" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                ({{ selectedJobs.size }} selected)
-              </span>
+              <span v-if="hasSelectedJobs" class="text-sm font-normal text-gray-500 dark:text-gray-400"> ({{ selectedJobs.size }} selected) </span>
             </h3>
           </div>
-          
+
           <!-- Results Limit and Bulk Actions -->
           <div class="flex items-center gap-2">
             <!-- Results Limit Dropdown -->
             <div v-if="!hasSelectedJobs" class="flex items-center gap-2">
-              <label class="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Results:
-              </label>
-              <USelectMenu
-                v-model="itemsPerPage"
-                :items="limitOptions"
-                class="w-24"
-                size="xs"
-                @change="handleLimitChange"
-              />
+              <label class="text-xs font-medium text-gray-600 dark:text-gray-400"> Results: </label>
+              <USelectMenu v-model="itemsPerPage" :items="limitOptions" class="w-24" size="xs" @change="handleLimitChange" />
             </div>
-            
+
             <!-- Bulk Actions -->
             <div v-if="hasSelectedJobs" class="flex items-center gap-2">
-            <UButton
-              size="xs"
-              color="primary"
-              variant="outline"
-              @click="bulkQueue"
-            >
-              Queue Selected
-            </UButton>
-            <UButton
-              size="xs"
-              color="error"
-              variant="outline"
-              @click="bulkCancel"
-            >
-              Cancel Selected
-            </UButton>
-            <UButton
-              size="xs"
-              color="error"
-              variant="outline"
-              @click="bulkDelete"
-            >
-              Delete Selected
-            </UButton>
-            <UButton
-              size="xs"
-              variant="ghost"
-              @click="clearSelection"
-            >
-              Clear
-            </UButton>
+              <UButton size="xs" color="primary" variant="outline" @click="bulkQueue"> Queue Selected </UButton>
+              <UButton size="xs" color="error" variant="outline" @click="bulkCancel"> Cancel Selected </UButton>
+              <UButton size="xs" color="error" variant="outline" @click="bulkDelete"> Delete Selected </UButton>
+              <UButton size="xs" variant="ghost" @click="clearSelection"> Clear </UButton>
             </div>
           </div>
         </div>
       </template>
 
-      <div v-if="jobs.length === 0 && !isLoading" class="text-center py-8 text-gray-500 dark:text-gray-400">
-        No jobs found
-      </div>
+      <div v-if="jobs.length === 0 && !isLoading" class="text-center py-8 text-gray-500 dark:text-gray-400">No jobs found</div>
 
       <div v-else-if="jobs.length === 0 && isLoading" class="flex flex-col items-center justify-center py-8">
         <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin text-primary-500 mb-2" />
         <p class="text-sm text-gray-500 dark:text-gray-400">Loading jobs...</p>
       </div>
 
-      <div v-else class="h-80 sm:h-96 overflow-y-auto space-y-1 sm:space-y-2 pr-1 sm:pr-2">
-        <div
-          v-for="job in jobs"
-          :key="job.id"
-          class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer"
-          :class="{ 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600': selectedJobs.has(job.id) }"
-          @click="viewJobDetails(job.id)"
-        >
+      <div v-else class="h-80 sm:h-96 overflow-y-auto">
+        <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="viewJobDetails(job.id)">
           <!-- Main job info row -->
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
               <!-- Checkbox -->
-              <UCheckbox
-                :model-value="selectedJobs.has(job.id)"
-                @update:model-value="(checked) => toggleJobSelection(job.id, checked)"
-                @click.stop
-              />
+              <UCheckbox :model-value="selectedJobs.has(job.id)" @update:model-value="checked => toggleJobSelection(job.id, checked)" @click.stop />
               <!-- Time since updated - moved to left side -->
               <span class="text-xs text-gray-500 dark:text-gray-400">
                 {{ formatDateCompact(job.updated_at) }}
               </span>
-              <UBadge
-                :color="getStatusColor(job.status)"
-                variant="solid"
-                size="xs"
-              >
+              <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">
                 {{ getStatusDisplayText(job.status) }}
               </UBadge>
               <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
@@ -465,61 +335,35 @@
                 {{ job.source_media_uuid ? 'vid' : 'source' }}
               </span>
               <!-- Mobile: Show single letter badges -->
-              <UBadge
-                v-if="job.source_media_uuid"
-                color="primary"
-                variant="soft"
-                size="xs"
-                class="sm:hidden"
-              >
-                V
-              </UBadge>
-              <UBadge
-                v-else
-                color="green"
-                variant="soft"
-                size="xs"
-                class="sm:hidden"
-              >
-                S
-              </UBadge>
+              <UBadge v-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
+              <UBadge v-else color="green" variant="soft" size="xs" class="sm:hidden"> S </UBadge>
               <!-- Show progress bar when available (mobile and desktop) -->
               <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
                 <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
-                  <div
-                    class="bg-blue-600 h-1 rounded-full transition-all duration-300"
-                    :style="{ width: `${job.progress}%` }"
-                  />
+                  <div class="bg-blue-600 h-1 rounded-full transition-all duration-300" :style="{ width: `${job.progress}%` }" />
                 </div>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
               </div>
+              <!-- Show star rating if job has output media with rating -->
+              <div v-if="job.output_media && job.output_media.rating" class="flex items-center space-x-1">
+                <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-3 h-3" :class="star <= job.output_media.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" />
+              </div>
             </div>
           </div>
-          
+
           <!-- Full-height button container positioned absolutely -->
           <div class="absolute top-0 right-0 h-full flex items-center">
             <!-- Select button for need_input jobs -->
-            <div
-              v-if="job.status === 'need_input'"
-              class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer"
-              @click.stop="openImageSelectionModal(job)"
-            >
+            <div v-if="job.status === 'need_input'" class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop="openImageSelectionModal(job)">
               <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
                 <span class="hidden sm:inline">Select</span>
                 <span class="sm:hidden">Sel</span>
               </span>
             </div>
-            
+
             <!-- Dropdown menu button -->
-            <UDropdownMenu
-              :items="getJobActions(job)"
-              :ui="{ content: 'w-48' }"
-            >
-              <div
-                class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 rounded-r-lg cursor-pointer"
-                :class="{ 'rounded-l-lg': job.status !== 'need_input' }"
-                @click.stop
-              >
+            <UDropdownMenu :items="getJobActions(job)" :ui="{ content: 'w-48' }">
+              <div class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop>
                 <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
               </div>
             </UDropdownMenu>
@@ -529,44 +373,18 @@
 
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
-        <UPagination
-          v-model:page="pageNumber"
-          :total="totalJobs"
-          :items-per-page="itemsPerPage"
-          :max="5"
-          @update:page="handlePageChange"
-        />
+        <UPagination v-model:page="pageNumber" :total="totalJobs" :items-per-page="itemsPerPage" :max="5" @update:page="handlePageChange" />
       </div>
     </UCard>
 
     <!-- Job Details Modal -->
-    <JobDetailsModal
-      v-model="showJobModal"
-      :job="selectedJob"
-      :job-output-images="jobOutputImages"
-      :jobs-list="jobs"
-      @cancel-job="cancelJobFromModal"
-      @retry-job="retryJobFromModal"
-      @delete-job="deleteJobFromModal"
-      @open-image-fullscreen="openImageFullscreen"
-      @job-changed="handleJobDetailsChanged"
-    />
+    <JobDetailsModal v-model="showJobModal" :job="selectedJob" :job-output-images="jobOutputImages" :jobs-list="jobs" @cancel-job="cancelJobFromModal" @retry-job="retryJobFromModal" @delete-job="deleteJobFromModal" @open-image-fullscreen="openImageFullscreen" @job-changed="handleJobDetailsChanged" />
 
     <!-- Source Image Selection Modal -->
-    <SourceImageSelectionModal
-      v-model="showImageModal"
-      :job="selectedJobForImage"
-      :need-input-jobs="needInputJobs"
-      @image-selected="handleImageSelected"
-      @job-changed="handleJobChanged"
-      @job-deleted="handleJobDeleted"
-    />
+    <SourceImageSelectionModal v-model="showImageModal" :job="selectedJobForImage" :need-input-jobs="needInputJobs" @image-selected="handleImageSelected" @job-changed="handleJobChanged" @job-deleted="handleJobDeleted" />
 
     <!-- Submit Job Modal -->
-    <SubmitJobModal
-      v-model="showSubmitJobModal"
-      @jobs-created="handleJobsCreated"
-    />
+    <SubmitJobModal v-model="showSubmitJobModal" @jobs-created="handleJobsCreated" />
   </div>
 </template>
 
@@ -629,13 +447,7 @@ const isStopping = ref(false)
 const processingMode = ref('idle')
 
 // Subject filtering using composable
-const {
-  selectedSubject: selectedSubjectFilter,
-  searchQuery: subjectSearchQuery,
-  subjectItems: subjectFilterItems,
-  handleSubjectSelection,
-  clearSubject
-} = useSubjects()
+const { selectedSubject: selectedSubjectFilter, searchQuery: subjectSearchQuery, subjectItems: subjectFilterItems, handleSubjectSelection, clearSubject } = useSubjects()
 
 // Source type filtering
 const selectedSourceTypeFilter = ref('all')
@@ -645,21 +457,24 @@ const sourceTypeOptions = [
   { value: 'source', label: 'Source Jobs' }
 ]
 
+// Star rating filter state - default to empty (show only unrated)
+const selectedRatings = ref([])
+
 // Direct API call function to replace store method
 const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid = '', sourceType = 'all') => {
   try {
     isLoading.value = true
-    
+
     // Calculate offset from page (API expects offset, not page)
     const offset = (page - 1) * limit
-    
+
     const query = {
       limit,
       offset,
       sort_by: 'updated_at',
       sort_order: 'desc'
     }
-    
+
     // Only add status if it's not empty string (for "all" filter)
     if (status && status !== '') query.status = status
     if (subjectUuid) query.subject_uuid = subjectUuid
@@ -667,17 +482,25 @@ const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid 
       // API expects source_type parameter, not has_source_media
       query.source_type = sourceType
     }
-    
+
+    // Add rating filter
+    if (selectedRatings.value.length > 0) {
+      query.ratings = selectedRatings.value.join(',')
+    } else {
+      // If no ratings selected, only show unrated jobs
+      query.unrated_only = 'true'
+    }
+
     console.log('🔍 [FETCH DEBUG] fetchJobsDirectly called with:', { page, limit, status, subjectUuid, sourceType })
     console.log('🔍 [FETCH DEBUG] Query params:', query)
-    
+
     const response = await useApiFetch('jobs/search', { query })
-    
+
     console.log('🔍 [FETCH DEBUG] API response:', response)
-    
+
     if (response.results) {
       jobs.value = response.results
-      totalJobs.value = response.count || 0  // Use filtered count for pagination
+      totalJobs.value = response.count || 0 // Use filtered count for pagination
       console.log('🔍 [FETCH DEBUG] Set jobs from response.results:', jobs.value.length, 'jobs, filtered total:', totalJobs.value)
     } else if (response.jobs) {
       jobs.value = response.jobs
@@ -702,11 +525,11 @@ const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid 
 }
 
 // Subject filter handlers
-const handleSubjectFilterSelection = async (selected) => {
+const handleSubjectFilterSelection = async selected => {
   const startTime = performance.now()
   console.log(`👤 [SUBJECT DEBUG] handleSubjectFilterSelection started - selected:`, selected)
-  
-  return new Promise((resolve) => {
+
+  return new Promise(resolve => {
     const performSelection = async () => {
       try {
         handleSubjectSelection(selected)
@@ -716,12 +539,12 @@ const handleSubjectFilterSelection = async (selected) => {
           pageNumber.value = 1
           const statusFilter = currentFilter.value || ''
           const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-          
+
           console.log(`👤 [SUBJECT DEBUG] Starting jobs API call for subject filter...`)
           const apiStartTime = performance.now()
-          
+
           await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, selected.value, sourceTypeFilter)
-          
+
           const apiTime = performance.now() - apiStartTime
           const totalTime = performance.now() - startTime
           console.log(`👤 [SUBJECT DEBUG] Subject filter API calls completed in ${apiTime.toFixed(2)}ms`)
@@ -735,7 +558,7 @@ const handleSubjectFilterSelection = async (selected) => {
         resolve()
       }
     }
-    
+
     // Use requestIdleCallback if available, otherwise setTimeout
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(performSelection)
@@ -751,28 +574,28 @@ const clearSubjectFilter = async () => {
   pageNumber.value = 1
   const statusFilter = currentFilter.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  
+
   await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, '', sourceTypeFilter)
 }
 
 // Source type filter handlers
-const handleSourceTypeFilterSelection = async (selected) => {
+const handleSourceTypeFilterSelection = async selected => {
   const startTime = performance.now()
   console.log(`📁 [SOURCE TYPE DEBUG] handleSourceTypeFilterSelection started - selected: "${selected}"`)
-  
-  return new Promise((resolve) => {
+
+  return new Promise(resolve => {
     const performSelection = async () => {
       try {
         selectedSourceTypeFilter.value = selected
         pageNumber.value = 1
         const statusFilter = currentFilter.value || ''
         const subjectUuid = selectedSubjectFilter?.value?.value || ''
-        
+
         console.log(`📁 [SOURCE TYPE DEBUG] Starting jobs API call for source type filter...`)
         const apiStartTime = performance.now()
-        
+
         await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, selected)
-        
+
         const apiTime = performance.now() - apiStartTime
         const totalTime = performance.now() - startTime
         console.log(`📁 [SOURCE TYPE DEBUG] Source type filter API calls completed in ${apiTime.toFixed(2)}ms`)
@@ -783,7 +606,7 @@ const handleSourceTypeFilterSelection = async (selected) => {
         resolve()
       }
     }
-    
+
     // Use requestIdleCallback if available, otherwise setTimeout
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(performSelection)
@@ -798,8 +621,24 @@ const clearSourceTypeFilter = async () => {
   pageNumber.value = 1
   const statusFilter = currentFilter.value || ''
   const subjectUuid = selectedSubjectFilter?.value?.value || ''
-  
+
   await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all')
+}
+
+// Toggle rating selection
+const toggleRating = rating => {
+  const index = selectedRatings.value.indexOf(rating)
+  if (index > -1) {
+    selectedRatings.value.splice(index, 1)
+  } else {
+    selectedRatings.value.push(rating)
+  }
+  // Refresh jobs with new rating filter
+  pageNumber.value = 1
+  const statusFilter = currentFilter.value || ''
+  const subjectUuid = selectedSubjectFilter?.value?.value || ''
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
 }
 
 // Computed properties
@@ -810,8 +649,7 @@ const isAnyProcessingActive = computed(() => {
   // Show stop button if:
   // 1. Our local mode indicates we're processing (single or continuous)
   // 2. OR ComfyUI is actually processing something
-  return processingMode.value !== 'idle' ||
-         jobsStore.systemStatus?.comfyuiProcessing?.status === 'processing'
+  return processingMode.value !== 'idle' || jobsStore.systemStatus?.comfyuiProcessing?.status === 'processing'
 })
 
 // Get all jobs that need input for modal navigation
@@ -828,7 +666,7 @@ const fetchAllNeedInputJobs = async () => {
         sort_order: 'desc'
       }
     })
-    
+
     if (response.results) {
       needInputJobs.value = response.results
     } else if (response.jobs) {
@@ -879,35 +717,33 @@ const clearSelection = () => {
   selectedJobs.value.clear()
 }
 
-
-
 // Methods
-const filterByStatus = async (status) => {
+const filterByStatus = async status => {
   const startTime = performance.now()
   console.log(`🎯 [FILTER DEBUG] filterByStatus clicked - status: "${status}"`)
-  
+
   // Use requestIdleCallback or setTimeout to prevent blocking
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const performFilter = async () => {
       try {
         // Update local filter immediately for UI feedback
         currentFilter.value = status
         pageNumber.value = 1
-        
+
         // Show loading state immediately with specific filter tracking
         loadingFilter.value = status
         isLoading.value = true
-        
+
         // Clear jobs array in next tick to avoid blocking
         await nextTick()
         jobs.value = []
-        
+
         // Fetch fresh jobs for this status
         const subjectUuid = selectedSubjectFilter?.value?.value || ''
         const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-        
+
         await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, status, subjectUuid, sourceTypeFilter)
-        
+
         const totalTime = performance.now() - startTime
         console.log(`🎯 [FILTER DEBUG] filterByStatus completed in ${totalTime.toFixed(2)}ms`)
         resolve()
@@ -920,7 +756,7 @@ const filterByStatus = async (status) => {
         loadingFilter.value = ''
       }
     }
-    
+
     // Use requestIdleCallback if available, otherwise setTimeout
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(performFilter)
@@ -933,17 +769,17 @@ const filterByStatus = async (status) => {
 const refreshJobsWithCurrentState = async () => {
   const startTime = performance.now()
   console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState started`)
-  
-  return new Promise((resolve) => {
+
+  return new Promise(resolve => {
     const performRefresh = async () => {
       try {
         const statusFilter = currentFilter.value || ''
         const subjectUuid = selectedSubjectFilter?.value?.value || ''
         const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-        
+
         // Only fetch jobs for refresh - queue status is updated via WebSocket
         await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
-        
+
         const totalTime = performance.now() - startTime
         console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState completed in ${totalTime.toFixed(2)}ms`)
         resolve()
@@ -952,7 +788,7 @@ const refreshJobsWithCurrentState = async () => {
         resolve()
       }
     }
-    
+
     // Use requestIdleCallback if available, otherwise setTimeout
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(performRefresh)
@@ -967,11 +803,11 @@ const startSingleProcessing = async () => {
   try {
     isStartingSingle.value = true
     processingMode.value = 'single'
-    
+
     const response = await useApiFetch('jobs/processing/single', {
       method: 'POST'
     })
-    
+
     if (response.success) {
       const toast = useToast()
       toast.add({
@@ -993,7 +829,7 @@ const startSingleProcessing = async () => {
   } catch (error) {
     console.error('Failed to start single processing:', error)
     processingMode.value = 'idle'
-    
+
     const toast = useToast()
     toast.add({
       title: 'Processing Failed',
@@ -1010,11 +846,11 @@ const startContinuousProcessing = async () => {
   try {
     isStartingContinuous.value = true
     processingMode.value = 'continuous'
-    
+
     const response = await useApiFetch('jobs/processing/continuous', {
       method: 'POST'
     })
-    
+
     if (response.success) {
       const toast = useToast()
       toast.add({
@@ -1036,7 +872,7 @@ const startContinuousProcessing = async () => {
   } catch (error) {
     console.error('Failed to start continuous processing:', error)
     processingMode.value = 'idle'
-    
+
     const toast = useToast()
     toast.add({
       title: 'Processing Failed',
@@ -1052,11 +888,11 @@ const startContinuousProcessing = async () => {
 const stopAllProcessing = async () => {
   try {
     isStopping.value = true
-    
+
     const response = await useApiFetch('jobs/processing/interrupt', {
       method: 'POST'
     })
-    
+
     if (response.success) {
       processingMode.value = 'idle'
       const toast = useToast()
@@ -1069,7 +905,7 @@ const stopAllProcessing = async () => {
     }
   } catch (error) {
     console.error('Failed to stop processing:', error)
-    
+
     const toast = useToast()
     toast.add({
       title: 'Stop Failed',
@@ -1083,20 +919,20 @@ const stopAllProcessing = async () => {
 }
 
 // Handle pagination page changes
-const handlePageChange = async (newPage) => {
+const handlePageChange = async newPage => {
   const startTime = performance.now()
   console.log(`📄 [PAGE DEBUG] handlePageChange started - newPage: ${newPage}`)
-  
+
   pageNumber.value = newPage
   const statusFilter = currentFilter.value || ''
   const subjectUuid = selectedSubjectFilter?.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  
+
   console.log(`📄 [PAGE DEBUG] Starting jobs API call for page change...`)
   const apiStartTime = performance.now()
-  
+
   await fetchJobsDirectly(newPage, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
-  
+
   const apiTime = performance.now() - apiStartTime
   const totalTime = performance.now() - startTime
   console.log(`📄 [PAGE DEBUG] Page change API calls completed in ${apiTime.toFixed(2)}ms`)
@@ -1107,54 +943,58 @@ const handlePageChange = async (newPage) => {
 const handleLimitChange = async () => {
   const startTime = performance.now()
   console.log(`📊 [LIMIT DEBUG] handleLimitChange started - new limit: ${itemsPerPage.value}`)
-  
+
   pageNumber.value = 1 // Reset to first page when changing limit
   const statusFilter = currentFilter.value || ''
   const subjectUuid = selectedSubjectFilter?.value?.value || ''
   const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
-  
+
   console.log(`📊 [LIMIT DEBUG] Starting parallel API calls for limit change...`)
   const apiStartTime = performance.now()
-  
+
   // Fetch jobs and update queue status simultaneously
-  await Promise.all([
-    fetchJobsDirectly(1, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter),
-    jobsStore.fetchQueueStatus()
-  ])
-  
+  await Promise.all([fetchJobsDirectly(1, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter), jobsStore.fetchQueueStatus()])
+
   const apiTime = performance.now() - apiStartTime
   const totalTime = performance.now() - startTime
   console.log(`📊 [LIMIT DEBUG] Limit change API calls completed in ${apiTime.toFixed(2)}ms`)
   console.log(`📊 [LIMIT DEBUG] handleLimitChange completed in ${totalTime.toFixed(2)}ms`)
 }
 
-const viewJobDetails = async (jobId) => {
+const viewJobDetails = async jobId => {
   try {
     // Reset video ready states when opening a new job
     outputVideoReady.value = false
     destVideoReady.value = false
-    
+
     const response = await useApiFetch(`jobs/${jobId}?include_thumbnails=true&thumbnail_size=md`)
-    selectedJob.value = response.job  // The media server returns {success: true, job: {...}}
+    selectedJob.value = response.job // The media server returns {success: true, job: {...}}
     showJobModal.value = true
   } catch (error) {
     console.error('Failed to fetch job details:', error)
   }
 }
 
-const getStatusColor = (status) => {
+const getStatusColor = status => {
   switch (status?.toLowerCase()) {
-    case 'queued': return 'warning'
-    case 'active': return 'info'
-    case 'completed': return 'success'
-    case 'failed': return 'error'
-    case 'cancelled': return 'neutral'
-    case 'need_input': return 'warning'
-    default: return 'neutral'
+    case 'queued':
+      return 'warning'
+    case 'active':
+      return 'info'
+    case 'completed':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'cancelled':
+      return 'neutral'
+    case 'need_input':
+      return 'warning'
+    default:
+      return 'neutral'
   }
 }
 
-const formatDateCompact = (dateString) => {
+const formatDateCompact = dateString => {
   if (!dateString) return 'N/A'
   const date = new Date(dateString)
   const now = new Date()
@@ -1162,7 +1002,7 @@ const formatDateCompact = (dateString) => {
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
   const diffDays = Math.floor(diffMs / 86400000)
-  
+
   if (diffMins < 1) return 'now'
   if (diffMins < 60) return `${diffMins}m`
   if (diffHours < 24) return `${diffHours}h`
@@ -1174,7 +1014,7 @@ const formatDateCompact = (dateString) => {
 }
 
 // Helper method to format status display text
-const getStatusDisplayText = (status) => {
+const getStatusDisplayText = status => {
   if (status === 'need_input') {
     return 'input'
   }
@@ -1182,9 +1022,9 @@ const getStatusDisplayText = (status) => {
 }
 
 // Get job actions for dropdown menu
-const getJobActions = (job) => {
+const getJobActions = job => {
   const actions = []
-  
+
   // Add cancel option for queued/active/need_input/failed jobs
   if (['queued', 'active', 'need_input', 'failed'].includes(job.status)) {
     actions.push({
@@ -1195,7 +1035,7 @@ const getJobActions = (job) => {
       }
     })
   }
-  
+
   // Add re-queue option specifically for failed jobs
   if (job.status === 'failed') {
     actions.push({
@@ -1206,7 +1046,7 @@ const getJobActions = (job) => {
       }
     })
   }
-  
+
   // Add retry option for failed, canceled, completed, or need_input jobs
   if (['canceled', 'failed', 'completed', 'need_input'].includes(job.status)) {
     actions.push({
@@ -1217,7 +1057,7 @@ const getJobActions = (job) => {
       }
     })
   }
-  
+
   // Always add delete option
   actions.push({
     label: 'Delete Job',
@@ -1226,12 +1066,12 @@ const getJobActions = (job) => {
       await deleteJob(job)
     }
   })
-  
+
   return [actions]
 }
 
 // Image selection modal methods
-const openImageSelectionModal = async (job) => {
+const openImageSelectionModal = async job => {
   // Fetch all need_input jobs before opening modal
   await fetchAllNeedInputJobs()
   selectedJobForImage.value = job
@@ -1246,7 +1086,7 @@ const handleImageSelected = async () => {
 }
 
 // Handle job navigation in the modal
-const handleJobChanged = (newJob) => {
+const handleJobChanged = newJob => {
   selectedJobForImage.value = newJob
 }
 
@@ -1258,7 +1098,7 @@ const handleJobDeleted = async () => {
 }
 
 // Handle jobs created from submit job modal
-const handleJobsCreated = async (result) => {
+const handleJobsCreated = async result => {
   const toast = useToast()
   toast.add({
     title: 'Jobs Created Successfully',
@@ -1266,21 +1106,21 @@ const handleJobsCreated = async (result) => {
     color: 'green',
     duration: 3000
   })
-  
+
   // Refresh the jobs list to show new jobs
   await refreshJobsWithCurrentState()
 }
 
-const openImageFullscreen = (image) => {
+const openImageFullscreen = image => {
   // TODO: Implement image fullscreen functionality
   console.log('Opening image fullscreen:', image)
 }
 
 // Job cancellation method
-const cancelJob = async (job) => {
+const cancelJob = async job => {
   try {
     const { confirm } = useConfirmDialog()
-    
+
     const confirmed = await confirm({
       title: 'Cancel Job',
       message: `Are you sure you want to cancel job ${job.id}? This action cannot be undone.`,
@@ -1288,27 +1128,25 @@ const cancelJob = async (job) => {
       cancelLabel: 'Keep Job',
       variant: 'error'
     })
-    
-    if (!confirmed) return
-    
-    
+
+    if (confirmed !== 'confirm') return
+
     await useApiFetch(`jobs/${job.id}/cancel`, {
       method: 'POST'
     })
-    
-    
+
     // Refresh the jobs list after cancellation
     await refreshJobsWithCurrentState()
   } catch (error) {
     console.error('Failed to cancel job:', error)
-    
+
     let errorMessage = 'Failed to cancel job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
     } else if (error.message) {
       errorMessage = error.message
     }
-    
+
     // Use confirm dialog for error messages too
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1322,12 +1160,12 @@ const cancelJob = async (job) => {
 }
 
 // Job retry method
-const retryJob = async (job) => {
+const retryJob = async job => {
   try {
     const response = await useApiFetch(`jobs/${job.id}/retry`, {
       method: 'POST'
     })
-    
+
     // Show success toast with new job ID
     const toast = useToast()
     toast.add({
@@ -1336,19 +1174,19 @@ const retryJob = async (job) => {
       color: 'success',
       duration: 2000
     })
-    
+
     // Refresh the jobs list after retry
     await refreshJobsWithCurrentState()
   } catch (error) {
     console.error('Failed to retry job:', error)
-    
+
     let errorMessage = 'Failed to retry job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
     } else if (error.message) {
       errorMessage = error.message
     }
-    
+
     // Use confirm dialog for error messages
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1362,10 +1200,10 @@ const retryJob = async (job) => {
 }
 
 // Job re-queue method
-const requeueJob = async (job) => {
+const requeueJob = async job => {
   try {
     const { confirm } = useConfirmDialog()
-    
+
     const confirmed = await confirm({
       title: 'Re-queue Failed Job',
       message: `Are you sure you want to re-queue job ${job.id}? This will delete any output media and reset the job to queued status.`,
@@ -1373,13 +1211,13 @@ const requeueJob = async (job) => {
       cancelLabel: 'Cancel',
       variant: 'primary'
     })
-    
-    if (!confirmed) return
-    
+
+    if (confirmed !== 'confirm') return
+
     await useApiFetch(`jobs/${job.id}/requeue`, {
       method: 'POST'
     })
-    
+
     // Show success toast
     const toast = useToast()
     toast.add({
@@ -1388,19 +1226,19 @@ const requeueJob = async (job) => {
       color: 'success',
       duration: 2000
     })
-    
+
     // Refresh the jobs list after re-queue
     await refreshJobsWithCurrentState()
   } catch (error) {
     console.error('Failed to re-queue job:', error)
-    
+
     let errorMessage = 'Failed to re-queue job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
     } else if (error.message) {
       errorMessage = error.message
     }
-    
+
     // Use confirm dialog for error messages
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1414,56 +1252,121 @@ const requeueJob = async (job) => {
 }
 
 // Job deletion method
-const deleteJob = async (job) => {
+const deleteJob = async job => {
   console.log('🗑️ deleteJob called with job:', job.id)
   try {
     const { confirm } = useConfirmDialog()
-    
-    console.log('🤔 Showing confirmation dialog...')
-    const confirmed = await confirm({
-      title: 'Delete Job',
-      message: `Are you sure you want to delete job ${job.id}? This action cannot be undone and will remove the job and any associated output media.`,
-      confirmLabel: 'Delete Job',
-      cancelLabel: 'Cancel',
-      variant: 'error'
-    })
-    
-    console.log('✅ Confirmation result:', confirmed)
-    if (!confirmed) {
-      console.log('❌ User cancelled deletion')
-      return
-    }
-    
-    console.log('🚀 Making delete API call...')
-    console.log('🔗 Delete URL:', `/api/jobs/${job.id}/delete`)
-    const result = await useApiFetch(`jobs/${job.id}/delete`, {
-      method: 'DELETE'
-    })
-    console.log('✅ Delete API call completed, result:', result)
-    
-    // Show success toast
     const toast = useToast()
-    toast.add({
-      title: 'Job Deleted Successfully',
-      description: `Job ${job.id} has been deleted successfully.`,
-      color: 'success',
-      duration: 1000
-    })
-    
-    // Refresh the jobs list after deletion with cache busting
-    await refreshJobsWithCurrentState()
-    // Also refresh queue status to update counts
-    await jobsStore.fetchQueueStatus()
+
+    // Fetch deletion preview
+    try {
+      const preview = await useApiFetch(`jobs/${job.id}/delete-preview`)
+
+      // Separate "this" records from "all" records
+      const thisJobMedia = preview.willDelete.mediaRecords.filter(m => m.relatedTo === job.id)
+      const allOtherMedia = preview.willDelete.mediaRecords.filter(m => m.relatedTo !== job.id)
+
+      // Build items list with separate sections
+      const items = []
+
+      // Section for "This Job" - show the job itself first
+      items.push({
+        label: `This Job`,
+        items: [`${job.id.substring(0, 8)}... - ${preview.targetJob.subjectName} - ${preview.targetJob.jobType} - ${preview.targetJob.status}`]
+      })
+
+      // Section for "This Job" media records
+      if (thisJobMedia.length > 0) {
+        items.push({
+          label: `This Job - ${thisJobMedia.length} Media Record(s)`,
+          items: thisJobMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
+        })
+      }
+
+      // Section for "All Associated" records
+      if (allOtherMedia.length > 0 || preview.willDelete.jobs.length > 0) {
+        if (allOtherMedia.length > 0) {
+          items.push({
+            label: `All Associated - ${allOtherMedia.length} Media Record(s)`,
+            items: allOtherMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
+          })
+        }
+
+        if (preview.willDelete.jobs.length > 0) {
+          items.push({
+            label: `All Associated - ${preview.willDelete.jobs.length} Related Job(s)`,
+            items: preview.willDelete.jobs.map(j => `${j.id.substring(0, 8)}... - ${j.subjectName} - ${j.jobType} - ${j.status}`)
+          })
+        }
+      }
+
+      console.log('🤔 Showing confirmation dialog with preview...')
+      const result = await confirm({
+        title: 'Delete Job',
+        message: `Choose deletion option:`,
+        confirmLabel: 'Delete All',
+        alternateLabel: thisJobMedia.length > 0 ? 'Delete This' : '',
+        cancelLabel: 'Cancel',
+        variant: 'error',
+        items
+      })
+
+      console.log('✅ Confirmation result:', result)
+      if (result === 'cancel') {
+        console.log('❌ User cancelled deletion')
+        return
+      }
+
+      // Determine if we should cascade based on user choice
+      const shouldCascade = result === 'confirm'
+
+      console.log('🚀 Making delete API call with cascade:', shouldCascade)
+      const deleteUrl = shouldCascade ? `jobs/${job.id}/delete` : `jobs/${job.id}/delete?cascade=false`
+      const deleteResult = await useApiFetch(deleteUrl, {
+        method: 'DELETE'
+      })
+      console.log('✅ Delete API call completed, result:', deleteResult)
+
+      // Show success toast
+      if (shouldCascade) {
+        toast.add({
+          title: 'All Jobs Deleted Successfully',
+          description: `Deleted ${preview.totalJobs} job(s) and ${preview.totalMediaRecords} media record(s).`,
+          color: 'success',
+          duration: 1000
+        })
+      } else {
+        toast.add({
+          title: 'Job Deleted Successfully',
+          description: `Deleted this job and ${thisJobMedia.length} associated media record(s).`,
+          color: 'success',
+          duration: 1000
+        })
+      }
+
+      // Refresh the jobs list after deletion
+      await refreshJobsWithCurrentState()
+      // Also refresh queue status to update counts
+      await jobsStore.fetchQueueStatus()
+    } catch (previewError) {
+      console.error('Failed to fetch delete preview:', previewError)
+      toast.add({
+        title: 'Preview Failed',
+        description: 'Failed to load deletion preview. Please try again.',
+        color: 'error',
+        duration: 3000
+      })
+    }
   } catch (error) {
     console.error('Failed to delete job:', error)
-    
+
     let errorMessage = 'Failed to delete job'
     if (error.data?.statusMessage) {
       errorMessage = error.data.statusMessage
     } else if (error.message) {
       errorMessage = error.message
     }
-    
+
     // Use confirm dialog for error messages
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1504,7 +1407,7 @@ const deleteJobFromModal = async () => {
 }
 
 // Handle job change from JobDetailsModal
-const handleJobDetailsChanged = async (newJob) => {
+const handleJobDetailsChanged = async newJob => {
   try {
     // Fetch the full job details with thumbnails
     const response = await useApiFetch(`jobs/${newJob.id}?include_thumbnails=true&thumbnail_size=md`)
@@ -1522,7 +1425,7 @@ const bulkQueue = async () => {
     const job = jobs.value.find(j => j.id === jobId)
     return job && ['canceled', 'failed', 'completed', 'need_input'].includes(job.status)
   })
-  
+
   if (jobsToQueue.length === 0) {
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1534,7 +1437,7 @@ const bulkQueue = async () => {
     })
     return
   }
-  
+
   const { confirm } = useConfirmDialog()
   const confirmed = await confirm({
     title: 'Queue Selected Jobs',
@@ -1543,15 +1446,15 @@ const bulkQueue = async () => {
     cancelLabel: 'Cancel',
     variant: 'primary'
   })
-  
-  if (!confirmed) return
-  
+
+  if (confirmed !== 'confirm') return
+
   try {
     // Queue jobs by retrying them
     for (const jobId of jobsToQueue) {
       await useApiFetch(`jobs/${jobId}/retry`, { method: 'POST' })
     }
-    
+
     const toast = useToast()
     toast.add({
       title: 'Jobs Queued Successfully',
@@ -1559,7 +1462,7 @@ const bulkQueue = async () => {
       color: 'success',
       duration: 2000
     })
-    
+
     clearSelection()
     await refreshJobsWithCurrentState()
   } catch (error) {
@@ -1580,7 +1483,7 @@ const bulkCancel = async () => {
     const job = jobs.value.find(j => j.id === jobId)
     return job && ['queued', 'active', 'need_input', 'failed'].includes(job.status)
   })
-  
+
   if (jobsToCancel.length === 0) {
     const { confirm } = useConfirmDialog()
     await confirm({
@@ -1592,7 +1495,7 @@ const bulkCancel = async () => {
     })
     return
   }
-  
+
   const { confirm } = useConfirmDialog()
   const confirmed = await confirm({
     title: 'Cancel Selected Jobs',
@@ -1601,14 +1504,14 @@ const bulkCancel = async () => {
     cancelLabel: 'Keep Jobs',
     variant: 'error'
   })
-  
-  if (!confirmed) return
-  
+
+  if (confirmed !== 'confirm') return
+
   try {
     for (const jobId of jobsToCancel) {
       await useApiFetch(`jobs/${jobId}/cancel`, { method: 'POST' })
     }
-    
+
     const toast = useToast()
     toast.add({
       title: 'Jobs Canceled Successfully',
@@ -1616,7 +1519,7 @@ const bulkCancel = async () => {
       color: 'success',
       duration: 2000
     })
-    
+
     clearSelection()
     await refreshJobsWithCurrentState()
   } catch (error) {
@@ -1641,14 +1544,14 @@ const bulkDelete = async () => {
     cancelLabel: 'Cancel',
     variant: 'error'
   })
-  
-  if (!confirmed) return
-  
+
+  if (confirmed !== 'confirm') return
+
   try {
     for (const jobId of selectedJobsArray.value) {
       await useApiFetch(`jobs/${jobId}/delete`, { method: 'DELETE' })
     }
-    
+
     const toast = useToast()
     toast.add({
       title: 'Jobs Deleted Successfully',
@@ -1656,7 +1559,7 @@ const bulkDelete = async () => {
       color: 'success',
       duration: 2000
     })
-    
+
     clearSelection()
     await refreshJobsWithCurrentState()
     await jobsStore.fetchQueueStatus()
@@ -1675,9 +1578,8 @@ const bulkDelete = async () => {
 
 // Page visibility changes are now handled globally by the websocket plugin
 
-
 // Reset video states when modal is closed
-watch(showJobModal, (isOpen) => {
+watch(showJobModal, isOpen => {
   if (!isOpen) {
     outputVideoReady.value = false
     destVideoReady.value = false
@@ -1690,30 +1592,32 @@ watch([pageNumber, currentFilter, selectedSubjectFilter, selectedSourceTypeFilte
 })
 
 // Watch for processing status changes from the backend
-watch(() => jobsStore.systemStatus?.comfyuiProcessing?.status, (newStatus) => {
-  // If ComfyUI goes idle and we're not in the middle of starting something, reset mode
-  if (newStatus === 'idle' && !isStartingSingle.value && !isStartingContinuous.value) {
-    processingMode.value = 'idle'
+watch(
+  () => jobsStore.systemStatus?.comfyuiProcessing?.status,
+  newStatus => {
+    // If ComfyUI goes idle and we're not in the middle of starting something, reset mode
+    if (newStatus === 'idle' && !isStartingSingle.value && !isStartingContinuous.value) {
+      processingMode.value = 'idle'
+    }
   }
-})
-
+)
 
 // Lifecycle
 onMounted(async () => {
   // Reset processing mode on page load
   processingMode.value = 'idle'
-  
+
   // Fetch initial data (queue status, system status, etc.)
   await jobsStore.fetchInitialData()
-  
+
   // Determine which filter to use based on queue status counts
   const needInputCount = jobsStore.queueStatus?.queue?.need_input || 0
   const defaultFilter = needInputCount > 0 ? 'need_input' : 'completed'
-  
+
   // Set the filter and fetch jobs
   currentFilter.value = defaultFilter
   await fetchJobsDirectly(1, itemsPerPage.value, defaultFilter, '', 'all')
-  
+
   // Page visibility changes are now handled globally by the websocket plugin
 })
 
@@ -1725,10 +1629,6 @@ onUnmounted(() => {
 // Page head
 useHead({
   title: 'Jobs - Media Server Job System',
-  meta: [
-    { name: 'description', content: 'Monitor and manage video processing jobs' }
-  ]
+  meta: [{ name: 'description', content: 'Monitor and manage video processing jobs' }]
 })
-
 </script>
-

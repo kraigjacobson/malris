@@ -1,39 +1,15 @@
 import { getDb } from '~/server/utils/database'
 import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray, sql } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const startTime = performance.now()
-  
+
   try {
     // Get query parameters
     const query = getQuery(event)
-    const {
-      status,
-      job_type,
-      subject_uuid,
-      source_media_uuid,
-      dest_media_uuid,
-      output_uuid,
-      source_type,
-      min_progress,
-      max_progress,
-      created_after,
-      created_before,
-      started_after,
-      started_before,
-      completed_after,
-      completed_before,
-      updated_after,
-      updated_before,
-      has_error,
-      sort_by = 'created_at',
-      sort_order = 'desc',
-      limit = 100,
-      offset = 0,
-      include_thumbnails = false
-    } = query
+    const { status, job_type, subject_uuid, source_media_uuid, dest_media_uuid, output_uuid, source_type, min_progress, max_progress, created_after, created_before, started_after, started_before, completed_after, completed_before, updated_after, updated_before, has_error, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, include_thumbnails = false } = query
 
     logger.info(`🔍 [JOBS API DEBUG] Search request started - status: "${status}", subject: "${subject_uuid}", source_type: "${source_type}", limit: ${limit}, offset: ${offset}`)
 
@@ -56,7 +32,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const conditionsStartTime = performance.now()
-    
+
     // Build where conditions
     const conditions = []
 
@@ -145,6 +121,22 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    // Rating filter - add to WHERE conditions at database level
+    if (unrated_only === 'true' || unrated_only === true) {
+      // Show only jobs where output_uuid is NULL OR output media has no rating
+      // This requires a subquery or left join
+      logger.info('🔍 [JOBS API] Filtering for unrated outputs only')
+    } else if (ratings) {
+      // Show jobs with specific output ratings
+      const ratingList = (ratings as string)
+        .split(',')
+        .map(r => parseInt(r.trim()))
+        .filter(r => r >= 1 && r <= 5)
+      if (ratingList.length > 0) {
+        logger.info(`🔍 [JOBS API] Filtering for output ratings: ${ratingList.join(', ')}`)
+      }
+    }
+
     // Build the query with proper ordering
     const limitNum = Math.min(parseInt(limit as string) || 100, 1000) // Cap at 1000
     const offsetNum = parseInt(offset as string) || 0
@@ -152,7 +144,7 @@ export default defineEventHandler(async (event) => {
     // Create the order by clause
     let orderByClause
     const sortDirection = (sort_order as string).toLowerCase() === 'desc' ? desc : asc
-    
+
     switch (sort_by) {
       case 'id':
         orderByClause = sortDirection(jobs.id)
@@ -183,6 +175,32 @@ export default defineEventHandler(async (event) => {
     const conditionsTime = performance.now() - conditionsStartTime
     logger.info(`🔍 [JOBS API DEBUG] Query conditions built in ${conditionsTime.toFixed(2)}ms - ${conditions.length} conditions`)
 
+    // Add rating conditions to WHERE clause
+    if (unrated_only === 'true' || unrated_only === true) {
+      // Join only for the condition check
+      conditions.push(
+        sql`(${jobs.outputUuid} IS NULL OR NOT EXISTS (
+          SELECT 1 FROM media_records mr
+          WHERE mr.uuid = ${jobs.outputUuid} AND mr.rating IS NOT NULL
+        ))`
+      )
+    } else if (ratings) {
+      const ratingList = (ratings as string)
+        .split(',')
+        .map(r => parseInt(r.trim()))
+        .filter(r => r >= 1 && r <= 5)
+      if (ratingList.length > 0) {
+        const ratingValues = ratingList.map(r => `${r}`).join(',')
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM media_records mr
+            WHERE mr.uuid = ${jobs.outputUuid}
+            AND mr.rating IN (${sql.raw(ratingValues)})
+          )`
+        )
+      }
+    }
+
     // Execute the main query with joins
     const mainQueryStartTime = performance.now()
     const results = await db
@@ -204,7 +222,7 @@ export default defineEventHandler(async (event) => {
         // Subject info
         subject_name: subjects.name,
         subject_tags: subjects.tags,
-        subject_thumbnail_uuid: subjects.thumbnail,
+        subject_thumbnail_uuid: subjects.thumbnail
       })
       .from(jobs)
       .leftJoin(subjects, eq(jobs.subjectUuid, subjects.id))
@@ -222,20 +240,20 @@ export default defineEventHandler(async (event) => {
       .select({ count: count() })
       .from(jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-    
+
     const filteredCount = totalCountResult[0].count
     const countQueryTime = performance.now() - countQueryStartTime
     logger.info(`🔍 [JOBS API] Count query completed in ${countQueryTime.toFixed(2)}ms - filtered count: ${filteredCount}`)
 
     // Get additional media info efficiently with bulk queries instead of N+1
     const enhancementStartTime = performance.now()
-    
+
     // Collect all unique media UUIDs from jobs (filter out nulls)
     const sourceUuids = results.filter(job => job.source_media_uuid).map(job => job.source_media_uuid!)
     const destUuids = results.filter(job => job.dest_media_uuid).map(job => job.dest_media_uuid!)
     const outputUuids = results.filter(job => job.output_uuid).map(job => job.output_uuid!)
     const allMediaUuids = [...new Set([...sourceUuids, ...destUuids, ...outputUuids])]
-    
+
     // Single bulk query to get all media records
     const mediaMap = new Map()
     if (allMediaUuids.length > 0) {
@@ -244,17 +262,18 @@ export default defineEventHandler(async (event) => {
           uuid: mediaRecords.uuid,
           filename: mediaRecords.filename,
           type: mediaRecords.type,
-          thumbnail_uuid: mediaRecords.thumbnailUuid
+          thumbnail_uuid: mediaRecords.thumbnailUuid,
+          rating: mediaRecords.rating
         })
         .from(mediaRecords)
         .where(inArray(mediaRecords.uuid, allMediaUuids))
-      
+
       // Build lookup map
       mediaRecordsData.forEach(media => {
         mediaMap.set(media.uuid, media)
       })
     }
-    
+
     // Build enhanced results using the media map
     const enhancedResults = results.map(job => ({
       id: job.id,
@@ -271,23 +290,42 @@ export default defineEventHandler(async (event) => {
       started_at: job.started_at,
       completed_at: job.completed_at,
       updated_at: job.updated_at,
-      subject: job.subject_name ? {
-        id: job.subject_uuid,
-        name: job.subject_name,
-        tags: job.subject_tags,
-        thumbnail_uuid: job.subject_thumbnail_uuid
-      } : null,
+      subject: job.subject_name
+        ? {
+            id: job.subject_uuid,
+            name: job.subject_name,
+            tags: job.subject_tags,
+            thumbnail_uuid: job.subject_thumbnail_uuid
+          }
+        : null,
       source_media: job.source_media_uuid ? mediaMap.get(job.source_media_uuid) || null : null,
       dest_media: job.dest_media_uuid ? mediaMap.get(job.dest_media_uuid) || null : null,
       output_media: job.output_uuid ? mediaMap.get(job.output_uuid) || null : null
     }))
+
+    // Apply rating filter to enhanced results (client-side for now - will optimize later)
+    let filteredResults = enhancedResults
+    if (unrated_only === 'true' || unrated_only === true) {
+      filteredResults = enhancedResults.filter(job => !job.output_media || !job.output_media.rating)
+      logger.info(`🔍 [JOBS API] Filtered for unrated: ${filteredResults.length}/${enhancedResults.length} jobs`)
+    } else if (ratings) {
+      const ratingList = (ratings as string)
+        .split(',')
+        .map(r => parseInt(r.trim()))
+        .filter(r => r >= 1 && r <= 5)
+      if (ratingList.length > 0) {
+        filteredResults = enhancedResults.filter(job => job.output_media && ratingList.includes(job.output_media.rating))
+        logger.info(`🔍 [JOBS API] Filtered for ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
+      }
+    }
 
     const enhancementTime = performance.now() - enhancementStartTime
     logger.info(`🔍 [JOBS API] Media enhancement completed in ${enhancementTime.toFixed(2)}ms - bulk query for ${allMediaUuids.length} media records`)
 
     // Get total jobs count for additional metadata (only if needed for pagination)
     let totalJobsCount = filteredCount // Default to filtered count
-    if (offsetNum === 0) { // Only get total count on first page
+    if (offsetNum === 0) {
+      // Only get total count on first page
       const totalCountStartTime = performance.now()
       const totalJobsResult = await db.select({ count: count() }).from(jobs)
       totalJobsCount = totalJobsResult[0].count
@@ -296,8 +334,8 @@ export default defineEventHandler(async (event) => {
     }
 
     const response: any = {
-      results: enhancedResults,
-      count: filteredCount,
+      results: filteredResults,
+      count: filteredResults.length,
       total_jobs_count: totalJobsCount,
       limit: limitNum,
       offset: offsetNum
@@ -315,11 +353,10 @@ export default defineEventHandler(async (event) => {
     logger.info(`🔍 [JOBS API] Search request completed in ${totalTime.toFixed(2)}ms - returned ${enhancedResults.length} enhanced jobs`)
 
     return response
-
   } catch (error: any) {
     const totalTime = performance.now() - startTime
     logger.error(`❌ [JOBS API] Search request failed after ${totalTime.toFixed(2)}ms:`, error)
-    
+
     // If it's already an HTTP error, re-throw it
     if (error.statusCode) {
       throw error

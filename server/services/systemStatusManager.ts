@@ -3,17 +3,32 @@
  * Tracks all system states and broadcasts changes via WebSocket
  */
 
-import type {
-  SystemStatus,
-  SystemHealth,
-  ComfyUIProcessingStatus,
-  AutoProcessingStatus,
-  WebSocketMessage
-} from '~/types/systemStatus'
+import type { SystemStatus, SystemHealth, ComfyUIProcessingStatus, AutoProcessingStatus, WebSocketMessage } from '~/types/systemStatus'
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
 import { count } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
+// Register global error handlers FIRST to catch WebSocket errors
+console.log('🛡️ [SYSTEM STATUS] Registering global error handlers...')
+
+process.on('unhandledRejection', (reason: any, _promise: Promise<any>) => {
+  console.log('🔍 [ERROR HANDLER] Unhandled rejection caught:', {
+    code: reason?.code,
+    message: reason?.message,
+    stack: reason?.stack?.split('\n').slice(0, 3).join('\n')
+  })
+
+  const isSilentError = reason?.code === 'ECONNRESET' || reason?.code === 'EPIPE' || reason?.code === 'ECONNREFUSED' || reason?.message?.includes('ECONNRESET') || reason?.message?.includes('EPIPE')
+
+  if (isSilentError) {
+    console.log(`✅ [ERROR HANDLER] Network disconnection handled silently: ${reason?.code || reason?.message}`)
+  } else {
+    console.log('❌ [ERROR HANDLER] Unexpected unhandled rejection:', reason)
+    logger.error('Unhandled rejection:', reason)
+  }
+})
+
+console.log('✅ [SYSTEM STATUS] Global error handlers registered')
 
 // WebSocket clients management
 const wsClients = new Set<any>()
@@ -31,7 +46,7 @@ let currentStatus: SystemStatus = {
     lastChecked: new Date().toISOString()
   },
   comfyui: {
-    status: 'unknown', 
+    status: 'unknown',
     message: 'Not checked yet',
     lastChecked: new Date().toISOString()
   },
@@ -62,41 +77,51 @@ let currentStatus: SystemStatus = {
 let runpodHealthInterval: NodeJS.Timeout | null = null
 let comfyuiHealthInterval: NodeJS.Timeout | null = null
 
-const RUNPOD_CHECK_INTERVAL = 30000  // 30 seconds
+const RUNPOD_CHECK_INTERVAL = 30000 // 30 seconds
 const COMFYUI_CHECK_INTERVAL = 15000 // 15 seconds
 
 // WebSocket client management
 export function addWebSocketClient(ws: any) {
   wsClients.add(ws)
   logger.info(`🔌 WebSocket client connected. Total clients: ${wsClients.size}`)
-  
+
   // Send current status to new client immediately
   sendToClient(ws, {
     type: 'status_update',
     data: currentStatus,
     timestamp: new Date().toISOString()
   })
-  
+
   // Handle client disconnect
   ws.on('close', () => {
     wsClients.delete(ws)
     logger.info(`🔌 WebSocket client disconnected. Total clients: ${wsClients.size}`)
+  })
+
+  // Handle client errors to prevent unhandled rejections
+  ws.on('error', (error: any) => {
+    logger.error('❌ WebSocket client error:', error.message)
+    wsClients.delete(ws) // Remove client on error
   })
 }
 
 // Broadcast message to all connected clients
 function broadcastToClients(message: WebSocketMessage) {
   const messageStr = JSON.stringify(message)
-  
+
   wsClients.forEach(ws => {
     try {
-      if (ws.readyState === 1) { // WebSocket.OPEN
+      if (ws.readyState === 1) {
+        // WebSocket.OPEN
         ws.send(messageStr)
       } else {
         wsClients.delete(ws) // Clean up dead connections
       }
-    } catch (error) {
-      logger.error('❌ Failed to send WebSocket message:', error)
+    } catch (error: any) {
+      // Silently handle common disconnection errors to prevent unhandled rejections
+      if (error.code !== 'ECONNRESET' && error.code !== 'EPIPE') {
+        logger.error('❌ Failed to send WebSocket message:', error.message)
+      }
       wsClients.delete(ws) // Remove failed connection
     }
   })
@@ -105,11 +130,15 @@ function broadcastToClients(message: WebSocketMessage) {
 // Send message to specific client
 function sendToClient(ws: any, message: WebSocketMessage) {
   try {
-    if (ws.readyState === 1) { // WebSocket.OPEN
+    if (ws.readyState === 1) {
+      // WebSocket.OPEN
       ws.send(JSON.stringify(message))
     }
-  } catch (error) {
-    logger.error('❌ Failed to send WebSocket message to client:', error)
+  } catch (error: any) {
+    // Silently handle common disconnection errors to prevent unhandled rejections
+    if (error.code !== 'ECONNRESET' && error.code !== 'EPIPE') {
+      logger.error('❌ Failed to send WebSocket message to client:', error.message)
+    }
     wsClients.delete(ws)
   }
 }
@@ -117,22 +146,22 @@ function sendToClient(ws: any, message: WebSocketMessage) {
 // Calculate overall system health based on component statuses
 function calculateSystemHealth(): SystemHealth {
   const { runpodWorker, comfyui, autoProcessing } = currentStatus
-  
+
   // If any critical component is unhealthy, system is unhealthy
   if (runpodWorker.status === 'unhealthy' || comfyui.status === 'unhealthy') {
     return 'unhealthy'
   }
-  
+
   // If any component is unknown, system health is unknown
   if (runpodWorker.status === 'unknown' || comfyui.status === 'unknown') {
     return 'unknown'
   }
-  
+
   // If auto processing is enabled but has issues, system is degraded
   if (autoProcessing.status === 'paused') {
     return 'degraded'
   }
-  
+
   // All systems healthy
   return 'healthy'
 }
@@ -140,7 +169,7 @@ function calculateSystemHealth(): SystemHealth {
 // Update system status and broadcast changes
 function updateStatus(updates: Partial<SystemStatus>, eventType: string = 'status_update') {
   const previousStatus = { ...currentStatus }
-  
+
   // Apply updates
   currentStatus = {
     ...currentStatus,
@@ -148,14 +177,14 @@ function updateStatus(updates: Partial<SystemStatus>, eventType: string = 'statu
     timestamp: new Date().toISOString(),
     systemHealth: calculateSystemHealth()
   }
-  
+
   // Broadcast the change
   broadcastToClients({
     type: eventType as any,
     data: currentStatus,
     timestamp: currentStatus.timestamp
   })
-  
+
   // Log significant changes
   if (previousStatus.systemHealth !== currentStatus.systemHealth) {
     logger.info(`🏥 System health changed: ${previousStatus.systemHealth} → ${currentStatus.systemHealth}`)
@@ -165,116 +194,130 @@ function updateStatus(updates: Partial<SystemStatus>, eventType: string = 'statu
 // Check RunPod worker health
 async function checkRunPodWorkerHealth() {
   const startTime = Date.now()
-  
+
   try {
     const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
     const response = await fetch(`${workerUrl}/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000)
     })
-    
+
     const responseTime = Date.now() - startTime
     const timestamp = new Date().toISOString()
-    
+
     if (!response.ok) {
-      updateStatus({
+      updateStatus(
+        {
+          runpodWorker: {
+            status: 'unhealthy',
+            message: `Worker responded with ${response.status}`,
+            lastChecked: timestamp,
+            responseTime
+          }
+        },
+        'runpod_status_change'
+      )
+      return
+    }
+
+    const healthData = await response.json()
+    const isHealthy = healthData.status === 'healthy'
+
+    updateStatus(
+      {
         runpodWorker: {
-          status: 'unhealthy',
-          message: `Worker responded with ${response.status}`,
+          status: isHealthy ? 'healthy' : 'unhealthy',
+          message: healthData.message || 'Worker is responding',
           lastChecked: timestamp,
           responseTime
         }
-      }, 'runpod_status_change')
-      return
-    }
-    
-    const healthData = await response.json()
-    const isHealthy = healthData.status === 'healthy'
-    
-    updateStatus({
-      runpodWorker: {
-        status: isHealthy ? 'healthy' : 'unhealthy',
-        message: healthData.message || 'Worker is responding',
-        lastChecked: timestamp,
-        responseTime
-      }
-    }, 'runpod_status_change')
-    
+      },
+      'runpod_status_change'
+    )
   } catch (error: any) {
     const responseTime = Date.now() - startTime
-    updateStatus({
-      runpodWorker: {
-        status: 'unhealthy',
-        message: `Health check failed: ${error.message}`,
-        lastChecked: new Date().toISOString(),
-        responseTime
-      }
-    }, 'runpod_status_change')
+    updateStatus(
+      {
+        runpodWorker: {
+          status: 'unhealthy',
+          message: `Health check failed: ${error.message}`,
+          lastChecked: new Date().toISOString(),
+          responseTime
+        }
+      },
+      'runpod_status_change'
+    )
   }
 }
 
 // Check ComfyUI health and processing status
 async function checkComfyUIHealth() {
   const startTime = Date.now()
-  
+
   try {
     const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
     const response = await fetch(`${workerUrl}/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000)
     })
-    
+
     const responseTime = Date.now() - startTime
     const timestamp = new Date().toISOString()
-    
+
     if (!response.ok) {
-      updateStatus({
-        comfyui: {
-          status: 'unhealthy',
-          message: `ComfyUI check failed: ${response.status}`,
-          lastChecked: timestamp,
-          responseTime
+      updateStatus(
+        {
+          comfyui: {
+            status: 'unhealthy',
+            message: `ComfyUI check failed: ${response.status}`,
+            lastChecked: timestamp,
+            responseTime
+          },
+          comfyuiProcessing: {
+            status: 'unknown',
+            runningJobs: 0,
+            queuedJobs: 0,
+            lastChecked: timestamp
+          }
         },
-        comfyuiProcessing: {
-          status: 'unknown',
-          runningJobs: 0,
-          queuedJobs: 0,
-          lastChecked: timestamp
-        }
-      }, 'comfyui_status_change')
+        'comfyui_status_change'
+      )
       return
     }
-    
+
     const healthData = await response.json()
     const isHealthy = healthData.status === 'healthy'
-    
+
     // Determine processing status
     const runningCount = healthData.active_jobs?.running_count || 0
     const pendingCount = healthData.active_jobs?.pending_count || 0
-    
+
     let processingStatus: ComfyUIProcessingStatus = 'idle'
     if (runningCount > 0) {
       processingStatus = 'processing'
     } else if (pendingCount > 0) {
       processingStatus = 'queued'
     }
-    
-    updateStatus({
-      comfyui: {
-        status: isHealthy ? 'healthy' : 'unhealthy',
-        message: healthData.message || 'ComfyUI is responding',
-        lastChecked: timestamp,
-        responseTime,
-        version: healthData.version
+
+    updateStatus(
+      {
+        comfyui: {
+          status: isHealthy ? 'healthy' : 'unhealthy',
+          message: healthData.message || 'ComfyUI is responding',
+          lastChecked: timestamp,
+          responseTime,
+          version: healthData.version
+        },
+        comfyuiProcessing: {
+          status: processingStatus,
+          runningJobs: runningCount,
+          queuedJobs: pendingCount,
+          lastChecked: timestamp
+        }
       },
-      comfyuiProcessing: {
-        status: processingStatus,
-        runningJobs: runningCount,
-        queuedJobs: pendingCount,
-        lastChecked: timestamp
-      }
-    }, 'comfyui_status_change')
-    
+      'comfyui_status_change'
+    )
+
     // DISABLED: Don't reset active jobs to queued when ComfyUI is idle
     // This was causing completed jobs to be reset to queued status
     // if (processingStatus === 'idle' && currentStatus.jobCounts.active > 0) {
@@ -294,39 +337,41 @@ async function checkComfyUIHealth() {
     //     resetActiveJobsTimeout = null
     //   }
     // }
-    
+
     // Clear any existing timeout since we're disabling this functionality
     if (resetActiveJobsTimeout) {
       clearTimeout(resetActiveJobsTimeout)
       resetActiveJobsTimeout = null
     }
-    
   } catch (error: any) {
     const responseTime = Date.now() - startTime
-    updateStatus({
-      comfyui: {
-        status: 'unhealthy',
-        message: `ComfyUI check failed: ${error.message}`,
-        lastChecked: new Date().toISOString(),
-        responseTime
+    updateStatus(
+      {
+        comfyui: {
+          status: 'unhealthy',
+          message: `ComfyUI check failed: ${error.message}`,
+          lastChecked: new Date().toISOString(),
+          responseTime
+        },
+        comfyuiProcessing: {
+          status: 'unknown',
+          runningJobs: 0,
+          queuedJobs: 0,
+          lastChecked: new Date().toISOString()
+        }
       },
-      comfyuiProcessing: {
-        status: 'unknown',
-        runningJobs: 0,
-        queuedJobs: 0,
-        lastChecked: new Date().toISOString()
-      }
-    }, 'comfyui_status_change')
+      'comfyui_status_change'
+    )
   }
 }
 
 // Update job counts from database - call this when jobs are modified
 export async function updateJobCounts() {
   const startTime = performance.now()
-  
+
   try {
     const db = getDb()
-    
+
     // Get status counts in a single query using GROUP BY
     const statusCounts = await db
       .select({
@@ -335,14 +380,14 @@ export async function updateJobCounts() {
       })
       .from(jobs)
       .groupBy(jobs.status)
-    
+
     // Get total count separately
     const totalResult = await db.select({ count: count() }).from(jobs)
     const total = totalResult[0].count
-    
+
     const queryTime = performance.now() - startTime
     logger.info(`📊 [JOB COUNTS] Status counts query completed in ${queryTime.toFixed(2)}ms`)
-    
+
     // Build counts object from results
     const counts = {
       total,
@@ -353,7 +398,7 @@ export async function updateJobCounts() {
       canceled: 0,
       needInput: 0
     }
-    
+
     // Map status counts to our structure
     statusCounts.forEach(row => {
       switch (row.status) {
@@ -377,14 +422,16 @@ export async function updateJobCounts() {
           break
       }
     })
-    
-    updateStatus({
-      jobCounts: counts
-    }, 'job_counts_update')
-    
+
+    updateStatus(
+      {
+        jobCounts: counts
+      },
+      'job_counts_update'
+    )
+
     const totalTime = performance.now() - startTime
     logger.info(`📊 [JOB COUNTS] Update completed in ${totalTime.toFixed(2)}ms - total: ${counts.total}, queued: ${counts.queued}, active: ${counts.active}`)
-    
   } catch (error: any) {
     const totalTime = performance.now() - startTime
     logger.error(`❌ [JOB COUNTS] Failed to update job counts after ${totalTime.toFixed(2)}ms:`, error)
@@ -421,37 +468,36 @@ export async function updateJobCounts() {
 // }
 
 // Update auto processing status
-export function updateAutoProcessingStatus(
-  status: AutoProcessingStatus, 
-  message: string, 
-  intervalActive: boolean = false
-) {
-  updateStatus({
-    autoProcessing: {
-      status,
-      message,
-      lastToggled: new Date().toISOString(),
-      intervalActive
-    }
-  }, 'auto_processing_toggle')
+export function updateAutoProcessingStatus(status: AutoProcessingStatus, message: string, intervalActive: boolean = false) {
+  updateStatus(
+    {
+      autoProcessing: {
+        status,
+        message,
+        lastToggled: new Date().toISOString(),
+        intervalActive
+      }
+    },
+    'auto_processing_toggle'
+  )
 }
 
 // Start all monitoring intervals
 export function startSystemMonitoring() {
   logger.info('🚀 Starting system status monitoring...')
-  
+
   // Stop any existing intervals
   stopSystemMonitoring()
-  
+
   // Start health checks immediately
   checkRunPodWorkerHealth()
   checkComfyUIHealth()
   updateJobCounts()
-  
+
   // Set up intervals (no job counts polling - updated reactively)
   runpodHealthInterval = setInterval(checkRunPodWorkerHealth, RUNPOD_CHECK_INTERVAL)
   comfyuiHealthInterval = setInterval(checkComfyUIHealth, COMFYUI_CHECK_INTERVAL)
-  
+
   logger.info('✅ System monitoring started')
 }
 
@@ -461,12 +507,12 @@ export function stopSystemMonitoring() {
     clearInterval(runpodHealthInterval)
     runpodHealthInterval = null
   }
-  
+
   if (comfyuiHealthInterval) {
     clearInterval(comfyuiHealthInterval)
     comfyuiHealthInterval = null
   }
-  
+
   logger.info('⏹️ System monitoring stopped')
 }
 
@@ -489,25 +535,25 @@ export async function checkWorkerHealth() {
       method: 'GET',
       signal: AbortSignal.timeout(5000) // 5 second timeout
     })
-    
+
     if (!response.ok) {
       return { healthy: false, available: false, runningJobIds: [] }
     }
-    
+
     const healthData = await response.json()
     const isHealthy = healthData.status === 'healthy'
-    
+
     // Use the correct fields from active_jobs
     const actualRunningCount = healthData.active_jobs?.running_count || 0
     const actualPendingCount = healthData.active_jobs?.pending_count || 0
     const isAvailable = actualRunningCount === 0 && actualPendingCount === 0
-    
+
     // Get the actual running job IDs from the worker
     const runningJobIds = healthData.running_jobs || []
-    
+
     // No longer doing zombie cleanup here - we handle this by marking all other active jobs
     // as failed when a new job is sent to the worker
-    
+
     return {
       healthy: isHealthy,
       available: isAvailable,
@@ -515,7 +561,7 @@ export async function checkWorkerHealth() {
       actualRunningCount,
       healthData
     }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_error: any) {
     return { healthy: false, available: false, runningJobIds: [] }
   }

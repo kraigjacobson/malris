@@ -1,6 +1,5 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
-
     <!-- Search Filters -->
     <div class="mb-3 sm:mb-6">
       <!-- Header always visible -->
@@ -8,56 +7,27 @@
         <div class="flex justify-between items-center">
           <div class="flex gap-2 items-center">
             <!-- Upload Videos Button -->
-            <UButton
-              color="green"
-              variant="outline"
-              size="xs"
-              @click="openUploadModal()"
-            >
+            <UButton color="green" variant="outline" size="xs" @click="openUploadModal()">
               <UIcon name="i-heroicons-arrow-up-tray" />
               <span class="hidden sm:inline">Upload</span>
             </UButton>
             <!-- Slideshow Button -->
-            <UButton
-              color="primary"
-              variant="outline"
-              size="xs"
-              @click="startSlideshow"
-            >
+            <UButton color="primary" variant="outline" size="xs" @click="startSlideshow">
               <UIcon name="i-heroicons-play" />
               <span class="hidden sm:inline">Slideshow</span>
             </UButton>
           </div>
           <div class="flex gap-2 items-center">
             <!-- Search and Clear Buttons -->
-            <UButton variant="outline" size="sm" @click="clearFilters">
-              Clear
-            </UButton>
-            <UButton
-              v-if="!isLoading"
-              color="primary"
-              size="sm"
-              @click="searchMedia"
-            >
-              Search
-            </UButton>
-            <UButton
-              v-else
-              color="error"
-              variant="outline"
-              size="sm"
-              @click="cancelSearch"
-            >
+            <UButton variant="outline" size="sm" @click="clearFilters"> Clear </UButton>
+            <UButton v-if="!isLoading" color="primary" size="sm" @click="searchMedia"> Search </UButton>
+            <UButton v-else color="error" variant="outline" size="sm" @click="cancelSearch">
               <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
               <span class="hidden sm:inline">Cancel Search</span>
               <span class="sm:hidden">Cancel</span>
             </UButton>
             <!-- Collapse Button -->
-            <UButton
-              variant="ghost"
-              size="xs"
-              @click="filtersCollapsed = !filtersCollapsed"
-            >
+            <UButton variant="ghost" size="xs" @click="filtersCollapsed = !filtersCollapsed">
               <UIcon :name="filtersCollapsed ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-up'" />
             </UButton>
           </div>
@@ -70,52 +40,21 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <!-- UUID Search (priority filter) -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Media UUID (Direct Lookup)
-            </label>
-            <UInput
-              v-model="mediaUuid"
-              placeholder="Enter media record UUID to find specific record..."
-              class="w-full"
-              :ui="{ trailing: 'pe-1' }"
-            >
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Media UUID (Direct Lookup) </label>
+            <UInput v-model="mediaUuid" placeholder="Enter media record UUID to find specific record..." class="w-full" :ui="{ trailing: 'pe-1' }">
               <template v-if="mediaUuid?.length" #trailing>
-                <UButton
-                  color="neutral"
-                  variant="link"
-                  size="sm"
-                  icon="i-heroicons-x-mark"
-                  aria-label="Clear UUID input"
-                  @click="mediaUuid = ''"
-                />
+                <UButton color="neutral" variant="link" size="sm" icon="i-heroicons-x-mark" aria-label="Clear UUID input" @click="mediaUuid = ''" />
               </template>
             </UInput>
-            <p v-if="mediaUuid" class="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              When UUID is set, all other filters are ignored
-            </p>
+            <p v-if="mediaUuid" class="text-xs text-blue-600 dark:text-blue-400 mt-1">When UUID is set, all other filters are ignored</p>
           </div>
 
           <!-- Filename Search -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Filename (Partial Match)
-            </label>
-            <UInput
-              v-model="filenameSearch"
-              placeholder="Enter partial filename to search..."
-              class="w-full"
-              :ui="{ trailing: 'pe-1' }"
-              :disabled="!!mediaUuid"
-            >
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Filename (Partial Match) </label>
+            <UInput v-model="filenameSearch" placeholder="Enter partial filename to search..." class="w-full" :ui="{ trailing: 'pe-1' }" :disabled="!!mediaUuid">
               <template v-if="filenameSearch?.length" #trailing>
-                <UButton
-                  color="neutral"
-                  variant="link"
-                  size="sm"
-                  icon="i-heroicons-x-mark"
-                  aria-label="Clear filename input"
-                  @click="filenameSearch = ''"
-                />
+                <UButton color="neutral" variant="link" size="sm" icon="i-heroicons-x-mark" aria-label="Clear filename input" @click="filenameSearch = ''" />
               </template>
             </UInput>
           </div>
@@ -125,30 +64,14 @@
         <div class="grid grid-cols-2 gap-3 sm:gap-4">
           <!-- Media Type Filter -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Media Type
-            </label>
-            <USelect
-              v-model="mediaType"
-              :items="mediaTypeOptions"
-              placeholder="All types"
-              class="w-full"
-              :disabled="!!mediaUuid"
-            />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Media Type </label>
+            <USelect v-model="mediaType" :items="mediaTypeOptions" placeholder="All types" class="w-full" :disabled="!!mediaUuid" />
           </div>
 
           <!-- Purpose Filter -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Purpose
-            </label>
-            <USelect
-              v-model="purpose"
-              :items="purposeOptions"
-              placeholder="All purposes"
-              class="w-full"
-              :disabled="!!mediaUuid"
-            />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Purpose </label>
+            <USelect v-model="purpose" :items="purposeOptions" placeholder="All purposes" class="w-full" :disabled="!!mediaUuid" />
           </div>
         </div>
 
@@ -156,76 +79,42 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <!-- Subject Filter -->
           <div>
-            <SubjectSearch
-              v-model="selectedSubject"
-              placeholder="Subject..."
-              :disabled="!!mediaUuid"
-              @select="handleSubjectSelection"
-            />
+            <SubjectSearch v-model="selectedSubjects" placeholder="Select subjects..." :disabled="!!mediaUuid" @select="handleSubjectSelection" />
           </div>
 
           <!-- Tags Filter -->
           <div>
             <div class="space-y-2">
-              <UInputTags
-                v-model="selectedTags"
-                placeholder="Tags..."
-                class="w-full"
-                :disabled="!!mediaUuid"
-                :ui="{ trailing: 'pe-1' }"
-              >
+              <UInputTags v-model="selectedTags" placeholder="Tags..." class="w-full" :disabled="!!mediaUuid" :ui="{ trailing: 'pe-1' }">
                 <template v-if="selectedTags?.length" #trailing>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-circle-x"
-                    aria-label="Clear all tags"
-                    @click="selectedTags = []"
-                  />
+                  <UButton color="neutral" variant="link" size="sm" icon="i-lucide-circle-x" aria-label="Clear all tags" @click="selectedTags = []" />
                 </template>
               </UInputTags>
-              <UCheckbox
-                v-model="onlyShowUntagged"
-                label="Only show untagged"
-                class="text-xs"
-                :disabled="!!mediaUuid"
-              />
+              <div class="space-y-1">
+                <UCheckbox v-model="onlyShowUntagged" label="Only show untagged" class="text-xs" :disabled="!!mediaUuid" />
+                <UCheckbox v-model="onlyShowOrphans" label="Only show orphans (no job link)" class="text-xs" :disabled="!!mediaUuid" />
+              </div>
             </div>
           </div>
+        </div>
+
+        <!-- Star Rating Filter -->
+        <div class="flex items-center gap-1">
+          <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-6 h-6 cursor-pointer transition-colors" :class="selectedRatings.includes(star) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500'" @click="!mediaUuid && toggleRating(star)" />
         </div>
 
         <!-- Sort Options and Limit -->
         <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
           <div class="flex-1 min-w-0">
-            <USelect
-              v-model="sortBy"
-              :items="sortByOptions"
-              placeholder="Sort by..."
-              class="w-full"
-              :disabled="!!mediaUuid"
-            />
+            <USelect v-model="sortBy" :items="sortByOptions" placeholder="Sort by..." class="w-full" :disabled="!!mediaUuid" />
           </div>
           <div class="w-24 flex-shrink-0">
-            <USelect
-              v-model="sortOrder"
-              :items="sortOrderOptions"
-              placeholder="Order..."
-              class="w-full"
-              :disabled="!!mediaUuid"
-            />
+            <USelect v-model="sortOrder" :items="sortOrderOptions" placeholder="Order..." class="w-full" :disabled="!!mediaUuid" />
           </div>
           <div class="w-20 flex-shrink-0">
-            <USelect
-              v-model="paginationLimit"
-              :items="limitOptions"
-              placeholder="Limit..."
-              class="w-full"
-              :disabled="!!mediaUuid"
-            />
+            <USelect v-model="paginationLimit" :items="limitOptions" placeholder="Limit..." class="w-full" :disabled="!!mediaUuid" />
           </div>
         </div>
-
       </div>
     </div>
 
@@ -234,27 +123,16 @@
       <UIcon name="i-heroicons-arrow-path" class="animate-spin text-2xl" />
     </div>
 
-
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Results Header -->
       <div class="flex justify-between items-center mb-3 sm:mb-4">
-        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          Found {{ mediaResults.length }} of {{ totalDbCount }}
-        </p>
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">Found {{ mediaResults.length }} of {{ totalDbCount }}</p>
         <div class="flex gap-1 sm:gap-2">
-          <UButton
-            :variant="viewMode === 'grid' ? 'solid' : 'outline'"
-            size="xs"
-            @click="viewMode = 'grid'"
-          >
+          <UButton :variant="viewMode === 'grid' ? 'solid' : 'outline'" size="xs" @click="viewMode = 'grid'">
             <UIcon name="i-heroicons-squares-2x2" />
           </UButton>
-          <UButton
-            :variant="viewMode === 'list' ? 'solid' : 'outline'"
-            size="xs"
-            @click="viewMode = 'list'"
-          >
+          <UButton :variant="viewMode === 'list' ? 'solid' : 'outline'" size="xs" @click="viewMode = 'list'">
             <UIcon name="i-heroicons-list-bullet" />
           </UButton>
         </div>
@@ -262,157 +140,68 @@
 
       <!-- Grid View -->
       <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3">
-        <div
-          v-for="media in mediaResults"
-          :key="media.uuid"
-          class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group"
-        >
+        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group">
           <!-- Image Preview -->
-          <div
-            v-if="media.type === 'image'"
-            class="aspect-[3/4] relative cursor-pointer"
-            @click="openModal(media)"
-          >
-            <img
-              v-if="settingsStore.displayImages"
-              :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
-              :alt="media.type"
-              class="w-full h-full object-cover object-top"
-              loading="lazy"
-              @error="handleImageError"
-              @load="handleImageLoad"
-            >
+          <div v-if="media.type === 'image'" class="aspect-[3/4] relative cursor-pointer" @click="openModal(media)">
+            <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`" :alt="media.type" class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" @load="handleImageLoad" />
             <ImagePlaceholder v-else class="w-full h-full" />
             <!-- Delete Button - Top Right Corner -->
             <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
-              <UButton
-                icon="i-heroicons-trash"
-                color="error"
-                variant="solid"
-                size="xs"
-                class="opacity-0 group-hover:opacity-75 sm:group-hover:opacity-25 transition-opacity duration-200 shadow-lg"
-                :loading="deletingIds.includes(media.uuid)"
-                @click.stop="confirmDelete(media)"
-              />
-            </div>
-          </div>
-          
-          <!-- Video Preview -->
-          <div
-            v-else-if="media.type === 'video'"
-            class="aspect-[3/4] relative cursor-pointer"
-            :data-video-uuid="media.uuid"
-            @click="openModal(media)"
-            @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null"
-            @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null"
-          >
-            <!-- Video element (only when displayImages is true) -->
-            <video
-              v-if="settingsStore.displayImages"
-              :ref="`video-${media.uuid}`"
-              :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
-              class="w-full h-full object-cover object-top"
-              muted
-              loop
-              preload="none"
-              playsinline
-              webkit-playsinline
-              :data-video-id="media.uuid"
-              disablePictureInPicture
-            >
-              <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
-              Your browser does not support the video tag.
-            </video>
-            
-            <!-- Fallback for videos without thumbnails (when displayImages is true) -->
-            <div
-              v-if="settingsStore.displayImages && !media.thumbnail_uuid"
-              class="absolute inset-0 bg-gray-800 flex items-center justify-center"
-            >
-              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
-            </div>
-            
-            <!-- Video placeholder (when displayImages is false) -->
-            <div
-              v-if="!settingsStore.displayImages"
-              class="w-full h-full bg-gray-800 flex items-center justify-center"
-            >
-              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
-            </div>
-            
-            <!-- Delete Button - Top Right Corner -->
-            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
-              <UButton
-                icon="i-heroicons-trash"
-                color="error"
-                variant="solid"
-                size="xs"
-                class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg"
-                :loading="deletingIds.includes(media.uuid)"
-                @click.stop="confirmDelete(media)"
-              />
+              <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" class="opacity-0 group-hover:opacity-75 sm:group-hover:opacity-25 transition-opacity duration-200 shadow-lg" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
             </div>
           </div>
 
+          <!-- Video Preview -->
+          <div v-else-if="media.type === 'video'" class="aspect-[3/4] relative cursor-pointer" :data-video-uuid="media.uuid" @click="openModal(media)" @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null" @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null">
+            <!-- Video element (only when displayImages is true) -->
+            <video v-if="settingsStore.displayImages" :ref="`video-${media.uuid}`" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" class="w-full h-full object-cover object-top" muted loop preload="none" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture>
+              <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+
+            <!-- Fallback for videos without thumbnails (when displayImages is true) -->
+            <div v-if="settingsStore.displayImages && !media.thumbnail_uuid" class="absolute inset-0 bg-gray-800 flex items-center justify-center">
+              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
+            </div>
+
+            <!-- Video placeholder (when displayImages is false) -->
+            <div v-if="!settingsStore.displayImages" class="w-full h-full bg-gray-800 flex items-center justify-center">
+              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
+            </div>
+
+            <!-- Delete Button - Top Right Corner -->
+            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
+              <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
+            </div>
+
+            <!-- Star Rating Overlay - Below Delete Button -->
+            <StarRating :media-uuid="media.uuid" :rating="media.rating" :top-position="'52px'" @updated="rating => handleRatingUpdated(media.uuid, rating)" />
+          </div>
         </div>
       </div>
 
       <!-- List View -->
       <div v-else class="space-y-1 sm:space-y-2">
-        <div
-          v-for="media in mediaResults"
-          :key="media.uuid"
-          class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group"
-        >
+        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group">
           <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
             <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 shrink-0 cursor-pointer" @click="openModal(media)">
               <!-- Image thumbnail -->
-              <img
-                v-if="media.type === 'image' && settingsStore.displayImages"
-                :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`"
-                :alt="media.type"
-                class="w-full h-full object-cover object-top"
-                loading="lazy"
-                @error="handleImageError"
-              >
+              <img v-if="media.type === 'image' && settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`" :alt="media.type" class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" />
               <!-- Image placeholder -->
-              <div
-                v-else-if="media.type === 'image'"
-                class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center"
-              >
+              <div v-else-if="media.type === 'image'" class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                 <UIcon name="i-heroicons-photo" class="text-2xl text-gray-400" />
               </div>
               <!-- Video thumbnail (when displayImages is true) -->
-              <div
-                v-else-if="media.type === 'video' && settingsStore.displayImages"
-                class="w-full h-full relative"
-                :data-video-uuid="media.uuid"
-                @mouseenter="handleVideoHover(media.uuid, true)"
-                @mouseleave="handleVideoHover(media.uuid, false)"
-              >
+              <div v-else-if="media.type === 'video' && settingsStore.displayImages" class="w-full h-full relative" :data-video-uuid="media.uuid" @mouseenter="handleVideoHover(media.uuid, true)" @mouseleave="handleVideoHover(media.uuid, false)">
                 <!-- Video element -->
-                <video
-                  :ref="`video-list-${media.uuid}`"
-                  :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
-                  class="w-full h-full object-cover object-top"
-                  muted
-                  loop
-                  preload="none"
-                  playsinline
-                  webkit-playsinline
-                  :data-video-id="media.uuid"
-                  disablePictureInPicture
-                >
-                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
+                <video :ref="`video-list-${media.uuid}`" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" class="w-full h-full object-cover object-top" muted loop preload="none" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture>
+                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
-                
+
                 <!-- Fallback for videos without thumbnails -->
-                <div
-                  v-if="!media.thumbnail_uuid"
-                  class="absolute inset-0 bg-gray-800 flex items-center justify-center"
-                >
+                <div v-if="!media.thumbnail_uuid" class="absolute inset-0 bg-gray-800 flex items-center justify-center">
                   <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
                 </div>
               </div>
@@ -432,11 +221,7 @@
                 {{ media.type }} • {{ media.purpose }}<span class="hidden sm:inline"> • {{ formatDate(media.created_at) }}</span>
               </p>
               <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
-                <span
-                  v-for="tag in media.tags.tags.slice(0, 3)"
-                  :key="tag"
-                  class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-xs rounded border border-pink-200 dark:border-pink-800"
-                >
+                <span v-for="tag in media.tags.tags.slice(0, 3)" :key="tag" class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-xs rounded border border-pink-200 dark:border-pink-800">
                   {{ tag }}
                 </span>
               </div>
@@ -444,14 +229,7 @@
 
             <!-- Actions -->
             <div class="shrink-0 flex items-center gap-1 sm:gap-2">
-              <UButton
-                icon="i-heroicons-trash"
-                color="error"
-                variant="solid"
-                size="xs"
-                :loading="deletingIds.includes(media.uuid)"
-                @click.stop="confirmDelete(media)"
-              />
+              <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
               <UIcon name="i-heroicons-chevron-right" class="text-gray-400 hidden sm:block" />
             </div>
           </div>
@@ -461,13 +239,7 @@
       <!-- Pagination -->
       <div v-if="pagination.total > pagination.limit || pagination.has_more" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4 z-50">
         <div class="flex justify-center">
-          <UPagination
-            v-model:page="currentPage"
-            :items-per-page="pagination.limit"
-            :total="pagination.total"
-            show-last
-            show-first
-          />
+          <UPagination v-model:page="currentPage" :items-per-page="pagination.limit" :total="pagination.total" show-last show-first />
         </div>
       </div>
     </div>
@@ -485,21 +257,7 @@
     </div>
 
     <!-- Media Detail Modal -->
-    <MediaDetailsModal
-      v-model:is-open="isModalOpen"
-      :media="selectedMedia"
-      :current-index="currentMediaIndex"
-      :total-count="allMediaResults.length"
-      :deleting-ids="deletingIds"
-      :has-next="currentMediaIndex < allMediaResults.length - 1"
-      :has-previous="currentMediaIndex > 0"
-      :only-show-untagged="onlyShowUntagged"
-      @navigate="navigateMedia"
-      @confirm-delete="confirmDelete"
-      @close="closeModal"
-      @save-edits="handleMediaSaveEdits"
-      @save="handleTagSave"
-    />
+    <MediaDetailsModal v-model:is-open="isModalOpen" :media="selectedMedia" :current-index="currentMediaIndex" :total-count="allMediaResults.length" :deleting-ids="deletingIds" :has-next="currentMediaIndex < allMediaResults.length - 1" :has-previous="currentMediaIndex > 0" :only-show-untagged="onlyShowUntagged" @navigate="navigateMedia" @confirm-delete="confirmDelete" @close="closeModal" @save-edits="handleMediaSaveEdits" @save="handleTagSave" />
 
     <!-- Slideshow Overlay -->
     <div v-if="isSlideshow" class="fixed top-0 left-0 w-full h-full z-[99999] bg-black">
@@ -512,65 +270,29 @@
             <p class="text-xl">Loading next video...</p>
           </div>
         </div>
+
+        <!-- Star Rating Overlay for slideshow video -->
+        <StarRating v-if="currentSlideshowVideoUuid" :media-uuid="currentSlideshowVideoUuid" :rating="currentSlideshowVideoRating" @updated="handleSlideshowRatingUpdate" @popover-opened="handleSlideshowPopoverOpened" @popover-closed="handleSlideshowPopoverClosed" />
       </div>
-      
+
       <!-- Exit Button -->
       <div class="absolute top-4 right-4 z-50">
-        <UButton
-          variant="solid"
-          color="white"
-          icon="i-heroicons-x-mark"
-          size="sm"
-          @click="stopSlideshow"
-          @touchstart="stopSlideshow"
-          @touchend.prevent
-        />
+        <UButton variant="solid" color="white" icon="i-heroicons-x-mark" size="sm" @click="stopSlideshow" @touchstart="stopSlideshow" @touchend.prevent />
       </div>
-      
+
       <!-- Navigation Arrows -->
       <div class="absolute top-0 left-0 w-full h-full flex items-center z-40">
         <!-- Left side: Stacked navigation for one-handed mobile use -->
         <div class="flex flex-col gap-3 pl-4">
-          <UButton
-            variant="solid"
-            color="white"
-            icon="i-heroicons-chevron-right"
-            size="lg"
-            @click="slideshowNext"
-            @touchstart="slideshowNext"
-            @touchend.prevent
-          />
-          <UButton
-            v-if="slideshowCurrentIndex > 0"
-            variant="solid"
-            color="white"
-            icon="i-heroicons-chevron-left"
-            size="lg"
-            @click="slideshowPrevious"
-            @touchstart="slideshowPrevious"
-            @touchend.prevent
-          />
-          <UButton
-            variant="solid"
-            color="white"
-            :icon="slideshowPaused ? 'i-heroicons-play' : 'i-heroicons-pause'"
-            size="lg"
-            @click="toggleSlideshowPause"
-            @touchstart="toggleSlideshowPause"
-            @touchend.prevent
-          />
+          <UButton variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" @click="slideshowNext" @touchstart="slideshowNext" @touchend.prevent />
+          <UButton v-if="slideshowCurrentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" @click="slideshowPrevious" @touchstart="slideshowPrevious" @touchend.prevent />
+          <UButton variant="solid" color="white" :icon="slideshowPaused ? 'i-heroicons-play' : 'i-heroicons-pause'" size="lg" @click="toggleSlideshowPause" @touchstart="toggleSlideshowPause" @touchend.prevent />
         </div>
       </div>
-      
     </div>
 
-
     <!-- Media Upload Modal -->
-    <UploadModal
-      v-model:is-open="isUploadModalOpen"
-      @close="closeUploadModal"
-    />
-
+    <UploadModal v-model:is-open="isUploadModalOpen" @close="closeUploadModal" />
   </div>
 </template>
 
@@ -588,38 +310,25 @@ definePageMeta({
 
 // Initialize stores and composables
 const settingsStore = useSettingsStore()
-const {
-  filters: _persistentFilters,
-  loadFilters,
-  resetFilters: _resetFilters,
-  mediaType,
-  purpose,
-  selectedTags,
-  sortBy,
-  sortOrder,
-  paginationLimit,
-  viewMode,
-  filtersCollapsed,
-  subjectUuid,
-  mediaUuid,
-  onlyShowUntagged
-} = useMediaGalleryFilters()
+const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedTags, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid, onlyShowUntagged } = useMediaGalleryFilters()
 
 // Template refs
 const modalVideo = ref(null)
 
-
-
 // Upload modal functionality
 const isUploadModalOpen = ref(false)
 
-
-
-// Subject selection state - default to "None" option
-const selectedSubject = ref({ value: '', label: 'None' })
+// Subject selection state - default to empty array
+const selectedSubjects = ref([])
 
 // Filename search state
 const filenameSearch = ref('')
+
+// Star rating filter state - default to empty (show only unrated)
+const selectedRatings = ref([])
+
+// Orphan filter state
+const onlyShowOrphans = ref(false)
 
 const mediaResults = ref([])
 const isLoading = ref(false)
@@ -648,10 +357,13 @@ const slideshowNextVideo = ref(null) // Preload next video for seamless transiti
 const slideshowVideos = ref([]) // Array of video UUIDs from database
 const slideshowCurrentIndex = ref(-1)
 const slideshowPaused = ref(false)
+const slideshowPausedByPopover = ref(false)
 const isLoadingNextBatch = ref(false) // Track if we're loading the next batch
 const slideshowOffset = ref(0) // Current offset for pagination
 const slideshowBatchSize = ref(10) // Number of videos to fetch per batch
 const slideshowTotalCount = ref(0) // Total number of videos available from API
+const currentSlideshowVideoUuid = ref(null)
+const currentSlideshowVideoRating = ref(null)
 
 // Filters collapsed state is now handled by the composable
 
@@ -667,7 +379,6 @@ const allMediaResults = computed(() => {
   return mediaResults.value
 })
 
-
 const currentImageIndex = computed(() => {
   if (!selectedMedia.value) return -1
   return imageResults.value.findIndex(media => media.uuid === selectedMedia.value.uuid)
@@ -677,9 +388,6 @@ const currentMediaIndex = computed(() => {
   if (!selectedMedia.value) return -1
   return allMediaResults.value.findIndex(media => media.uuid === selectedMedia.value.uuid)
 })
-
-
-
 
 // Filter options
 const mediaTypeOptions = [
@@ -726,8 +434,6 @@ const limitOptions = [
   { label: '480', value: 480 }
 ]
 
-
-
 // Search cancellation
 const searchController = ref(null)
 
@@ -736,55 +442,82 @@ const searchController = ref(null)
 // Helper function to build search parameters
 const buildSearchParams = () => {
   const params = new URLSearchParams()
-  
+
   // Priority searches that ignore other filters
   if (mediaUuid.value && mediaUuid.value.trim()) {
     params.append('uuid', mediaUuid.value.trim())
     params.append('include_thumbnails', 'true')
     return { params, searchType: 'uuid' }
   }
-  
+
   if (filenameSearch.value && filenameSearch.value.trim()) {
     params.append('filename_pattern', filenameSearch.value.trim())
     params.append('include_thumbnails', 'true')
     return { params, searchType: 'filename' }
   }
-  
+
   // Normal search with all filters
   const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
   const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
-  
+
   if (mediaTypeValue) params.append('media_type', mediaTypeValue)
   if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
-  if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
-  
+
+  // Add selected subjects (multiple)
+  if (selectedSubjects.value && selectedSubjects.value.length > 0) {
+    params.append('subject_uuids', selectedSubjects.value.join(','))
+  }
+
   // Add selected tags from UInputTags component
   if (selectedTags.value.length > 0) {
     params.append('tags', selectedTags.value.join(','))
   }
   // Always use partial match mode (API only supports this)
   params.append('tag_match_mode', 'partial')
-  
+
   // Add only show untagged filter
   if (onlyShowUntagged.value) {
     params.append('only_untagged', 'true')
   }
-  
+
+  // Add orphan filter
+  if (onlyShowOrphans.value) {
+    params.append('only_orphans', 'true')
+  }
+
+  // Add rating filter
+  if (selectedRatings.value.length > 0) {
+    params.append('ratings', selectedRatings.value.join(','))
+  } else {
+    // If no ratings selected, only show unrated media
+    params.append('unrated_only', 'true')
+  }
+
   params.append('include_thumbnails', 'true')
   return { params, searchType: 'normal' }
 }
 
+// Toggle rating selection
+const toggleRating = rating => {
+  const index = selectedRatings.value.indexOf(rating)
+  if (index > -1) {
+    selectedRatings.value.splice(index, 1)
+  } else {
+    selectedRatings.value.push(rating)
+  }
+}
+
 // Helper function to add pagination and sorting
-const addPaginationAndSorting = (params) => {
+const addPaginationAndSorting = params => {
   // Handle limit - extract value if it's an object, use paginationLimit from composable
   const limit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
   params.append('limit', limit.toString())
   params.append('offset', ((currentPage.value - 1) * limit).toString())
-  
+
   // Add sort parameters
   const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
   const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
-  
+
   if (sortByValue) {
     params.append('sort_by', sortByValue)
     // For random sorting, order doesn't matter but API expects it
@@ -807,12 +540,12 @@ const updatePagination = (response, searchType) => {
     }
     return
   }
-  
+
   // For filename and normal searches
   const currentLimit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
-  const currentOffset = response.offset || ((currentPage.value - 1) * currentLimit)
+  const currentOffset = response.offset || (currentPage.value - 1) * currentLimit
   const hasMore = response.count === currentLimit
-  
+
   pagination.value = {
     total: hasMore ? currentOffset + response.count + 1 : currentOffset + response.count,
     limit: currentLimit,
@@ -825,7 +558,7 @@ const updatePagination = (response, searchType) => {
 const searchMedia = async () => {
   isLoading.value = true
   hasSearched.value = true
-  
+
   // Only collapse filters on mobile devices after search is submitted
   if (isMobile) {
     filtersCollapsed.value = true
@@ -836,7 +569,7 @@ const searchMedia = async () => {
 
   try {
     const { params, searchType } = buildSearchParams()
-    
+
     // Add pagination and sorting for non-UUID searches
     if (searchType !== 'uuid') {
       addPaginationAndSorting(params)
@@ -845,9 +578,9 @@ const searchMedia = async () => {
     const response = await useApiFetch(`media/search?${params.toString()}`, {
       signal: searchController.value.signal
     })
-    
+
     const allResults = response.results || []
-    
+
     // Filter results based on media type selection (only for normal searches)
     if (searchType === 'normal') {
       mediaResults.value = allResults.filter(media => {
@@ -862,7 +595,7 @@ const searchMedia = async () => {
         // For general searches, exclude thumbnails to avoid duplicates
         return media.purpose !== 'thumbnail'
       })
-      
+
       // Log any videos without thumbnails but don't filter them out
       mediaResults.value.forEach(media => {
         if (media.type === 'video' && !media.thumbnail_uuid) {
@@ -873,39 +606,38 @@ const searchMedia = async () => {
       // For direct searches (UUID/filename), use results as-is
       mediaResults.value = allResults
     }
-    
+
     // Update pagination
     updatePagination(response, searchType)
-    
+
     // Store the total database count if available
     if (response.total_count !== undefined) {
       totalDbCount.value = response.total_count
     }
-    
   } catch (err) {
     // Don't show error if search was cancelled
     if (err.name === 'AbortError') {
       console.log('Search was cancelled')
       return
     }
-    
+
     console.error('Search error:', err)
     const toast = useToast()
-    
+
     let errorMessage = 'Failed to search media'
     if (err.statusCode === 503) {
       errorMessage = 'Media API is not available. Please ensure the service is running on localhost:8000'
     } else if (err.data?.message) {
       errorMessage = err.data.message
     }
-    
+
     toast.add({
       title: 'Media Search Error',
       description: errorMessage,
       color: 'red',
       timeout: 5000
     })
-    
+
     mediaResults.value = []
   } finally {
     isLoading.value = false
@@ -913,13 +645,12 @@ const searchMedia = async () => {
   }
 }
 
-
 const cancelSearch = () => {
   if (searchController.value) {
     searchController.value.abort()
     isLoading.value = false
     searchController.value = null
-    
+
     const toast = useToast()
     toast.add({
       title: 'Search Cancelled',
@@ -935,11 +666,11 @@ const clearFilters = () => {
   mediaResults.value = []
   hasSearched.value = false
   currentPage.value = 1
-  
-  // Reset subject selection to "None"
-  selectedSubject.value = { value: '', label: 'None' }
+
+  // Reset subject selection to empty array
+  selectedSubjects.value = []
   subjectUuid.value = ''
-  
+
   // Reset pagination
   pagination.value = {
     total: 0,
@@ -947,32 +678,25 @@ const clearFilters = () => {
     offset: 0,
     has_more: false
   }
-  
+
   // Reset total database count
   totalDbCount.value = 0
+
+  // Reset rating filter
+  selectedRatings.value = []
+
+  // Reset orphan filter
+  onlyShowOrphans.value = false
 }
 
 // Subject selection handler
-const handleSubjectSelection = (selected) => {
-  
-  // Update filters
-  if (selected && selected.value && selected.value !== '') {
-    subjectUuid.value = selected.value // Use the UUID
-  } else {
-    subjectUuid.value = ''
-  }
-  
-  // Close mobile keyboard by blurring the input
-  nextTick(() => {
-    const subjectInput = document.querySelector('input[placeholder*="Search for a subject"]')
-    if (subjectInput) {
-      subjectInput.blur()
-    }
-  })
+const handleSubjectSelection = selected => {
+  // selected is now an array of subject UUIDs
+  // Store the array for query building
+  selectedSubjects.value = selected || []
 }
 
-
-const handleImageLoad = (event) => {
+const handleImageLoad = event => {
   console.debug('✅ Image loaded successfully:', {
     src: event.target.src.substring(0, 50) + '...',
     isBase64: event.target.src.startsWith('data:'),
@@ -981,17 +705,17 @@ const handleImageLoad = (event) => {
   })
 }
 
-const handleImageError = (event) => {
+const handleImageError = event => {
   console.error('❌ Image failed to load:', {
     src: event.target.src.substring(0, 100) + '...',
     isBase64: event.target.src.startsWith('data:'),
     displayImages: settingsStore.displayImages,
     error: event
   })
-  
+
   // Hide the broken image and show placeholder instead
   event.target.style.display = 'none'
-  
+
   // Find the parent container and add a placeholder
   const container = event.target.parentElement
   if (container && !container.querySelector('.image-error-placeholder')) {
@@ -1002,44 +726,137 @@ const handleImageError = (event) => {
   }
 }
 
-const formatDate = (dateString) => {
+const formatDate = dateString => {
   return new Date(dateString).toLocaleDateString()
 }
 
-
-const confirmDelete = async (media) => {
+const confirmDelete = async media => {
   const { confirm } = useConfirmDialog()
-  
-  const result = await confirm({
-    title: 'Delete Media',
-    message: `Are you sure you want to delete "${media.filename}"? This action cannot be undone.`,
-    confirmLabel: 'Delete',
-    cancelLabel: 'Cancel',
-    variant: 'error'
-  })
-  
-  if (result) {
-    deleteMedia(media.uuid)
+  const toast = useToast()
+
+  // Check if this media has a dest_media_uuid_ref OR is a dest video itself
+  const hasDest = media.dest_media_uuid_ref && media.dest_media_uuid_ref.trim() !== ''
+  const isDestVideo = media.purpose === 'dest' && media.type === 'video'
+
+  if (hasDest || isDestVideo) {
+    // Fetch deletion preview
+    try {
+      const preview = await useApiFetch(`media/${media.uuid}/delete-preview?cascade=true`)
+
+      // Fetch non-cascade preview to separate "this" records
+      const previewThis = await useApiFetch(`media/${media.uuid}/delete-preview?cascade=false`)
+
+      // Build items list with separate sections
+      const items = []
+
+      // Section for "This Media" records
+      if (previewThis.willDelete.jobs.length > 0) {
+        items.push({
+          label: `This Media - ${previewThis.willDelete.jobs.length} Job(s)`,
+          items: previewThis.willDelete.jobs.map(j => `${j.jobType} - ${j.status}`)
+        })
+      }
+
+      // Section for "All Associated" records
+      const allJobs = preview.willDelete.jobs.filter(j => !previewThis.willDelete.jobs.some(tj => tj.id === j.id))
+      const allMedia = preview.willDelete.mediaRecords.filter(m => m.uuid !== media.uuid)
+
+      if (allJobs.length > 0) {
+        items.push({
+          label: `All Associated - ${allJobs.length} Job(s)`,
+          items: allJobs.map(j => `${j.jobType} - ${j.status}`)
+        })
+      }
+
+      if (allMedia.length > 0) {
+        items.push({
+          label: `All Associated - ${allMedia.length} Media Record(s)`,
+          items: allMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
+        })
+      }
+
+      const result = await confirm({
+        title: 'Delete Media with Cascade',
+        message: `Choose deletion option:`,
+        confirmLabel: 'Delete All',
+        alternateLabel: 'Delete This',
+        cancelLabel: 'Cancel',
+        variant: 'error',
+        items
+      })
+
+      if (result === 'confirm') {
+        await deleteMedia(media.uuid, true)
+      } else if (result === 'alternate') {
+        await deleteMedia(media.uuid, false)
+      }
+    } catch (error) {
+      console.error('Failed to fetch delete preview:', error)
+      toast.add({
+        title: 'Preview Failed',
+        description: 'Failed to load deletion preview. Please try again.',
+        color: 'error',
+        duration: 3000
+      })
+    }
+  } else {
+    // Fetch preview for simple delete
+    try {
+      const preview = await useApiFetch(`media/${media.uuid}/delete-preview?cascade=false`)
+
+      const items = []
+
+      if (preview.willDelete.jobs.length > 0) {
+        items.push({
+          label: `${preview.willDelete.jobs.length} Job(s)`,
+          items: preview.willDelete.jobs.map(j => `${j.id.substring(0, 8)}... - ${j.subjectName} - ${j.jobType} - ${j.status}`)
+        })
+      }
+
+      const result = await confirm({
+        title: 'Delete Media',
+        message: `Are you sure you want to delete "${media.filename}"?${preview.willDelete.jobs.length > 0 ? ` This will also delete ${preview.willDelete.jobs.length} associated job(s).` : ''}`,
+        confirmLabel: 'Delete',
+        cancelLabel: 'Cancel',
+        variant: 'error',
+        items: items.length > 0 ? items : undefined
+      })
+
+      if (result === 'confirm') {
+        await deleteMedia(media.uuid, false)
+      }
+    } catch (error) {
+      console.error('Failed to fetch delete preview:', error)
+      toast.add({
+        title: 'Preview Failed',
+        description: 'Failed to load deletion preview. Please try again.',
+        color: 'error',
+        duration: 3000
+      })
+    }
   }
 }
 
-const deleteMedia = async (uuid) => {
+const deleteMedia = async (uuid, cascade = false) => {
   const toast = useToast()
-  
+
   try {
     // Add to deleting list
     deletingIds.value.push(uuid)
-    
+
+    // Build URL with cascade parameter if needed
+    const url = cascade ? `media/${uuid}/delete?cascade=true` : `media/${uuid}/delete`
+
     // Call delete API
-    await useApiFetch(`media/${uuid}/delete`, {
+    const response = await useApiFetch(url, {
       method: 'DELETE'
     })
-    
+
     // Handle modal navigation if deleting current image
     if (isModalOpen.value && selectedMedia.value?.uuid === uuid) {
       const currentIndex = currentImageIndex.value
       const images = imageResults.value
-      
+
       if (images.length > 1) {
         // Navigate to next image, or previous if at end
         const nextIndex = currentIndex < images.length - 1 ? currentIndex : currentIndex - 1
@@ -1054,51 +871,51 @@ const deleteMedia = async (uuid) => {
         isModalOpen.value = false
       }
     }
-    
+
     // Remove from results
     mediaResults.value = mediaResults.value.filter(media => media.uuid !== uuid)
-    
-    // Show success toast
+
+    // Show success toast with details from response
+    const message = response.cascadeDeleted ? `Deleted ${response.deletedCount} media records and ${response.deletedJobs} jobs` : 'Media file has been successfully deleted'
+
     toast.add({
       title: 'Media Deleted',
-      description: 'Media file has been successfully deleted.',
+      description: message,
       color: 'green',
       timeout: 3000
     })
-    
   } catch (error) {
     console.error('Delete error:', error)
-    
+
     let errorMessage = 'Failed to delete media'
     if (error.statusCode === 503) {
       errorMessage = 'Media API is not available'
     } else if (error.data?.message) {
       errorMessage = error.data.message
     }
-    
+
     toast.add({
       title: 'Delete Failed',
       description: errorMessage,
       color: 'red',
       timeout: 5000
     })
-    
   } finally {
     // Remove from deleting list
     deletingIds.value = deletingIds.value.filter(id => id !== uuid)
   }
 }
 
-const openModal = async (media) => {
+const openModal = async media => {
   selectedMedia.value = media
   isModalOpen.value = true
-  
+
   // If it's a video, try to autoplay after modal opens
   if (media.type === 'video') {
     await nextTick()
     setTimeout(() => {
       const modalVideoEl = modalVideo.value || document.querySelector('video[controls]')
-      
+
       if (modalVideoEl) {
         console.log('🎬 Modal video ready, attempting autoplay for:', {
           uuid: media.uuid,
@@ -1106,14 +923,14 @@ const openModal = async (media) => {
           preload: modalVideoEl.preload,
           crossOrigin: modalVideoEl.crossOrigin
         })
-        
+
         // Add event listeners for debugging
         const onModalLoadStart = () => console.log('🌐 Modal video loadstart')
         const onModalProgress = () => console.log('📊 Modal video progress')
         const onModalLoadedMetadata = () => console.log('📋 Modal video loadedmetadata')
         const onModalLoadedData = () => console.log('✅ Modal video loadeddata')
         const onModalCanPlay = () => console.log('▶️ Modal video canplay')
-        const onModalError = (e) => {
+        const onModalError = e => {
           console.error('❌ Modal video error:', {
             code: e.target.error?.code,
             message: e.target.error?.message,
@@ -1122,14 +939,14 @@ const openModal = async (media) => {
             readyState: e.target.readyState
           })
         }
-        
+
         modalVideoEl.addEventListener('loadstart', onModalLoadStart, { once: true })
         modalVideoEl.addEventListener('progress', onModalProgress)
         modalVideoEl.addEventListener('loadedmetadata', onModalLoadedMetadata, { once: true })
         modalVideoEl.addEventListener('loadeddata', onModalLoadedData, { once: true })
         modalVideoEl.addEventListener('canplay', onModalCanPlay, { once: true })
         modalVideoEl.addEventListener('error', onModalError, { once: true })
-        
+
         // The source is already set in the template, just try to play
         modalVideoEl.load()
         modalVideoEl.play().catch(error => {
@@ -1140,7 +957,7 @@ const openModal = async (media) => {
   }
 }
 
-const navigateMedia = (direction) => {
+const navigateMedia = direction => {
   const newIndex = currentMediaIndex.value + direction
   if (newIndex >= 0 && newIndex < allMediaResults.value.length) {
     selectedMedia.value = allMediaResults.value[newIndex]
@@ -1151,30 +968,30 @@ const handleVideoHover = async (videoId, isHovering) => {
   if (isHovering) {
     hoveredVideoId.value = videoId
     await nextTick()
-    
+
     // Find the video container using the data attribute
     const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
-    
+
     if (videoContainer) {
       // Find the video element within this container
       const targetVideo = videoContainer.querySelector('video')
-      
+
       if (targetVideo) {
         console.log('🎬 Hover video ready, attempting autoplay')
-        
+
         // Keep poster visible during loading - don't remove it yet
         const originalPoster = targetVideo.poster
-        
+
         // Store original poster for potential restoration
         targetVideo.dataset.originalPoster = originalPoster
-        
+
         // Ensure the video has a proper src attribute set from the source element
         const sourceElement = targetVideo.querySelector('source')
         if (sourceElement && sourceElement.src && !targetVideo.src) {
           targetVideo.src = sourceElement.src
           console.log('🔧 Set video src from source element:', sourceElement.src)
         }
-        
+
         // Add event listeners for debugging
         const onLoadedData = () => {
           console.log('✅ Video loadeddata - ready to play')
@@ -1186,7 +1003,7 @@ const handleVideoHover = async (videoId, isHovering) => {
           })
         }
         const onCanPlay = () => console.log('▶️ Video canplay')
-        const onError = (e) => {
+        const onError = e => {
           console.error('❌ Video error:', e.target.error)
           console.error('❌ Video error details:', {
             code: e.target.error?.code,
@@ -1200,7 +1017,7 @@ const handleVideoHover = async (videoId, isHovering) => {
             targetVideo.poster = targetVideo.dataset.originalPoster
           }
         }
-        
+
         // Add more detailed logging for network events
         const onLoadStart = () => console.log('🌐 Video loadstart - browser started loading')
         const onProgress = () => console.log('📊 Video progress - downloading')
@@ -1208,7 +1025,7 @@ const handleVideoHover = async (videoId, isHovering) => {
         const onSuspend = () => console.log('⏸️ Video suspend - loading suspended')
         const onStalled = () => console.log('🚫 Video stalled - loading stalled')
         const onAbort = () => console.log('🛑 Video abort - loading aborted')
-        
+
         targetVideo.addEventListener('loadeddata', onLoadedData, { once: true })
         targetVideo.addEventListener('canplay', onCanPlay, { once: true })
         targetVideo.addEventListener('error', onError, { once: true })
@@ -1218,17 +1035,16 @@ const handleVideoHover = async (videoId, isHovering) => {
         targetVideo.addEventListener('suspend', onSuspend, { once: true })
         targetVideo.addEventListener('stalled', onStalled, { once: true })
         targetVideo.addEventListener('abort', onAbort, { once: true })
-        
+
         console.log('🎬 Starting video load for:', {
           uuid: videoId,
           src: targetVideo.src || sourceElement?.src,
           preload: targetVideo.preload,
           crossOrigin: targetVideo.crossOrigin
         })
-        
+
         // Load the video
         targetVideo.load()
-        
       } else {
         console.error('❌ No video element found in container')
       }
@@ -1240,7 +1056,7 @@ const handleVideoHover = async (videoId, isHovering) => {
     if (hoveredVideoId.value === videoId) {
       hoveredVideoId.value = null
     }
-    
+
     // Find and stop the specific video
     const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
     if (videoContainer) {
@@ -1248,7 +1064,7 @@ const handleVideoHover = async (videoId, isHovering) => {
       if (targetVideo) {
         targetVideo.pause()
         targetVideo.currentTime = 0
-        
+
         // Restore poster image
         if (targetVideo.dataset.originalPoster) {
           targetVideo.poster = targetVideo.dataset.originalPoster
@@ -1259,9 +1075,9 @@ const handleVideoHover = async (videoId, isHovering) => {
 }
 
 // Tag editing methods
-const handleTagSave = async (data) => {
+const handleTagSave = async data => {
   const toast = useToast()
-  
+
   try {
     // Call the API to update tags
     await useApiFetch(`media/${data.uuid}/tags`, {
@@ -1270,18 +1086,18 @@ const handleTagSave = async (data) => {
         tags: data.tags
       }
     })
-    
+
     // Update the local media record
     const mediaIndex = mediaResults.value.findIndex(m => m.uuid === data.uuid)
     if (mediaIndex !== -1) {
       mediaResults.value[mediaIndex].tags = { tags: data.tags }
     }
-    
+
     // Update the selected media if it's the same record
     if (selectedMedia.value && selectedMedia.value.uuid === data.uuid) {
       selectedMedia.value.tags = { tags: data.tags }
     }
-    
+
     // Show success message (shorter timeout for rapid tagging)
     toast.add({
       title: 'Tags Saved',
@@ -1289,7 +1105,6 @@ const handleTagSave = async (data) => {
       color: 'green',
       duration: 500
     })
-    
   } catch (error) {
     console.error('Failed to save tags:', error)
     toast.add({
@@ -1302,7 +1117,6 @@ const handleTagSave = async (data) => {
   }
 }
 
-
 // Slideshow methods
 const startSlideshow = async () => {
   isSlideshow.value = true
@@ -1310,16 +1124,16 @@ const startSlideshow = async () => {
   slideshowCurrentIndex.value = -1
   slideshowPaused.value = false
   slideshowOffset.value = 0
-  
+
   // Wait for the DOM to update
   await nextTick()
-  
+
   // Create and setup video element immediately
   createSlideshowVideo()
-  
+
   // Load the first batch of videos
   await loadSlideshowBatch()
-  
+
   // Start playing the first video
   if (slideshowVideos.value.length > 0) {
     slideshowCurrentIndex.value = 0
@@ -1327,23 +1141,23 @@ const startSlideshow = async () => {
   }
 }
 
-const addVideoEventListeners = (videoElement) => {
+const addVideoEventListeners = videoElement => {
   // Add error handling for incompatible videos
-  videoElement.addEventListener('error', (e) => {
+  videoElement.addEventListener('error', e => {
     const error = e.target?.error
-    
+
     // Ignore errors when slideshow is not active (during cleanup)
     if (!isSlideshow.value) {
       return
     }
-    
+
     // Ignore empty src errors (happens during cleanup)
     if (error?.code === 4 && error?.message?.includes('Empty src')) {
       return
     }
-    
+
     console.error('Slideshow video error:', error)
-    
+
     // Auto-advance on any video error
     if (isSlideshow.value && !isLoadingVideo.value) {
       setTimeout(() => {
@@ -1353,7 +1167,7 @@ const addVideoEventListeners = (videoElement) => {
       }, 500)
     }
   })
-  
+
   // Add event listener for when video ends
   videoElement.addEventListener('ended', () => {
     console.log('Video ended, advancing to next...')
@@ -1362,22 +1176,21 @@ const addVideoEventListeners = (videoElement) => {
     }
     // Note: When paused, video.loop = true handles looping automatically
   })
-  
+
   // Check if we need to load next batch when getting close to the end
   videoElement.addEventListener('timeupdate', () => {
     if (!isSlideshow.value) return
-    
+
     if (videoElement.currentTime > 0.5) {
       checkAndLoadNextBatch()
     }
   })
-  
+
   // Preload next video when current video is halfway through
   videoElement.addEventListener('timeupdate', () => {
     if (!isSlideshow.value) return
-    
-    if (videoElement.duration > 0 &&
-        videoElement.currentTime / videoElement.duration > 0.5) {
+
+    if (videoElement.duration > 0 && videoElement.currentTime / videoElement.duration > 0.5) {
       preloadNextVideo()
     }
   })
@@ -1397,30 +1210,30 @@ const createSlideshowVideo = () => {
       display: block;
       background: transparent;
     `
-    
+
     // Mobile-optimized video settings
     slideshowVideo.value.controls = false
-    slideshowVideo.value.autoplay = true  // Enable autoplay since we're muted
-    slideshowVideo.value.muted = true  // Required for mobile autoplay
+    slideshowVideo.value.autoplay = true // Enable autoplay since we're muted
+    slideshowVideo.value.muted = true // Required for mobile autoplay
     slideshowVideo.value.playsInline = true
-    slideshowVideo.value.loop = false  // Default to no loop, will be set dynamically based on pause state
+    slideshowVideo.value.loop = false // Default to no loop, will be set dynamically based on pause state
     slideshowVideo.value.setAttribute('webkit-playsinline', 'true')
     slideshowVideo.value.setAttribute('playsinline', 'true')
     slideshowVideo.value.setAttribute('preload', 'metadata')
     slideshowVideo.value.setAttribute('crossorigin', 'anonymous')
     slideshowVideo.value.setAttribute('x-webkit-airplay', 'allow')
     slideshowVideo.value.setAttribute('disablePictureInPicture', 'true')
-    
+
     // Add event listeners
     addVideoEventListeners(slideshowVideo.value)
-    
+
     // Append to the slideshow container
     const container = document.getElementById('slideshow-video-container')
     if (container) {
       container.appendChild(slideshowVideo.value)
     }
   }
-  
+
   // Create next video element for preloading
   if (!slideshowNextVideo.value) {
     slideshowNextVideo.value = document.createElement('video')
@@ -1435,7 +1248,7 @@ const createSlideshowVideo = () => {
       display: none;
       background: transparent;
     `
-    
+
     // Same settings as main video
     slideshowNextVideo.value.controls = false
     slideshowNextVideo.value.muted = true
@@ -1445,10 +1258,10 @@ const createSlideshowVideo = () => {
     slideshowNextVideo.value.setAttribute('playsinline', 'true')
     slideshowNextVideo.value.setAttribute('preload', 'auto')
     slideshowNextVideo.value.setAttribute('crossorigin', 'anonymous')
-    
+
     // Add event listeners to next video as well
     addVideoEventListeners(slideshowNextVideo.value)
-    
+
     // Append to the slideshow container
     const container = document.getElementById('slideshow-video-container')
     if (container) {
@@ -1461,7 +1274,7 @@ const stopSlideshow = () => {
   // Set slideshow to false first to prevent event handlers from firing
   isSlideshow.value = false
   slideshowPaused.value = false
-  
+
   if (slideshowVideo.value) {
     slideshowVideo.value.pause()
     slideshowVideo.value.src = ''
@@ -1469,7 +1282,7 @@ const stopSlideshow = () => {
     slideshowVideo.value.remove()
     slideshowVideo.value = null
   }
-  
+
   if (slideshowNextVideo.value) {
     slideshowNextVideo.value.pause()
     slideshowNextVideo.value.src = ''
@@ -1477,7 +1290,7 @@ const stopSlideshow = () => {
     slideshowNextVideo.value.remove()
     slideshowNextVideo.value = null
   }
-  
+
   // Reset slideshow state
   slideshowVideos.value = []
   slideshowCurrentIndex.value = -1
@@ -1489,7 +1302,7 @@ const toggleSlideshowPause = () => {
   if (!slideshowVideo.value) {
     return
   }
-  
+
   if (slideshowPaused.value) {
     // Resume: try to play but don't throw errors on mobile
     slideshowVideo.value.play().catch(error => {
@@ -1549,28 +1362,40 @@ const playCurrentSlideshowVideo = async () => {
   if (!slideshowVideo.value || slideshowCurrentIndex.value < 0 || slideshowCurrentIndex.value >= slideshowVideos.value.length) {
     return
   }
-  
+
   const currentVideoUuid = slideshowVideos.value[slideshowCurrentIndex.value]
   const streamUrl = `/api/stream/${currentVideoUuid}`
-  
+
+  // Update current video UUID for star rating
+  currentSlideshowVideoUuid.value = currentVideoUuid
+
+  // Fetch rating for current video
+  try {
+    const response = await useApiFetch(`media/${currentVideoUuid}/info`)
+    currentSlideshowVideoRating.value = response.rating || null
+  } catch (error) {
+    console.error('Failed to fetch video rating:', error)
+    currentSlideshowVideoRating.value = null
+  }
+
   console.log(`🎬 Playing video ${slideshowCurrentIndex.value + 1}/${slideshowVideos.value.length}: ${currentVideoUuid}`)
-  
+
   // Check if next video is already preloaded and ready
   if (slideshowNextVideo.value && slideshowNextVideo.value.src.includes(currentVideoUuid)) {
     // Swap the videos for seamless transition
     const tempVideo = slideshowVideo.value
     slideshowVideo.value = slideshowNextVideo.value
     slideshowNextVideo.value = tempVideo
-    
+
     // Update z-index to show the new current video
     slideshowVideo.value.style.zIndex = '10'
     slideshowVideo.value.style.display = 'block'
     slideshowNextVideo.value.style.zIndex = '5'
     slideshowNextVideo.value.style.display = 'none'
-    
+
     // Set loop based on pause state
     slideshowVideo.value.loop = slideshowPaused.value
-    
+
     // Play the swapped video
     if (!slideshowPaused.value) {
       try {
@@ -1590,12 +1415,12 @@ const playCurrentSlideshowVideo = async () => {
     // Fallback to normal loading if preload didn't work
     slideshowVideo.value.pause()
     slideshowVideo.value.src = streamUrl
-    
+
     // Set loop based on pause state
     slideshowVideo.value.loop = slideshowPaused.value
-    
+
     slideshowVideo.value.load()
-    
+
     // Try to play regardless of pause state (loop will handle paused behavior)
     try {
       await slideshowVideo.value.play()
@@ -1607,14 +1432,14 @@ const playCurrentSlideshowVideo = async () => {
 
 const preloadNextVideo = () => {
   if (!slideshowNextVideo.value || !isSlideshow.value) return
-  
+
   const nextIndex = slideshowCurrentIndex.value + 1
   if (nextIndex >= slideshowVideos.value.length) {
     // Check if we should loop back to start
     if (slideshowVideos.value.length > 0) {
       const nextVideoUuid = slideshowVideos.value[0]
       const nextStreamUrl = `/api/stream/${nextVideoUuid}`
-      
+
       // Only preload if not already loaded
       if (!slideshowNextVideo.value.src.includes(nextVideoUuid)) {
         console.log(`🔄 Preloading first video for loop: ${nextVideoUuid}`)
@@ -1624,10 +1449,10 @@ const preloadNextVideo = () => {
     }
     return
   }
-  
+
   const nextVideoUuid = slideshowVideos.value[nextIndex]
   const nextStreamUrl = `/api/stream/${nextVideoUuid}`
-  
+
   // Only preload if not already loaded
   if (!slideshowNextVideo.value.src.includes(nextVideoUuid)) {
     console.log(`⏳ Preloading next video: ${nextVideoUuid}`)
@@ -1640,74 +1465,73 @@ const loadSlideshowBatch = async () => {
   if (isLoadingNextBatch.value) {
     return
   }
-  
+
   isLoadingNextBatch.value = true
-  
+
   try {
     // Build query parameters based on current filters (same as media gallery)
     const params = new URLSearchParams()
-    
+
     // Extract values from objects if needed
     const mediaTypeValue = typeof mediaType.value === 'object' ? mediaType.value.value : mediaType.value
     const purposeValue = typeof purpose.value === 'object' ? purpose.value.value : purpose.value
-    
+
     if (mediaTypeValue) params.append('media_type', mediaTypeValue)
     if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
-    if (subjectUuid.value) params.append('subject_uuid', subjectUuid.value)
-    
+
+    // Add selected subjects (multiple)
+    if (selectedSubjects.value && selectedSubjects.value.length > 0) {
+      params.append('subject_uuids', selectedSubjects.value.join(','))
+    }
+
     // Add selected tags
     if (selectedTags.value.length > 0) {
       params.append('tags', selectedTags.value.join(','))
     }
     params.append('tag_match_mode', 'partial')
-    
-    
-    
+
     // Use the same sort options as the media gallery
     const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
     const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
-    
+
     if (sortByValue) {
       params.append('sort_by', sortByValue)
       if (sortOrderValue) {
         params.append('sort_order', sortOrderValue)
       }
     }
-    
+
     // Pagination for slideshow batch
     params.append('limit', slideshowBatchSize.value.toString())
     params.append('offset', slideshowOffset.value.toString())
-    
+
     // Don't include thumbnails for faster loading
     params.append('include_thumbnails', 'false')
-    
+
     console.log(`🔄 Loading slideshow batch: offset=${slideshowOffset.value}, limit=${slideshowBatchSize.value}`)
-    
+
     const response = await useApiFetch(`media/search?${params.toString()}`)
-    
+
     const newVideos = response.results || []
-    
+
     // Update total count from API response
     slideshowTotalCount.value = response.total_count || 0
-    
+
     // Filter to only include videos and extract UUIDs
-    const videoUuids = newVideos
-      .filter(media => media.type === 'video')
-      .map(media => media.uuid)
-    
+    const videoUuids = newVideos.filter(media => media.type === 'video').map(media => media.uuid)
+
     if (videoUuids.length > 0) {
       // Add new video UUIDs to our slideshow array
       slideshowVideos.value.push(...videoUuids)
       slideshowOffset.value += slideshowBatchSize.value
-      
+
       console.log(`✅ Loaded ${videoUuids.length} videos. Total loaded: ${slideshowVideos.value.length}/${slideshowTotalCount.value}`)
     } else {
       console.log(`📭 No more videos found for slideshow. Total available: ${slideshowTotalCount.value}`)
     }
-    
   } catch (error) {
     console.error('Failed to load slideshow batch:', error)
-    
+
     const toast = useToast()
     toast.add({
       title: 'Slideshow Error',
@@ -1724,13 +1548,12 @@ const checkAndLoadNextBatch = () => {
   // Load next batch when we have 5 or fewer videos remaining and more are available
   const remainingVideos = slideshowVideos.value.length - slideshowCurrentIndex.value - 1
   const hasMoreVideos = slideshowVideos.value.length < slideshowTotalCount.value
-  
+
   if (remainingVideos <= 5 && !isLoadingNextBatch.value && hasMoreVideos) {
     console.log(`🔄 ${remainingVideos} videos remaining (${slideshowVideos.value.length}/${slideshowTotalCount.value} loaded), loading next batch...`)
     loadSlideshowBatch()
   }
 }
-
 
 // Keyboard shortcuts
 defineShortcuts({
@@ -1769,9 +1592,9 @@ onMounted(() => {
       stopSlideshow()
     }
   }
-  
+
   window.addEventListener('popstate', handlePopState)
-  
+
   onUnmounted(() => {
     window.removeEventListener('popstate', handlePopState)
   })
@@ -1785,7 +1608,7 @@ watch(currentPage, (newPage, oldPage) => {
 })
 
 // Watch for modal close to clean up video sources
-watch(isModalOpen, (isOpen) => {
+watch(isModalOpen, isOpen => {
   if (!isOpen) {
     // Clean up modal video when modal closes
     const modalVideo = document.querySelector('.max-w-full video[controls]')
@@ -1808,10 +1631,8 @@ const closeUploadModal = () => {
 
 // Video editing methods
 
-
-
 // Handler for media edits saved from the modal
-const handleMediaSaveEdits = (updatedMedia) => {
+const handleMediaSaveEdits = updatedMedia => {
   // Update the media record in our local state
   const mediaIndex = mediaResults.value.findIndex(m => m.uuid === selectedMedia.value.uuid)
   if (mediaIndex !== -1) {
@@ -1819,7 +1640,7 @@ const handleMediaSaveEdits = (updatedMedia) => {
       ...mediaResults.value[mediaIndex],
       ...updatedMedia
     }
-    
+
     // Update selected media
     selectedMedia.value = mediaResults.value[mediaIndex]
   }
@@ -1829,19 +1650,111 @@ const closeModal = () => {
   isModalOpen.value = false
 }
 
+// Rating update handler for grid view
+const handleRatingUpdated = (uuid, rating) => {
+  const mediaIndex = mediaResults.value.findIndex(m => m.uuid === uuid)
+  if (mediaIndex !== -1) {
+    mediaResults.value[mediaIndex].rating = rating
+  }
+}
+
+// Rating update handler for slideshow
+const handleSlideshowRatingUpdate = rating => {
+  currentSlideshowVideoRating.value = rating
+}
+
+// Slideshow popover handlers for pause/resume
+const handleSlideshowPopoverOpened = () => {
+  if (!slideshowPaused.value && slideshowVideo.value) {
+    slideshowVideo.value.pause()
+    slideshowPausedByPopover.value = true
+  }
+}
+
+const handleSlideshowPopoverClosed = () => {
+  if (slideshowPausedByPopover.value && slideshowVideo.value && !slideshowPaused.value) {
+    slideshowVideo.value.play().catch(error => {
+      console.warn('Resume play after popover failed:', error)
+    })
+    slideshowPausedByPopover.value = false
+  }
+}
+
 // Initialize settings and load filters on mount (but don't auto-search)
 onMounted(async () => {
+  console.log('🔵 [LIFECYCLE] media-gallery onMounted - START')
+  $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onMounted - START' } }).catch(() => {})
   await settingsStore.initializeSettings()
   await loadFilters()
+  console.log('🔵 [LIFECYCLE] media-gallery onMounted - COMPLETE')
+  $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onMounted - COMPLETE' } }).catch(() => {})
 })
 
+// Add lifecycle hooks to track page state
+onBeforeMount(() => {
+  console.log('🟡 [LIFECYCLE] media-gallery onBeforeMount')
+  $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onBeforeMount' } }).catch(() => {})
+})
+
+onBeforeUnmount(() => {
+  console.log('🔴 [LIFECYCLE] media-gallery onBeforeUnmount - page is about to be destroyed')
+  $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onBeforeUnmount - PAGE DESTROYING' } }).catch(() => {})
+})
+
+onUnmounted(() => {
+  console.log('🔴 [LIFECYCLE] media-gallery onUnmounted - page destroyed')
+  $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onUnmounted - PAGE DESTROYED' } }).catch(() => {})
+})
+
+// Track visibility changes
+if (import.meta.client) {
+  onMounted(() => {
+    const handleVisibilityChange = () => {
+      console.log('👁️ [VISIBILITY] Page visibility changed:', {
+        hidden: document.hidden,
+        visibilityState: document.visibilityState,
+        timestamp: new Date().toISOString()
+      })
+
+      if (!document.hidden) {
+        console.log('✅ [VISIBILITY] Page became visible - checking state...')
+        console.log('📊 [STATE] Current page state:', {
+          isLoading: isLoading.value,
+          hasSearched: hasSearched.value,
+          mediaResultsCount: mediaResults.value.length,
+          isModalOpen: isModalOpen.value,
+          isSlideshow: isSlideshow.value
+        })
+      } else {
+        console.log('⏸️ [VISIBILITY] Page hidden')
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    onUnmounted(() => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    })
+  })
+}
+
+// Track route changes
+const route = useRoute()
+watch(
+  () => route.fullPath,
+  (newPath, oldPath) => {
+    console.log('🔀 [NAVIGATION] Route changed:', {
+      from: oldPath,
+      to: newPath,
+      timestamp: new Date().toISOString()
+    })
+  }
+)
 
 // Page head
 useHead({
   title: 'Media Gallery - AI Job Tracking System',
-  meta: [
-    { name: 'description', content: 'Browse encrypted media storage' }
-  ]
+  meta: [{ name: 'description', content: 'Browse encrypted media storage' }]
 })
 </script>
 

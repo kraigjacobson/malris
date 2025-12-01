@@ -5,28 +5,19 @@
         <h3 class="text-lg font-semibold">
           {{ isEditMode ? `Manage Subject: ${subjectData.name}` : 'Add New Subject' }}
         </h3>
-        <div v-if="hasMultipleSubjects && currentSubjectInfo" class="text-sm text-gray-600 dark:text-gray-400 font-medium">
+        <div v-if="hasMultipleSubjects && currentSubjectInfo"
+          class="text-sm text-gray-600 dark:text-gray-400 font-medium">
           Subject {{ currentSubjectInfo.current }} of {{ currentSubjectInfo.total }}
         </div>
-        <UButton
-          variant="ghost"
-          size="lg"
-          icon="i-heroicons-x-mark"
-          @click="closeModal"
-          :disabled="isUploading || isSaving"
-          class="ml-4"
-        />
+        <UButton variant="ghost" size="lg" icon="i-heroicons-x-mark" @click="closeModal"
+          :disabled="isUploading || isSaving" class="ml-4" />
       </div>
     </template>
 
     <template #body>
-      <div
-        class="space-y-6 h-[600px] overflow-y-auto custom-scrollbar"
-        @touchstart="handleSubjectSwipeTouchStart"
-        @touchmove="handleSubjectSwipeTouchMove"
-        @touchend="handleSubjectSwipeTouchEnd"
-      >
-        
+      <div class="space-y-6 h-[600px] overflow-y-auto custom-scrollbar" @touchstart="handleSubjectSwipeTouchStart"
+        @touchmove="handleSubjectSwipeTouchMove" @touchend="handleSubjectSwipeTouchEnd">
+
         <!-- Subject Form -->
         <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <!-- Name Field -->
@@ -34,12 +25,8 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Subject Name *
             </label>
-            <UInput
-              v-model="subjectData.name"
-              placeholder="Enter subject name..."
-              :disabled="isUploading || isSaving"
-              class="w-full"
-            />
+            <UInput v-model="subjectData.name" placeholder="Enter subject name..." :disabled="isUploading || isSaving"
+              class="w-full" />
           </div>
 
           <!-- Tags Field -->
@@ -47,22 +34,11 @@
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Tags
             </label>
-            <UInputTags
-              v-model="subjectData.tags"
-              placeholder="Add tags (e.g., portrait, landscape, anime)"
-              :disabled="isUploading || isSaving"
-              class="w-full"
-              :ui="{ trailing: 'pe-1' }"
-            >
+            <UInputTags v-model="subjectData.tags" placeholder="Add tags (e.g., portrait, landscape, anime)"
+              :disabled="isUploading || isSaving" class="w-full" :ui="{ trailing: 'pe-1' }">
               <template v-if="subjectData.tags?.length" #trailing>
-                <UButton
-                  color="neutral"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-circle-x"
-                  aria-label="Clear all tags"
-                  @click="subjectData.tags = []"
-                />
+                <UButton color="neutral" variant="link" size="sm" icon="i-lucide-circle-x" aria-label="Clear all tags"
+                  @click="subjectData.tags = []" />
               </template>
             </UInputTags>
           </div>
@@ -71,7 +47,7 @@
         <!-- Current Images Display -->
         <div v-if="subjectImages.length > 0" class="space-y-4">
           <h4 class="text-sm font-semibold text-purple-700 dark:text-purple-400">Current Images</h4>
-          
+
           <!-- Main Image Display -->
           <div v-if="currentImage" class="text-center">
             <div v-if="settingsStore.displayImages" class="relative w-full group">
@@ -81,15 +57,11 @@
                 @wheel.prevent="handleWheel" @mousedown.prevent="handleMouseDown" @touchstart.prevent="handleTouchStart"
                 @touchmove.prevent="handleTouchMove" @touchend.prevent="handleTouchEnd" @gesturestart.prevent
                 @gesturechange.prevent @gestureend.prevent>
-                
-                <img ref="zoomableImage"
-                  v-if="currentImage"
-                  :src="getImageUrl(currentImage)"
+
+                <img ref="zoomableImage" v-if="currentImage" :src="getImageUrl(currentImage)"
                   :alt="currentImage.filename"
                   class="absolute inset-0 w-full h-full object-cover object-top transition-all duration-200 ease-out select-none"
-                  :style="imageTransformStyle"
-                  :key="currentImage.uuid"
-                  @dragstart.prevent />
+                  :style="imageTransformStyle" :key="currentImage.uuid" @dragstart.prevent />
               </div>
 
               <!-- Left Arrow Overlay -->
@@ -115,16 +87,16 @@
                 </div>
               </div>
 
-              <!-- Delete Button -->
-              <div class="absolute top-2 right-2">
-                <UButton
-                  color="error"
-                  variant="solid"
-                  size="sm"
-                  icon="i-heroicons-trash"
-                  :loading="isDeletingImage"
-                  @click="confirmDeleteImage"
-                  class="opacity-80 hover:opacity-100 transition-opacity" />
+              <!-- Action Buttons -->
+              <div class="absolute top-2 right-2 flex gap-2">
+                <!-- Set as Thumbnail Button (only show if not already the thumbnail) -->
+                <UButton v-if="isEditMode && currentImage && currentSubject?.thumbnail !== currentImage.uuid"
+                  color="primary" variant="solid" size="sm" icon="i-heroicons-star" :loading="isSettingThumbnail"
+                  @click="setAsSubjectThumbnail" class="opacity-80 hover:opacity-100 transition-opacity"
+                  title="Set as subject thumbnail" />
+                <!-- Delete Button -->
+                <UButton color="error" variant="solid" size="sm" icon="i-heroicons-trash" :loading="isDeletingImage"
+                  @click="confirmDeleteImage" class="opacity-80 hover:opacity-100 transition-opacity" />
               </div>
             </div>
 
@@ -174,7 +146,8 @@
                 <div class="space-y-1 text-sm">
                   <div>
                     <span class="font-medium text-gray-600 dark:text-gray-400">UUID:</span>
-                    <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.uuid }}</div>
+                    <div class="text-gray-800 dark:text-gray-200 font-mono text-xs break-all">{{ currentImage.uuid }}
+                    </div>
                   </div>
                   <div>
                     <span class="font-medium text-gray-600 dark:text-gray-400">Filename:</span>
@@ -182,7 +155,8 @@
                   </div>
                   <div v-if="currentImage.width && currentImage.height">
                     <span class="font-medium text-gray-600 dark:text-gray-400">Dimensions:</span>
-                    <div class="text-gray-800 dark:text-gray-200">{{ currentImage.width }} × {{ currentImage.height }}</div>
+                    <div class="text-gray-800 dark:text-gray-200">{{ currentImage.width }} × {{ currentImage.height }}
+                    </div>
                   </div>
                   <div v-if="currentImage.file_size">
                     <span class="font-medium text-gray-600 dark:text-gray-400">File Size:</span>
@@ -202,29 +176,20 @@
           </p>
         </div>
 
-        
+
 
         <!-- Image Upload Section -->
         <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <h4 class="text-sm font-semibold text-green-700 dark:text-green-400">Subject Images</h4>
-          
+
           <!-- File Upload -->
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Upload Images
             </label>
-            <input
-              ref="fileInput"
-              type="file"
-              multiple
-              accept="image/*"
-              @change="handleFileSelection"
+            <input ref="fileInput" type="file" multiple accept="image/*" @change="handleFileSelection"
               :disabled="isUploading || isSaving || !canUpload"
-              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              {{ isEditMode ? 'Select images to add to this subject' : 'Select images for the new subject (you can add more later)' }}
-            </p>
+              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
           </div>
 
           <!-- Upload Progress -->
@@ -248,50 +213,33 @@
     <template #footer>
       <div class="flex justify-between items-center w-full">
         <div class="flex gap-2">
-          <UButton variant="outline" @click="closeModal" :disabled="isUploading || isSaving">
+          <UButton variant="outline" @click="closeModal" :disabled="isUploading || isSaving || isDeletingSubject">
             Cancel
+          </UButton>
+          <!-- Delete Subject Button (only in edit mode) -->
+          <UButton v-if="isEditMode" color="error" variant="outline" :loading="isDeletingSubject"
+            @click="confirmDeleteSubject" :disabled="isUploading || isSaving" icon="i-heroicons-trash">
+            Delete Subject
           </UButton>
           <!-- Subject Navigation Buttons -->
           <div v-if="hasMultipleSubjects" class="flex gap-2">
-            <UButton
-              variant="outline"
-              size="lg"
-              :disabled="isUploading || isSaving"
-              @click="goToPreviousSubject"
-              square
-              class="w-12 h-12 flex items-center justify-center"
-            >
+            <UButton variant="outline" size="lg" :disabled="isUploading || isSaving || isDeletingSubject"
+              @click="goToPreviousSubject" square class="w-12 h-12 flex items-center justify-center">
               <UIcon name="i-heroicons-chevron-left" class="w-6 h-6" />
             </UButton>
-            <UButton
-              variant="outline"
-              size="lg"
-              :disabled="isUploading || isSaving"
-              @click="goToNextSubject"
-              square
-              class="w-12 h-12 flex items-center justify-center"
-            >
+            <UButton variant="outline" size="lg" :disabled="isUploading || isSaving || isDeletingSubject"
+              @click="goToNextSubject" square class="w-12 h-12 flex items-center justify-center">
               <UIcon name="i-heroicons-chevron-right" class="w-6 h-6" />
             </UButton>
           </div>
         </div>
         <div class="flex gap-2">
-          <UButton 
-            v-if="!isEditMode"
-            color="primary" 
-            :loading="isSaving" 
-            @click="createSubject" 
-            :disabled="!subjectData.name.trim() || isUploading"
-          >
+          <UButton v-if="!isEditMode" color="primary" :loading="isSaving" @click="createSubject"
+            :disabled="!subjectData.name.trim() || isUploading || isDeletingSubject">
             Create Subject
           </UButton>
-          <UButton 
-            v-else
-            color="primary" 
-            :loading="isSaving" 
-            @click="updateSubject" 
-            :disabled="!subjectData.name.trim() || isUploading"
-          >
+          <UButton v-else color="primary" :loading="isSaving" @click="updateSubject"
+            :disabled="!subjectData.name.trim() || isUploading || isDeletingSubject">
             Save Changes
           </UButton>
         </div>
@@ -328,7 +276,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update:modelValue', 'subjectCreated', 'subjectUpdated', 'subjectChanged'])
+const emit = defineEmits(['update:modelValue', 'subjectCreated', 'subjectUpdated', 'subjectChanged', 'subjectDeleted'])
 
 // Initialize settings store
 const settingsStore = useSettingsStore()
@@ -346,12 +294,14 @@ const isLoadingImages = ref(false)
 const isUploading = ref(false)
 const isSaving = ref(false)
 const isDeletingImage = ref(false)
+const isDeletingSubject = ref(false)
 const uploadProgress = ref(0)
 const fileInput = ref(null)
 const thumbnailStrip = ref(null)
 const thumbnailRefs = ref({})
 const createdSubject = ref(null)
 const imageJobCounts = ref({})
+const isSettingThumbnail = ref(false)
 
 // Zoom functionality reactive data
 const imageContainer = ref(null)
@@ -407,7 +357,7 @@ const currentSubjectInfo = computed(() => {
 // Methods
 const closeModal = () => {
   if (isUploading.value || isSaving.value) return
-  
+
   isOpen.value = false
   resetForm()
   resetZoom()
@@ -457,7 +407,7 @@ const loadSubjectImages = async () => {
 
     subjectImages.value = response.results || []
     currentImageIndex.value = 0
-    
+
     // Fetch job counts for the loaded images
     await fetchImageJobCounts()
   } catch (error) {
@@ -487,7 +437,7 @@ const handleFileSelection = async (event) => {
   if (!isEditMode.value) {
     const created = await createSubject(false)
     if (!created) return
-    
+
     // Wait a moment for the subject to be fully created
     await nextTick()
   }
@@ -504,7 +454,7 @@ const uploadImages = async (files) => {
   try {
     const formData = new FormData()
     formData.append('subject_uuid', currentSubject.value.id)
-    
+
     files.forEach(file => {
       formData.append('images', file)
     })
@@ -528,7 +478,7 @@ const uploadImages = async (files) => {
 
       // Reload images (this will also fetch job counts)
       await loadSubjectImages()
-      
+
       // Clear file input
       if (fileInput.value) {
         fileInput.value.value = ''
@@ -570,10 +520,10 @@ const createSubject = async (closeAfter = true) => {
         name: response.name || subjectData.value.name,
         created_at: response.created_at
       }
-      
+
       // Update the component's subject reference for image uploads
       createdSubject.value = newSubject
-      
+
       // Emit the created subject
       emit('subjectCreated', newSubject)
 
@@ -650,7 +600,7 @@ const confirmDeleteImage = async () => {
   if (!currentImage.value) return
 
   const confirmed = confirm(`Are you sure you want to delete "${currentImage.value.filename}"? This action cannot be undone.`)
-  
+
   if (!confirmed) return
 
   await deleteCurrentImage()
@@ -757,7 +707,7 @@ const getThumbnailUrl = (image) => {
 
 const fetchImageJobCounts = async () => {
   if (subjectImages.value.length === 0) return
-  
+
   try {
     const imageUuids = subjectImages.value.map(image => image.uuid)
     const response = await $fetch('/api/media/job-counts', {
@@ -766,13 +716,110 @@ const fetchImageJobCounts = async () => {
         image_uuids: imageUuids
       }
     })
-    
+
     if (response.success) {
       imageJobCounts.value = response.job_counts
     }
   } catch (error) {
     console.error('Failed to fetch image job counts:', error)
     // Don't show error to user as this is supplementary information
+  }
+}
+
+const setAsSubjectThumbnail = async () => {
+  if (!currentImage.value || !currentSubject.value?.id) return
+
+  isSettingThumbnail.value = true
+  try {
+    await useApiFetch(`subjects/${currentSubject.value.id}/thumbnail`, {
+      method: 'PUT',
+      body: {
+        thumbnail_uuid: currentImage.value.uuid
+      }
+    })
+
+    // Emit event to update the subject in parent component
+    if (props.subject) {
+      emit('subjectUpdated', {
+        ...props.subject,
+        thumbnail: currentImage.value.uuid
+      })
+    }
+    if (createdSubject.value) {
+      createdSubject.value.thumbnail = currentImage.value.uuid
+    }
+
+    const toast = useToast()
+    toast.add({
+      title: 'Success',
+      description: 'Subject thumbnail updated successfully',
+      color: 'success',
+      duration: 3000
+    })
+  } catch (error) {
+    console.error('Failed to set thumbnail:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: error.data?.message || 'Failed to set thumbnail',
+      color: 'error',
+      duration: 3000
+    })
+  } finally {
+    isSettingThumbnail.value = false
+  }
+}
+
+const confirmDeleteSubject = async () => {
+  if (!currentSubject.value) return
+
+  const confirmed = confirm(
+    `Are you sure you want to delete "${currentSubject.value.name}"?\n\n` +
+    `This will permanently delete:\n` +
+    `- The subject\n` +
+    `- All associated images\n` +
+    `- All associated jobs\n\n` +
+    `This action cannot be undone.`
+  )
+
+  if (!confirmed) return
+
+  await deleteSubject()
+}
+
+const deleteSubject = async () => {
+  if (!currentSubject.value?.id) return
+
+  isDeletingSubject.value = true
+  try {
+    const response = await useApiFetch(`subjects/${currentSubject.value.id}/delete`, {
+      method: 'DELETE'
+    })
+
+    const toast = useToast()
+    toast.add({
+      title: 'Success',
+      description: response.message || 'Subject deleted successfully',
+      color: 'success',
+      duration: 3000
+    })
+
+    // Emit event to parent to refresh and close modal
+    emit('subjectDeleted', currentSubject.value)
+
+    // Close modal
+    closeModal()
+  } catch (error) {
+    console.error('Failed to delete subject:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: error.data?.message || 'Failed to delete subject',
+      color: 'error',
+      duration: 5000
+    })
+  } finally {
+    isDeletingSubject.value = false
   }
 }
 
@@ -975,42 +1022,42 @@ const handleSubjectSwipeTouchStart = (event) => {
     thumbnailStripContains: thumbnailStrip.value?.contains(event.target),
     targetClasses: event.target?.className
   })
-  
+
   // Check if the touch is within the image container or thumbnail strip
   if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
-      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
     console.log('🔥 [SUBJECT SWIPE DEBUG] Touch started within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
-  
+
   console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch start handler')
   originalSubjectSwipeTouchStart(event)
 }
 
 const handleSubjectSwipeTouchMove = (event) => {
   console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchMove called')
-  
+
   // Check if the touch is within the image container or thumbnail strip
   if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
-      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
     console.log('🔥 [SUBJECT SWIPE DEBUG] Touch moved within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
-  
+
   console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch move handler')
   originalSubjectSwipeTouchMove(event)
 }
 
 const handleSubjectSwipeTouchEnd = (event) => {
   console.log('🔥 [SUBJECT SWIPE DEBUG] handleSubjectSwipeTouchEnd called')
-  
+
   // Check if the touch is within the image container or thumbnail strip
   if ((imageContainer.value && imageContainer.value.contains(event.target)) ||
-      (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
+    (thumbnailStrip.value && thumbnailStrip.value.contains(event.target))) {
     console.log('🔥 [SUBJECT SWIPE DEBUG] Touch ended within image container or thumbnail strip, ignoring for subject swipe')
     return
   }
-  
+
   console.log('🔥 [SUBJECT SWIPE DEBUG] Calling original touch end handler')
   originalSubjectSwipeTouchEnd(event)
 }
@@ -1023,7 +1070,7 @@ const goToPreviousSubject = () => {
     totalSubjects: props.subjects.length,
     subjects: props.subjects
   })
-  
+
   if (hasMultipleSubjects.value) {
     let newIndex
     if (props.currentSubjectIndex > 0) {
@@ -1047,7 +1094,7 @@ const goToNextSubject = () => {
     totalSubjects: props.subjects.length,
     subjects: props.subjects
   })
-  
+
   if (hasMultipleSubjects.value) {
     let newIndex
     if (props.currentSubjectIndex < props.subjects.length - 1) {
@@ -1156,11 +1203,14 @@ onUnmounted(() => {
 
 <style scoped>
 .custom-scrollbar {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* Internet Explorer 10+ */
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  display: none; /* Safari and Chrome */
+  display: none;
+  /* Safari and Chrome */
 }
 </style>

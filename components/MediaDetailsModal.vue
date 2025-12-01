@@ -1,185 +1,80 @@
-
 <template>
   <!-- Media Detail Modal -->
   <UModal :open="isOpen" @update:open="$emit('update:isOpen', $event)" :fullscreen="isMobile">
     <template #header>
-      <div v-if="media" class="flex justify-between items-center w-full">
-        <div class="flex items-center gap-1 sm:gap-2">
-          <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-xs sm:text-sm text-gray-500 hidden sm:inline">
-            {{ currentIndex + 1 }} / {{ totalCount }}
-          </span>
-          
+      <div v-if="media" class="flex justify-between items-center w-full gap-3">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-sm sm:text-sm text-gray-500 hidden sm:inline"> {{ currentIndex + 1 }} / {{ totalCount }} </span>
+
           <!-- Total Untagged Count (only in tag mode) -->
-          <span v-if="currentMode === 'tag' && totalUntaggedInDatabase > 0" class="text-xs sm:text-sm text-blue-600 dark:text-blue-400 font-medium">
-            {{ totalUntaggedInDatabase }} untagged
-          </span>
+          <span v-if="currentMode === 'tag' && totalUntaggedInDatabase > 0" class="text-sm sm:text-sm text-blue-600 dark:text-blue-400 font-medium"> {{ totalUntaggedInDatabase }} untagged </span>
         </div>
-        
-        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+
+        <div class="flex items-center gap-2 sm:gap-2 shrink-0">
           <!-- Purpose Selector -->
-          <USelect
-            v-model="currentPurpose"
-            :items="purposeOptions"
-            size="xs"
-            class="w-20"
-            :loading="isSavingPurpose"
-            @update:model-value="updatePurpose"
-          />
-          
+          <USelect v-model="currentPurpose" :items="purposeOptions" :size="isMobile ? 'sm' : 'xs'" :class="isMobile ? 'w-24' : 'w-20'" :loading="isSavingPurpose" @update:model-value="updatePurpose" />
+
           <!-- Mode Selector -->
-          <USelect
-            v-model="currentMode"
-            :items="modeOptions"
-            size="xs"
-            class="w-20"
-            :disabled="isSavingEdits || isSavingTags"
-          />
-          
+          <USelect v-model="currentMode" :items="modeOptions" :size="isMobile ? 'sm' : 'xs'" :class="isMobile ? 'w-24' : 'w-20'" :disabled="isSavingEdits || isSavingTags" />
+
           <!-- Save/Cancel buttons for edit mode -->
-          <UButton
-            v-if="currentMode === 'edit'"
-            variant="solid"
-            color="green"
-            size="xs"
-            :loading="isSavingEdits"
-            @click="confirmSaveEdits"
-          >
-            Save
-          </UButton>
-          <UButton
-            v-if="currentMode === 'edit'"
-            variant="outline"
-            size="xs"
-            @click="confirmCancelEdits"
-          >
-            Cancel
-          </UButton>
-          
-          
+          <UButton v-if="currentMode === 'edit'" variant="solid" color="success" :size="isMobile ? 'md' : 'xs'" :loading="isSavingEdits" @click="confirmSaveEdits"> Save </UButton>
+          <UButton v-if="currentMode === 'edit'" variant="outline" :size="isMobile ? 'md' : 'xs'" @click="confirmCancelEdits"> Cancel </UButton>
+
           <!-- Delete button (only in none mode) -->
-          <UButton
-            v-if="currentMode === 'none'"
-            variant="solid"
-            icon="i-heroicons-trash"
-            color="error"
-            size="xs"
-            :loading="deletingIds.includes(media.uuid)"
-            @click="$emit('confirmDelete', media)"
-          />
-          
-          <UButton
-            variant="ghost"
-            icon="i-heroicons-x-mark"
-            size="xs"
-            @click="closeModal"
-          />
+          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-trash" color="error" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="deletingIds.includes(media.uuid)" @click="$emit('confirmDelete', media)" square />
+
+          <UButton variant="ghost" icon="i-heroicons-x-mark" :size="isMobile ? 'xl' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px]' : ''" @click="closeModal" />
         </div>
       </div>
     </template>
-    
-    <template #body>
-      <div v-if="media" :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'">
 
+    <template #body>
+      <div v-if="media" :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
         <!-- Tag Mode Layout -->
-        <div
-          v-if="currentMode === 'tag'"
-          class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0"
-          @touchstart="handleGestureTouchStart"
-          @touchmove="handleGestureTouchMove"
-          @touchend="handleGestureTouchEnd"
-        >
+        <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0">
           <!-- Media Display -->
-          <div class="space-y-4">
-            <div class="flex justify-center">
-              <div class="w-full relative touch-pan-y">
+          <div class="space-y-4 flex flex-col flex-1">
+            <div class="flex flex-1">
+              <div class="w-full relative touch-pan-y flex flex-col">
                 <!-- Image display -->
-                <img
-                  v-if="media.type === 'image' && settingsStore.displayImages"
-                  :key="`tag-image-${media.uuid}`"
-                  :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`"
-                  :alt="media.filename"
-                  class="w-full h-96 object-contain rounded-lg shadow-md"
-                  @error="handleImageError"
-                >
+                <img v-if="media.type === 'image' && settingsStore.displayImages" :key="`tag-image-${media.uuid}`" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="w-full flex-1 object-contain rounded-lg shadow-md" @error="handleImageError" />
                 <!-- Image placeholder -->
-                <div
-                  v-else-if="media.type === 'image'"
-                  :key="`tag-image-placeholder-${media.uuid}`"
-                  class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center"
-                >
+                <div v-else-if="media.type === 'image'" :key="`tag-image-placeholder-${media.uuid}`" class="w-full flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
                   <div class="text-center">
                     <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
                   </div>
                 </div>
                 <!-- Video display -->
                 <div v-else-if="media.type === 'video'" class="relative" :key="`tag-video-${media.uuid}`">
-                  <video
-                    v-if="settingsStore.displayImages && media.thumbnail_uuid"
-                    :key="`video-${media.uuid}`"
-                    :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`"
-                    class="w-full h-96 object-contain rounded-lg shadow-md"
-                    controls
-                    preload="metadata"
-                    autoplay
-                  >
-                    <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
+                  <video v-if="settingsStore.displayImages && media.thumbnail_uuid" :key="`video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full flex-1 object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
+                    <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
                   <!-- Video placeholder (when displayImages is false or no thumbnail) -->
-                  <div
-                    v-else
-                    class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center"
-                  >
+                  <div v-else class="w-full flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
                     <div class="text-center">
                       <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
                     </div>
                   </div>
                 </div>
-                
+
                 <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
                 <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
-                  <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">
-                    {{ currentIndex + 1 }} / {{ totalCount }}
-                  </div>
+                  <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">{{ currentIndex + 1 }} / {{ totalCount }}</div>
                 </div>
-                
+
                 <!-- Overlaid Navigation Buttons (Desktop Only) -->
                 <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
-                  <UButton
-                    :disabled="!props.hasPrevious"
-                    variant="solid"
-                    color="white"
-                    icon="i-heroicons-chevron-left"
-                    size="lg"
-                    class="shadow-lg w-12 h-12"
-                    @click="navigatePrevious"
-                  />
-                  <UButton
-                    :disabled="!props.hasNext"
-                    variant="solid"
-                    color="white"
-                    icon="i-heroicons-chevron-right"
-                    size="lg"
-                    class="shadow-lg w-12 h-12"
-                    @click="navigateNext"
-                  />
+                  <UButton :disabled="!props.hasPrevious" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" class="shadow-lg w-12 h-12" @click="navigatePrevious" />
+                  <UButton :disabled="!props.hasNext" variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" class="shadow-lg w-12 h-12" @click="navigateNext" />
                 </div>
               </div>
             </div>
 
             <!-- Current/Total counter and Save & Close button -->
             <div class="flex justify-between items-center">
-              
-              <UButton
-                v-if="!props.hasNext"
-                variant="solid"
-                color="success"
-                trailing-icon="i-heroicons-check"
-                :loading="isSavingTags"
-                @click="saveAndClose"
-              >
-                Save & Close
-              </UButton>
+              <UButton v-if="!props.hasNext" variant="solid" color="success" trailing-icon="i-heroicons-check" :loading="isSavingTags" @click="saveAndClose"> Save & Close </UButton>
             </div>
           </div>
 
@@ -190,56 +85,28 @@
               <div class="space-y-2">
                 <!-- Hair Color Row -->
                 <div class="flex flex-wrap gap-2">
-                  <UButton
-                    v-for="tag in hairColorTags"
-                    :key="tag"
-                    variant="solid"
-                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
-                    size="sm"
-                    @click="toggleTag(tag)"
-                  >
+                  <UButton v-for="tag in hairColorTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
                     {{ formatTagDisplay(tag) }}
                   </UButton>
                 </div>
-                
+
                 <!-- Hair Style Row -->
                 <div class="flex flex-wrap gap-2">
-                  <UButton
-                    v-for="tag in hairStyleTags"
-                    :key="tag"
-                    variant="solid"
-                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
-                    size="sm"
-                    @click="toggleTag(tag)"
-                  >
+                  <UButton v-for="tag in hairStyleTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
                     {{ formatTagDisplay(tag) }}
                   </UButton>
                 </div>
-                
+
                 <!-- Age/Body Type Row -->
                 <div class="flex flex-wrap gap-2">
-                  <UButton
-                    v-for="tag in ageBodyTags"
-                    :key="tag"
-                    variant="solid"
-                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
-                    size="sm"
-                    @click="toggleTag(tag)"
-                  >
+                  <UButton v-for="tag in ageBodyTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
                     {{ formatTagDisplay(tag) }}
                   </UButton>
                 </div>
-                
+
                 <!-- Action/Other Row -->
                 <div class="flex flex-wrap gap-2">
-                  <UButton
-                    v-for="tag in actionTags"
-                    :key="tag"
-                    variant="solid"
-                    :color="selectedTags.includes(tag) ? 'primary' : 'neutral'"
-                    size="sm"
-                    @click="toggleTag(tag)"
-                  >
+                  <UButton v-for="tag in actionTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
                     {{ formatTagDisplay(tag) }}
                   </UButton>
                 </div>
@@ -249,20 +116,9 @@
             <!-- Current Tags Display -->
             <div>
               <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Current Tags</h5>
-              <UInputTags
-                v-model="selectedTags"
-                :ui="{ trailing: 'pe-1' }"
-              >
+              <UInputTags v-model="selectedTags" :ui="{ trailing: 'pe-1' }">
                 <template #trailing>
-                  <UButton
-                    v-if="selectedTags.length > 0"
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-circle-x"
-                    aria-label="Clear all tags"
-                    @click="clearAllTags"
-                  />
+                  <UButton v-if="selectedTags.length > 0" color="neutral" variant="link" size="sm" icon="i-lucide-circle-x" aria-label="Clear all tags" @click="clearAllTags" />
                 </template>
               </UInputTags>
             </div>
@@ -272,88 +128,44 @@
         <!-- Normal/Edit Mode Layout -->
         <div v-else class="space-y-4">
           <!-- Image Display -->
-          <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="max-w-full relative">
+          <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="w-full relative">
             <!-- Previous Button -->
-            <UButton
-              v-if="currentIndex > 0"
-              variant="solid"
-              color="white"
-              icon="i-heroicons-chevron-left"
-              class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg"
-              @click="$emit('navigate', -1)"
-            />
-            
-            <img
-              v-if="settingsStore.displayImages"
-              :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`"
-              :alt="media.type"
-              class="w-full h-96 object-contain rounded"
-              @error="handleImageError"
-            >
-            <div v-else class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center">
+            <UButton v-if="currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
+
+            <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" class="w-full object-contain rounded" @error="handleImageError" />
+            <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
               <div class="text-center">
                 <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
               </div>
             </div>
-            
+
             <!-- Next Button -->
-            <UButton
-              v-if="currentIndex < totalCount - 1"
-              variant="solid"
-              color="white"
-              icon="i-heroicons-chevron-right"
-              class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg"
-              @click="$emit('navigate', 1)"
-            />
+            <UButton v-if="currentIndex < totalCount - 1" variant="solid" color="white" icon="i-heroicons-chevron-right" class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', 1)" />
           </div>
 
           <!-- Video Display -->
-          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}`" class="max-w-full">
+          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}`" class="w-full">
             <div class="relative">
-              <video
-                v-if="settingsStore.displayImages"
-                :ref="modalVideo"
-                :poster="media.thumbnail ? media.thumbnail : (media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined)"
-                controls
-                muted
-                loop
-                class="w-full h-96 object-contain rounded"
-                preload="metadata"
-                playsinline
-                webkit-playsinline
-                :data-video-id="media.uuid"
-                disablePictureInPicture
-                crossorigin="anonymous"
-                @loadedmetadata="onVideoLoaded"
-                @timeupdate="onTimeUpdate"
-              >
-                <source :src="`/api/stream/${media.uuid}`" type="video/mp4">
+              <video v-if="settingsStore.displayImages" :ref="modalVideo" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" controls muted loop class="w-full object-contain rounded" preload="metadata" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture crossorigin="anonymous" @loadedmetadata="onVideoLoaded" @timeupdate="onTimeUpdate">
+                <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
-              
+
               <!-- Video placeholder when displayImages is false -->
-              <div
-                v-else
-                class="w-full h-96 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center"
-              >
+              <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
                 <div class="text-center">
                   <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
                 </div>
               </div>
-              
+
+              <!-- Star Rating Overlay -->
+              <StarRating v-if="currentMode === 'none'" :media-uuid="media.uuid" :rating="currentRating" @updated="handleRatingUpdate" />
+
               <!-- Custom Crop overlay (only visible in edit mode) -->
-              <div
-                v-if="currentMode === 'edit' && showCropOverlay"
-                class="absolute inset-0 cursor-crosshair"
-                style="z-index: 20;"
-                @mousedown="startCropDrag"
-                @mousemove="updateCropDrag"
-                @mouseup="endCropDrag"
-                @mouseleave="endCropDrag"
-              >
+              <div v-if="currentMode === 'edit' && showCropOverlay" class="absolute inset-0 cursor-crosshair" style="z-index: 20" @mousedown="startCropDrag" @mousemove="updateCropDrag" @mouseup="endCropDrag" @mouseleave="endCropDrag">
                 <!-- Dark overlay -->
-                <div class="absolute inset-0" :ui="{opacity:50}"/>
-                
+                <div class="absolute inset-0" :ui="{ opacity: 50 }" />
+
                 <!-- Crop selection rectangle -->
                 <div
                   class="absolute border-2 border-white shadow-lg"
@@ -366,13 +178,13 @@
                 >
                   <!-- Clear area inside crop -->
                   <div class="absolute inset-0 bg-transparent"></div>
-                  
+
                   <!-- Corner handles -->
                   <div class="absolute -top-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-nw-resize" @mousedown.stop="startResize('nw')"></div>
                   <div class="absolute -top-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-ne-resize" @mousedown.stop="startResize('ne')"></div>
                   <div class="absolute -bottom-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-sw-resize" @mousedown.stop="startResize('sw')"></div>
                   <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-se-resize" @mousedown.stop="startResize('se')"></div>
-                  
+
                   <!-- Edge handles -->
                   <div class="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-n-resize" @mousedown.stop="startResize('n')"></div>
                   <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-s-resize" @mousedown.stop="startResize('s')"></div>
@@ -386,65 +198,32 @@
           <!-- Video Editing Controls (only visible in edit mode) -->
           <div v-if="currentMode === 'edit' && media.type === 'video'" class="space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
               <!-- Trim Controls -->
               <UCard>
                 <template #header>
                   <h4 class="font-semibold text-gray-900 dark:text-white">Trim Video</h4>
                 </template>
-                
+
                 <div class="space-y-4">
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Time (seconds)</label>
                     <div class="flex gap-2">
-                      <UInput
-                        v-model.number="editSettings.trimStart"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        :max="videoDuration"
-                        placeholder="0.0"
-                        class="flex-1"
-                        size="sm"
-                      />
-                      <UButton
-                        size="sm"
-                        variant="outline"
-                        @click="setCurrentTimeAsStart"
-                      >
-                        Current
-                      </UButton>
+                      <UInput v-model.number="editSettings.trimStart" type="number" step="0.1" min="0" :max="videoDuration" placeholder="0.0" class="flex-1" size="sm" />
+                      <UButton size="sm" variant="outline" @click="setCurrentTimeAsStart"> Current </UButton>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimStart || 0) }}</p>
                   </div>
-                  
+
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Time (seconds)</label>
                     <div class="flex gap-2">
-                      <UInput
-                        v-model.number="editSettings.trimEnd"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        :max="videoDuration"
-                        :placeholder="videoDuration?.toString() || ''"
-                        class="flex-1"
-                        size="sm"
-                      />
-                      <UButton
-                        size="sm"
-                        variant="outline"
-                        @click="setCurrentTimeAsEnd"
-                      >
-                        Current
-                      </UButton>
+                      <UInput v-model.number="editSettings.trimEnd" type="number" step="0.1" min="0" :max="videoDuration" :placeholder="videoDuration?.toString() || ''" class="flex-1" size="sm" />
+                      <UButton size="sm" variant="outline" @click="setCurrentTimeAsEnd"> Current </UButton>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimEnd || videoDuration || 0) }}</p>
                   </div>
-                  
-                  <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                    New Duration: {{ formatTime((editSettings.trimEnd || videoDuration || 0) - (editSettings.trimStart || 0)) }}
-                  </div>
+
+                  <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded">New Duration: {{ formatTime((editSettings.trimEnd || videoDuration || 0) - (editSettings.trimStart || 0)) }}</div>
                 </div>
               </UCard>
 
@@ -453,72 +232,33 @@
                 <template #header>
                   <div class="flex justify-between items-center">
                     <h4 class="font-semibold text-gray-900 dark:text-white">Crop Video</h4>
-                    <USwitch
-                      v-model="showCropOverlay"
-                      label="Show Overlay"
-                    />
+                    <USwitch v-model="showCropOverlay" label="Show Overlay" />
                   </div>
                 </template>
-                
+
                 <div class="space-y-4">
                   <div class="grid grid-cols-2 gap-2">
                     <div>
                       <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">X Position</label>
-                      <UInput
-                        v-model.number="editSettings.crop.x"
-                        type="number"
-                        min="0"
-                        :max="videoWidth"
-                        size="sm"
-                      />
+                      <UInput v-model.number="editSettings.crop.x" type="number" min="0" :max="videoWidth" size="sm" />
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Y Position</label>
-                      <UInput
-                        v-model.number="editSettings.crop.y"
-                        type="number"
-                        min="0"
-                        :max="videoHeight"
-                        size="sm"
-                      />
+                      <UInput v-model.number="editSettings.crop.y" type="number" min="0" :max="videoHeight" size="sm" />
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Width</label>
-                      <UInput
-                        v-model.number="editSettings.crop.width"
-                        type="number"
-                        min="1"
-                        :max="videoWidth"
-                        size="sm"
-                      />
+                      <UInput v-model.number="editSettings.crop.width" type="number" min="1" :max="videoWidth" size="sm" />
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Height</label>
-                      <UInput
-                        v-model.number="editSettings.crop.height"
-                        type="number"
-                        min="1"
-                        :max="videoHeight"
-                        size="sm"
-                      />
+                      <UInput v-model.number="editSettings.crop.height" type="number" min="1" :max="videoHeight" size="sm" />
                     </div>
                   </div>
-                  
+
                   <div class="flex gap-2">
-                    <UButton
-                      size="sm"
-                      variant="outline"
-                      @click="resetCrop"
-                    >
-                      Reset
-                    </UButton>
-                    <UButton
-                      size="sm"
-                      variant="outline"
-                      @click="centerCrop"
-                    >
-                      Center
-                    </UButton>
+                    <UButton size="sm" variant="outline" @click="resetCrop"> Reset </UButton>
+                    <UButton size="sm" variant="outline" @click="centerCrop"> Center </UButton>
                   </div>
                 </div>
               </UCard>
@@ -528,53 +268,27 @@
                 <template #header>
                   <h4 class="font-semibold text-gray-900 dark:text-white">Frame Operations</h4>
                 </template>
-                
+
                 <div class="space-y-4">
                   <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current Time</label>
                     <p class="text-lg font-mono text-gray-900 dark:text-white">{{ formatTime(currentTime) }}</p>
                     <p class="text-xs text-gray-500">Frame: {{ Math.floor(currentTime * (videoFPS || 30)) }}</p>
                   </div>
-                  
+
                   <div class="space-y-2">
-                    <UButton
-                      size="sm"
-                      color="red"
-                      variant="outline"
-                      block
-                      @click="deleteCurrentFrame"
-                    >
-                      Delete Current Frame
-                    </UButton>
-                    
-                    <UButton
-                      size="sm"
-                      variant="outline"
-                      block
-                      @click="deleteFrameRange"
-                    >
-                      Delete Frame Range
-                    </UButton>
+                    <UButton size="sm" color="red" variant="outline" block @click="deleteCurrentFrame"> Delete Current Frame </UButton>
+
+                    <UButton size="sm" variant="outline" block @click="deleteFrameRange"> Delete Frame Range </UButton>
                   </div>
-                  
+
                   <!-- Deleted frames list -->
                   <div v-if="editSettings.deletedFrames.length > 0" class="mt-4">
-                    <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Deleted Frames ({{ editSettings.deletedFrames.length }})
-                    </h5>
+                    <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Deleted Frames ({{ editSettings.deletedFrames.length }})</h5>
                     <div class="max-h-32 overflow-y-auto space-y-1">
-                      <div
-                        v-for="(frame, index) in editSettings.deletedFrames"
-                        :key="index"
-                        class="flex justify-between items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-2 rounded"
-                      >
+                      <div v-for="(frame, index) in editSettings.deletedFrames" :key="index" class="flex justify-between items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-2 rounded">
                         <span>{{ formatTime(frame.time) }}</span>
-                        <UButton
-                          size="xs"
-                          variant="ghost"
-                          icon="i-heroicons-x-mark"
-                          @click="restoreFrame(index)"
-                        />
+                        <UButton size="xs" variant="ghost" icon="i-heroicons-x-mark" @click="restoreFrame(index)" />
                       </div>
                     </div>
                   </div>
@@ -588,17 +302,11 @@
                 <template #header>
                   <h4 class="font-semibold text-gray-900 dark:text-white">Edit Summary</h4>
                 </template>
-                
+
                 <div class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <div v-if="editSettings.trimStart || editSettings.trimEnd">
-                    <strong>Trim:</strong> {{ formatTime(editSettings.trimStart || 0) }} - {{ formatTime(editSettings.trimEnd || videoDuration || 0) }}
-                  </div>
-                  <div v-if="hasCropChanges">
-                    <strong>Crop:</strong> {{ editSettings.crop.width }}×{{ editSettings.crop.height }} at ({{ editSettings.crop.x }}, {{ editSettings.crop.y }})
-                  </div>
-                  <div v-if="editSettings.deletedFrames.length > 0">
-                    <strong>Deleted Frames:</strong> {{ editSettings.deletedFrames.length }} frames removed
-                  </div>
+                  <div v-if="editSettings.trimStart || editSettings.trimEnd"><strong>Trim:</strong> {{ formatTime(editSettings.trimStart || 0) }} - {{ formatTime(editSettings.trimEnd || videoDuration || 0) }}</div>
+                  <div v-if="hasCropChanges"><strong>Crop:</strong> {{ editSettings.crop.width }}×{{ editSettings.crop.height }} at ({{ editSettings.crop.x }}, {{ editSettings.crop.y }})</div>
+                  <div v-if="editSettings.deletedFrames.length > 0"><strong>Deleted Frames:</strong> {{ editSettings.deletedFrames.length }} frames removed</div>
                 </div>
               </UCard>
             </div>
@@ -666,17 +374,11 @@
                 <div class="flex flex-col space-y-1">
                   <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
                   <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-2">
-                    <span
-                      v-for="tag in media.tags.tags"
-                      :key="tag"
-                      class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-sm rounded border border-pink-200 dark:border-pink-800"
-                    >
+                    <span v-for="tag in media.tags.tags" :key="tag" class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-sm rounded border border-pink-200 dark:border-pink-800">
                       {{ tag }}
                     </span>
                   </div>
-                  <div v-else class="text-sm text-gray-500 italic">
-                    No tags available
-                  </div>
+                  <div v-else class="text-sm text-gray-500 italic">No tags available</div>
                 </div>
 
                 <!-- UUID -->
@@ -736,15 +438,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits([
-  'update:isOpen',
-  'navigate',
-  'confirmDelete',
-  'close',
-  'saveEdits',
-  'save',
-  'purposeUpdated'
-])
+const emit = defineEmits(['update:isOpen', 'navigate', 'confirmDelete', 'close', 'saveEdits', 'save', 'purposeUpdated'])
 
 // Stores
 const settingsStore = useSettingsStore()
@@ -786,6 +480,9 @@ const isSavingTags = ref(false)
 const selectedTags = ref([])
 const originalTags = ref([])
 const totalUntaggedInDatabase = ref(0)
+
+// Rating state
+const currentRating = ref(null)
 
 // Media navigation gesture handling
 const {
@@ -836,39 +533,36 @@ const editSettings = ref({
 // Computed properties
 const mediaDetailsItems = computed(() => {
   if (!props.media) return []
-  
-  return [{
-    label: 'Media Details',
-    slot: 'details'
-  }]
+
+  return [
+    {
+      label: 'Media Details',
+      slot: 'details'
+    }
+  ]
 })
 
 const hasCropChanges = computed(() => {
   const crop = editSettings.value.crop
-  return crop.x !== 0 || crop.y !== 0 ||
-         crop.width !== videoWidth.value ||
-         crop.height !== videoHeight.value
+  return crop.x !== 0 || crop.y !== 0 || crop.width !== videoWidth.value || crop.height !== videoHeight.value
 })
 
 const hasEditOperations = computed(() => {
-  return editSettings.value.trimStart ||
-         editSettings.value.trimEnd ||
-         hasCropChanges.value ||
-         editSettings.value.deletedFrames.length > 0
+  return editSettings.value.trimStart || editSettings.value.trimEnd || hasCropChanges.value || editSettings.value.deletedFrames.length > 0
 })
 
 const cropOverlayStyle = computed(() => {
   const crop = editSettings.value.crop
   const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
-  
+
   if (!videoEl) {
     return { left: 0, top: 0, width: 0, height: 0 }
   }
-  
+
   const videoRect = videoEl.getBoundingClientRect()
   const scaleX = videoRect.width / videoWidth.value
   const scaleY = videoRect.height / videoHeight.value
-  
+
   return {
     left: crop.x * scaleX,
     top: crop.y * scaleY,
@@ -892,7 +586,7 @@ const fetchTotalUntaggedCount = async () => {
     params.append('only_untagged', 'true')
     params.append('limit', '1') // We only need the count, not the actual results
     params.append('include_thumbnails', 'false')
-    
+
     const response = await useApiFetch(`media/search?${params.toString()}`)
     totalUntaggedInDatabase.value = response.total_count || 0
   } catch (error) {
@@ -902,12 +596,12 @@ const fetchTotalUntaggedCount = async () => {
 }
 
 // Purpose update method
-const updatePurpose = async (newPurpose) => {
+const updatePurpose = async newPurpose => {
   if (!props.media || newPurpose === props.media.purpose) return
-  
+
   isSavingPurpose.value = true
   const toast = useToast()
-  
+
   try {
     const response = await useApiFetch(`media/${props.media.uuid}/purpose`, {
       method: 'PUT',
@@ -915,7 +609,7 @@ const updatePurpose = async (newPurpose) => {
         purpose: newPurpose
       }
     })
-    
+
     if (response.success) {
       toast.add({
         title: 'Purpose Updated',
@@ -923,11 +617,10 @@ const updatePurpose = async (newPurpose) => {
         color: 'success',
         duration: 2000
       })
-      
+
       // Emit a specific event for purpose updates
       emit('purposeUpdated', { ...props.media, purpose: newPurpose })
     }
-    
   } catch (error) {
     console.error('Failed to update purpose:', error)
     toast.add({
@@ -936,7 +629,7 @@ const updatePurpose = async (newPurpose) => {
       color: 'error',
       duration: 3000
     })
-    
+
     // Revert the dropdown to the original value
     currentPurpose.value = props.media.purpose
   } finally {
@@ -963,10 +656,10 @@ const resetMode = () => {
   resetTagState()
 }
 
-const handleImageError = (event) => {
+const handleImageError = event => {
   console.error('Image failed to load:', event.target.src)
   event.target.style.display = 'none'
-  
+
   const container = event.target.parentElement
   if (container && !container.querySelector('.image-error-placeholder')) {
     const placeholder = document.createElement('div')
@@ -976,17 +669,17 @@ const handleImageError = (event) => {
   }
 }
 
-const formatDate = (dateString) => {
+const formatDate = dateString => {
   return new Date(dateString).toLocaleDateString()
 }
 
-const formatDuration = (seconds) => {
+const formatDuration = seconds => {
   if (!seconds || seconds <= 0) return '0:00'
-  
+
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = Math.floor(seconds % 60)
-  
+
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   } else {
@@ -994,7 +687,7 @@ const formatDuration = (seconds) => {
   }
 }
 
-const formatFileSize = (bytes) => {
+const formatFileSize = bytes => {
   if (bytes === 0) return '0 Bytes'
   const k = 1024
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
@@ -1002,17 +695,17 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const getVideoFPS = (media) => {
+const getVideoFPS = media => {
   if (!media?.fps) return null
   return media.fps
 }
 
-const getVideoCodec = (media) => {
+const getVideoCodec = media => {
   if (!media?.codec) return null
   return media.codec.toUpperCase()
 }
 
-const getVideoBitrate = (media) => {
+const getVideoBitrate = media => {
   if (!media?.bitrate) return null
   const bitrate = media.bitrate
   if (bitrate >= 1000000) {
@@ -1046,7 +739,7 @@ const resetEditSettings = () => {
 
 const confirmSaveEdits = async () => {
   const { confirm } = useConfirmDialog()
-  
+
   const result = await confirm({
     title: 'Save Video Edits',
     message: 'Are you sure you want to save these edits? This will permanently modify the video file and cannot be undone.',
@@ -1054,8 +747,8 @@ const confirmSaveEdits = async () => {
     cancelLabel: 'Cancel',
     variant: 'primary'
   })
-  
-  if (result) {
+
+  if (result === 'confirm') {
     await saveVideoEdits()
   }
 }
@@ -1065,9 +758,9 @@ const confirmCancelEdits = async () => {
     exitEditMode()
     return
   }
-  
+
   const { confirm } = useConfirmDialog()
-  
+
   const result = await confirm({
     title: 'Cancel Video Edits',
     message: 'Are you sure you want to cancel? All unsaved changes will be lost.',
@@ -1075,33 +768,36 @@ const confirmCancelEdits = async () => {
     cancelLabel: 'Keep Editing',
     variant: 'error'
   })
-  
-  if (result) {
+
+  if (result === 'confirm') {
     exitEditMode()
   }
 }
 
 const saveVideoEdits = async () => {
   if (!props.media || !hasEditOperations.value) return
-  
+
   isSavingEdits.value = true
   const toast = useToast()
-  
+
   try {
     const response = await useApiFetch(`media/${props.media.uuid}/edit`, {
       method: 'POST',
       body: {
         operations: {
-          trim: editSettings.value.trimStart || editSettings.value.trimEnd ? {
-            start: editSettings.value.trimStart || 0,
-            end: editSettings.value.trimEnd || videoDuration.value
-          } : null,
+          trim:
+            editSettings.value.trimStart || editSettings.value.trimEnd
+              ? {
+                  start: editSettings.value.trimStart || 0,
+                  end: editSettings.value.trimEnd || videoDuration.value
+                }
+              : null,
           crop: hasCropChanges.value ? editSettings.value.crop : null,
           deletedFrames: editSettings.value.deletedFrames.length > 0 ? editSettings.value.deletedFrames : null
         }
       }
     })
-    
+
     if (response.success) {
       toast.add({
         title: 'Video Saved',
@@ -1109,11 +805,10 @@ const saveVideoEdits = async () => {
         color: 'green',
         timeout: 3000
       })
-      
+
       emit('saveEdits', response.updatedMedia)
       exitEditMode()
     }
-    
   } catch (error) {
     console.error('Failed to save video edits:', error)
     toast.add({
@@ -1127,12 +822,12 @@ const saveVideoEdits = async () => {
   }
 }
 
-const onVideoLoaded = (event) => {
+const onVideoLoaded = event => {
   const video = event.target
   videoDuration.value = video.duration
   videoWidth.value = video.videoWidth
   videoHeight.value = video.videoHeight
-  
+
   if (currentMode.value === 'edit') {
     editSettings.value.crop = {
       x: 0,
@@ -1143,17 +838,17 @@ const onVideoLoaded = (event) => {
   }
 }
 
-const onTimeUpdate = (event) => {
+const onTimeUpdate = event => {
   currentTime.value = event.target.currentTime
 }
 
-const formatTime = (seconds) => {
+const formatTime = seconds => {
   if (!seconds || seconds <= 0) return '0:00'
-  
+
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = Math.floor(seconds % 60)
-  
+
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   } else {
@@ -1181,7 +876,7 @@ const resetCrop = () => {
 const centerCrop = () => {
   const cropWidth = Math.floor(videoWidth.value * 0.8)
   const cropHeight = Math.floor(videoHeight.value * 0.8)
-  
+
   editSettings.value.crop = {
     x: Math.floor((videoWidth.value - cropWidth) / 2),
     y: Math.floor((videoHeight.value - cropHeight) / 2),
@@ -1193,19 +888,17 @@ const centerCrop = () => {
 const deleteCurrentFrame = () => {
   const frameTime = currentTime.value
   const frameNumber = Math.floor(frameTime * (videoFPS.value || 30))
-  
-  const existingFrame = editSettings.value.deletedFrames.find(f =>
-    Math.abs(f.time - frameTime) < 0.1
-  )
-  
+
+  const existingFrame = editSettings.value.deletedFrames.find(f => Math.abs(f.time - frameTime) < 0.1)
+
   if (!existingFrame) {
     editSettings.value.deletedFrames.push({
       time: frameTime,
       frame: frameNumber
     })
-    
+
     editSettings.value.deletedFrames.sort((a, b) => a.time - b.time)
-    
+
     const toast = useToast()
     toast.add({
       title: 'Frame Deleted',
@@ -1226,9 +919,9 @@ const deleteFrameRange = async () => {
   })
 }
 
-const restoreFrame = (index) => {
+const restoreFrame = index => {
   editSettings.value.deletedFrames.splice(index, 1)
-  
+
   const toast = useToast()
   toast.add({
     title: 'Frame Restored',
@@ -1239,43 +932,43 @@ const restoreFrame = (index) => {
 }
 
 // Custom crop drag functionality
-const startCropDrag = (event) => {
+const startCropDrag = event => {
   if (isResizing.value) return
-  
+
   isDragging.value = true
   dragStart.value = { x: event.clientX, y: event.clientY }
   cropStart.value = { ...editSettings.value.crop }
   event.preventDefault()
 }
 
-const updateCropDrag = (event) => {
+const updateCropDrag = event => {
   if (!isDragging.value && !isResizing.value) return
-  
+
   const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
   if (!videoEl) return
-  
+
   const videoRect = videoEl.getBoundingClientRect()
   const scaleX = videoWidth.value / videoRect.width
   const scaleY = videoHeight.value / videoRect.height
-  
+
   if (isDragging.value) {
     const deltaX = (event.clientX - dragStart.value.x) * scaleX
     const deltaY = (event.clientY - dragStart.value.y) * scaleY
-    
+
     const newX = Math.max(0, Math.min(cropStart.value.x + deltaX, videoWidth.value - cropStart.value.width))
     const newY = Math.max(0, Math.min(cropStart.value.y + deltaY, videoHeight.value - cropStart.value.height))
-    
+
     editSettings.value.crop.x = Math.round(newX)
     editSettings.value.crop.y = Math.round(newY)
   }
-  
+
   if (isResizing.value) {
     const deltaX = (event.clientX - dragStart.value.x) * scaleX
     const deltaY = (event.clientY - dragStart.value.y) * scaleY
-    
+
     const handle = resizeHandle.value
     const newCrop = { ...cropStart.value }
-    
+
     if (handle.includes('n')) {
       newCrop.y = Math.max(0, cropStart.value.y + deltaY)
       newCrop.height = Math.max(10, cropStart.value.height - deltaY)
@@ -1290,7 +983,7 @@ const updateCropDrag = (event) => {
     if (handle.includes('e')) {
       newCrop.width = Math.max(10, Math.min(cropStart.value.width + deltaX, videoWidth.value - cropStart.value.x))
     }
-    
+
     editSettings.value.crop = {
       x: Math.round(newCrop.x),
       y: Math.round(newCrop.y),
@@ -1306,7 +999,7 @@ const endCropDrag = () => {
   resizeHandle.value = ''
 }
 
-const startResize = (handle) => {
+const startResize = handle => {
   isResizing.value = true
   resizeHandle.value = handle
   dragStart.value = { x: event.clientX, y: event.clientY }
@@ -1315,12 +1008,12 @@ const startResize = (handle) => {
 }
 
 // Tag editing methods
-const formatTagDisplay = (tag) => {
+const formatTagDisplay = tag => {
   // Convert underscores to spaces and capitalize
   return tag.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
 
-const toggleTag = (tag) => {
+const toggleTag = tag => {
   const index = selectedTags.value.indexOf(tag)
   if (index > -1) {
     selectedTags.value.splice(index, 1)
@@ -1337,7 +1030,7 @@ const navigatePrevious = async () => {
   if (hasTagChanges.value) {
     try {
       await saveTags(false) // Don't show toast for auto-save on navigation
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       // Don't navigate if save failed
       return
@@ -1350,7 +1043,7 @@ const navigateNext = async () => {
   if (hasTagChanges.value) {
     try {
       await saveTags(false) // Don't show toast for auto-save on navigation
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       // Don't navigate if save failed
       return
@@ -1361,26 +1054,26 @@ const navigateNext = async () => {
 
 const saveTags = async (showToast = true) => {
   if (!props.media) return
-  
+
   // Only save if there are changes
   if (!hasTagChanges.value) return
-  
+
   isSavingTags.value = true
-  
+
   try {
     await emit('save', {
       uuid: props.media.uuid,
       tags: selectedTags.value
     })
-    
+
     // Update original tags after successful save
     originalTags.value = [...selectedTags.value]
-    
+
     // Refresh the total untagged count since we just tagged something
     if (currentMode.value === 'tag') {
       fetchTotalUntaggedCount()
     }
-    
+
     if (showToast) {
       const toast = useToast()
       toast.add({
@@ -1411,7 +1104,7 @@ const saveAndClose = async () => {
     emit('update:isOpen', false)
     emit('close')
     resetMode()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     // Error handling is already done in saveTags method
     // Don't close modal if save failed
@@ -1423,9 +1116,9 @@ const confirmCancelTags = async () => {
     resetTagState()
     return
   }
-  
+
   const { confirm } = useConfirmDialog()
-  
+
   const result = await confirm({
     title: 'Cancel Tag Changes',
     message: 'Are you sure you want to cancel? All unsaved tag changes will be lost.',
@@ -1433,8 +1126,8 @@ const confirmCancelTags = async () => {
     cancelLabel: 'Keep Editing',
     variant: 'error'
   })
-  
-  if (result) {
+
+  if (result === 'confirm') {
     resetTagState()
   }
 }
@@ -1444,36 +1137,57 @@ const resetTagState = () => {
   originalTags.value = []
 }
 
+// Rating update handler
+const handleRatingUpdate = rating => {
+  currentRating.value = rating
+}
+
 // Watch for media changes to update tags and purpose
-watch(() => props.media, (newMedia) => {
-  if (newMedia) {
-    // Extract tags from the media object
-    const tags = newMedia.tags?.tags || []
-    selectedTags.value = [...tags]
-    originalTags.value = [...tags]
-    
-    // Update current purpose
-    currentPurpose.value = newMedia.purpose || ''
-  } else {
-    resetTagState()
-    currentPurpose.value = ''
-  }
-}, { immediate: true })
+watch(
+  () => props.media,
+  newMedia => {
+    if (newMedia) {
+      const tags = newMedia.tags?.tags || []
+      selectedTags.value = [...tags]
+      originalTags.value = [...tags]
+
+      currentPurpose.value = newMedia.purpose || ''
+      currentRating.value = newMedia.rating || null
+
+      if (newMedia.type === 'video') {
+        nextTick(() => {
+          const videoElements = document.querySelectorAll('video[controls], video[autoplay]')
+          videoElements.forEach(video => {
+            video.play().catch(() => {})
+          })
+        })
+      }
+    } else {
+      resetTagState()
+      currentPurpose.value = ''
+      currentRating.value = null
+    }
+  },
+  { immediate: true }
+)
 
 // Watch for modal open to set default mode based on untagged filter
-watch(() => props.isOpen, (isOpen) => {
-  if (isOpen && props.onlyShowUntagged) {
-    // Auto-switch to tag mode when opening modal with untagged filter active
-    currentMode.value = 'tag'
-  } else if (!isOpen) {
-    const modalVideoEl = document.querySelector('.max-w-full video[controls]')
-    if (modalVideoEl) {
-      modalVideoEl.pause()
-      modalVideoEl.currentTime = 0
+watch(
+  () => props.isOpen,
+  isOpen => {
+    if (isOpen && props.onlyShowUntagged) {
+      // Auto-switch to tag mode when opening modal with untagged filter active
+      currentMode.value = 'tag'
+    } else if (!isOpen) {
+      const modalVideoEl = document.querySelector('.max-w-full video[controls]')
+      if (modalVideoEl) {
+        modalVideoEl.pause()
+        modalVideoEl.currentTime = 0
+      }
+      resetMode()
     }
-    resetMode()
   }
-})
+)
 
 // Watch for mode changes
 watch(currentMode, (newMode, oldMode) => {
@@ -1483,7 +1197,7 @@ watch(currentMode, (newMode, oldMode) => {
   if (oldMode === 'tag') {
     resetTagState()
   }
-  
+
   // Fetch total untagged dest videos count when entering tag mode
   if (newMode === 'tag') {
     fetchTotalUntaggedCount()

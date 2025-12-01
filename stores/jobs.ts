@@ -25,34 +25,31 @@ export const useJobsStore = defineStore('jobs', () => {
   // WebSocket state
   const wsConnection = ref<WebSocket | null>(null)
   const wsConnected = ref(false)
-  const wsReconnectAttempts = ref(0)
-  const maxReconnectAttempts = 5
-  const reconnectDelay = ref(1000) // Start with 1 second
-  
+  const isReconnecting = ref(false) // Prevent concurrent reconnection attempts
+
   // Enhanced system status
   const systemStatus = ref<SystemStatus | null>(null)
   const isProcessing = ref(false)
-  
+
   // Manual processing state
   const isManualProcessing = ref(false)
-  
+
   // Auto-refresh fallback (simplified)
   const autoRefreshInterval = ref<NodeJS.Timeout | null>(null)
   const REFRESH_INTERVAL = 5000 // 5 seconds
-
 
   // Actions
   const fetchQueueStatus = async () => {
     const startTime = performance.now()
     console.log(`📊 [QUEUE DEBUG] fetchQueueStatus started`)
-    
+
     try {
-      const response = await useApiFetch('jobs') as QueueStatus
+      const response = (await useApiFetch('jobs')) as QueueStatus
       const apiTime = performance.now() - startTime
       console.log(`📊 [QUEUE DEBUG] API call completed in ${apiTime.toFixed(2)}ms`)
-      
+
       queueStatus.value = response
-      
+
       // Always update processing status from queue status - this is the authoritative source
       if (response.queue && typeof response.queue.is_processing === 'boolean') {
         const serverProcessingState = response.queue.is_processing
@@ -63,7 +60,7 @@ export const useJobsStore = defineStore('jobs', () => {
       } else {
         console.warn('⚠️ Server response missing is_processing field:', response)
       }
-      
+
       const totalTime = performance.now() - startTime
       console.log(`📊 [QUEUE DEBUG] fetchQueueStatus completed in ${totalTime.toFixed(2)}ms`)
     } catch (error) {
@@ -90,7 +87,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const fetchJobs = async (showLoading = false, page = 1, limit = 20, statusFilter = '', subjectFilter = '', sourceTypeFilter = 'all') => {
     const startTime = performance.now()
     console.log(`🔍 [JOBS DEBUG] fetchJobs started - status: "${statusFilter}", subject: "${subjectFilter}", sourceType: "${sourceTypeFilter}", page: ${page}, limit: ${limit}`)
-    
+
     if (showLoading) {
       isLoading.value = true
     }
@@ -101,30 +98,30 @@ export const useJobsStore = defineStore('jobs', () => {
       searchParams.append('offset', ((page - 1) * limit).toString())
       searchParams.append('sort_by', 'updated_at')
       searchParams.append('sort_order', 'desc')
-      
+
       if (statusFilter) {
         searchParams.append('status', statusFilter)
       }
-      
+
       if (subjectFilter) {
         searchParams.append('subject_uuid', subjectFilter)
       }
-      
+
       if (sourceTypeFilter && sourceTypeFilter !== 'all') {
         searchParams.append('source_type', sourceTypeFilter)
       }
 
       const apiStartTime = performance.now()
       console.log(`🔍 [JOBS DEBUG] Making API call to: /api/jobs/search?${searchParams.toString()}`)
-      
-      const response = await useApiFetch(`jobs/search?${searchParams.toString()}`) as any
+
+      const response = (await useApiFetch(`jobs/search?${searchParams.toString()}`)) as any
       const apiTime = performance.now() - apiStartTime
       console.log(`🔍 [JOBS DEBUG] API call completed successfully in ${apiTime.toFixed(2)}ms`)
 
       // Handle different response formats from the API
       let newJobs: Job[] = []
       let total = 0
-      
+
       if (response.results) {
         newJobs = response.results as Job[]
         total = response.count || newJobs.length
@@ -142,14 +139,13 @@ export const useJobsStore = defineStore('jobs', () => {
       // Simple assignment - no caching, no complex state management
       jobs.value = newJobs
       totalJobs.value = total
-      
+
       const totalTime = performance.now() - startTime
       console.log(`🔍 [JOBS DEBUG] fetchJobs completed in ${totalTime.toFixed(2)}ms - fetched ${newJobs.length} jobs`)
-      
     } catch (error) {
       const totalTime = performance.now() - startTime
       console.error(`❌ [JOBS DEBUG] fetchJobs failed after ${totalTime.toFixed(2)}ms:`, error)
-      
+
       // Clear jobs on error
       jobs.value = []
       totalJobs.value = 0
@@ -165,7 +161,7 @@ export const useJobsStore = defineStore('jobs', () => {
     try {
       // Just fetch queue status - jobs will be loaded when user clicks a filter
       await fetchQueueStatus()
-      
+
       // WebSocket connection is now handled by the websocket plugin on app startup
       // Only start fallback polling if WebSocket is not connected
       if (!wsConnected.value) {
@@ -199,31 +195,38 @@ export const useJobsStore = defineStore('jobs', () => {
       console.log('🔌 WebSocket already connected')
       return
     }
-    
+
+    // Prevent concurrent reconnection attempts
+    if (isReconnecting.value) {
+      console.log('🔌 WebSocket reconnection already in progress, skipping...')
+      return
+    }
+
+    isReconnecting.value = true
+
     // Close any existing connection that's not open
     if (wsConnection.value && wsConnection.value.readyState !== WebSocket.OPEN) {
       wsConnection.value.close()
       wsConnection.value = null
     }
-    
+
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const wsUrl = `${protocol}//${window.location.host}/api/ws/status`
-      
+
       console.log('🔌 Connecting to WebSocket:', wsUrl)
       wsConnection.value = new WebSocket(wsUrl)
-      
+
       wsConnection.value.onopen = () => {
         console.log('✅ WebSocket connected')
         wsConnected.value = true
-        wsReconnectAttempts.value = 0
-        reconnectDelay.value = 1000
-        
+        isReconnecting.value = false // Reset flag on successful connection
+
         // Stop polling when WebSocket is connected
         stopAutoRefresh()
       }
-      
-      wsConnection.value.onmessage = (event) => {
+
+      wsConnection.value.onmessage = event => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data)
           handleWebSocketMessage(message)
@@ -231,49 +234,42 @@ export const useJobsStore = defineStore('jobs', () => {
           console.error('❌ Failed to parse WebSocket message:', error)
         }
       }
-      
-      wsConnection.value.onclose = (event) => {
+
+      wsConnection.value.onclose = event => {
         console.log('🔌 WebSocket disconnected:', event.code, event.reason)
         wsConnected.value = false
         wsConnection.value = null
-        
+        isReconnecting.value = false // Reset flag so reconnection can happen
+
         // Start polling as fallback
-        startAutoRefresh()
-        
-        // Aggressive reconnection for PWA - don't give up easily
-        if (wsReconnectAttempts.value < maxReconnectAttempts) {
-          wsReconnectAttempts.value++
-          // Faster initial reconnection attempts for PWA
-          const delay = wsReconnectAttempts.value === 1 ? 100 : reconnectDelay.value
-          console.log(`🔄 PWA WebSocket reconnect ${wsReconnectAttempts.value}/${maxReconnectAttempts} in ${delay}ms`)
-          
+        // startAutoRefresh()
+
+        // Don't auto-reconnect here - let the visibility handler do it
+        // This prevents the race condition where both visibility handler and onclose try to reconnect
+        console.log('🔌 WebSocket closed, waiting for visibility handler to reconnect...')
+
+        // Attempt to reconnect after a delay if not intentionally closed
+        if (event.code !== 1000) {
           setTimeout(() => {
-            connectWebSocket()
-          }, delay)
-          
-          // Exponential backoff but cap at 5 seconds for PWA
-          reconnectDelay.value = Math.min(reconnectDelay.value * 1.5, 5000)
-        } else {
-          console.log('❌ Max WebSocket reconnect attempts reached, falling back to polling')
-          // Reset attempts after 10 seconds for PWA (faster than before)
-          setTimeout(() => {
-            wsReconnectAttempts.value = 0
-            reconnectDelay.value = 1000
-          }, 10000)
+            if (!wsConnected.value && !document.hidden) {
+              console.log('🔌 Attempting to reconnect WebSocket...')
+              connectWebSocket()
+            }
+          }, 5000)
         }
       }
-      
-      wsConnection.value.onerror = (error) => {
+
+      wsConnection.value.onerror = error => {
         console.error('❌ WebSocket error:', error)
+        isReconnecting.value = false // Reset flag on error
       }
-      
     } catch (error) {
       console.error('❌ Failed to create WebSocket connection:', error)
       // Fall back to polling
       startAutoRefresh()
     }
   }
-  
+
   const disconnectWebSocket = () => {
     if (wsConnection.value) {
       wsConnection.value.close()
@@ -281,17 +277,17 @@ export const useJobsStore = defineStore('jobs', () => {
       wsConnected.value = false
     }
   }
-  
+
   const handleWebSocketMessage = (message: WebSocketMessage) => {
     const data = message.data as SystemStatus
-    
+
     switch (message.type) {
       case 'status_update':
         // Full status update
         systemStatus.value = data
         updateLocalStateFromSystemStatus(data)
         break
-        
+
       case 'runpod_status_change':
       case 'comfyui_status_change':
       case 'processing_status_change':
@@ -301,7 +297,7 @@ export const useJobsStore = defineStore('jobs', () => {
           updateLocalStateFromSystemStatus(systemStatus.value)
         }
         break
-        
+
       case 'auto_processing_toggle':
         // Auto processing status changed
         if (data.autoProcessing) {
@@ -309,7 +305,7 @@ export const useJobsStore = defineStore('jobs', () => {
           console.log(`${isProcessing.value ? '▶️' : '⏸️'} Auto processing ${isProcessing.value ? 'enabled' : 'disabled'} via WebSocket`)
         }
         break
-        
+
       case 'job_counts_update':
         // Job counts changed - update queue status only (no automatic job refresh)
         if (data.jobCounts) {
@@ -327,17 +323,17 @@ export const useJobsStore = defineStore('jobs', () => {
               is_processing: systemStatus.value?.autoProcessing?.status === 'enabled'
             }
           }
-          
+
           // Don't automatically refresh job list - let user click filters to refresh
         }
         break
     }
   }
-  
+
   const updateLocalStateFromSystemStatus = (status: SystemStatus) => {
     // Update processing state
     isProcessing.value = status.autoProcessing.status === 'enabled'
-    
+
     // Update queue status
     queueStatus.value = {
       queue: {
@@ -361,13 +357,13 @@ export const useJobsStore = defineStore('jobs', () => {
       console.log('🔌 WebSocket connected, skipping auto-refresh')
       return
     }
-    
+
     console.log('🚀 Starting auto-refresh fallback for queue status only...', { interval: REFRESH_INTERVAL })
-    
+
     if (autoRefreshInterval.value) {
       clearInterval(autoRefreshInterval.value)
     }
-    
+
     autoRefreshInterval.value = setInterval(() => {
       // Only refresh queue status if not currently loading and page is visible
       if (!isLoading.value && !document.hidden && !wsConnected.value) {
@@ -385,22 +381,21 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-
   // Processing methods (now server-side)
   const toggleProcessing = async () => {
     try {
-      const response = await useApiFetch('jobs/processing/toggle', {
+      const response = (await useApiFetch('jobs/processing/toggle', {
         method: 'POST',
         body: {
           enabled: !isProcessing.value
         }
-      }) as any
-      
+      })) as any
+
       if (response.success) {
         isProcessing.value = response.processing_enabled
         console.log(`${isProcessing.value ? '▶️' : '⏸️'} Job processing ${isProcessing.value ? 'started' : 'stopped'}`)
       }
-      
+
       return response
     } catch (error) {
       console.error('❌ Failed to toggle processing:', error)
@@ -410,8 +405,8 @@ export const useJobsStore = defineStore('jobs', () => {
 
   const getProcessingStatus = async () => {
     try {
-      const response = await useApiFetch('jobs/processing/status') as any
-      
+      const response = (await useApiFetch('jobs/processing/status')) as any
+
       if (response.success) {
         const serverProcessingState = response.processing_enabled
         if (isProcessing.value !== serverProcessingState) {
@@ -419,7 +414,7 @@ export const useJobsStore = defineStore('jobs', () => {
         }
         isProcessing.value = serverProcessingState
       }
-      
+
       return response
     } catch (error) {
       console.error('❌ Failed to get processing status:', error)
@@ -432,10 +427,10 @@ export const useJobsStore = defineStore('jobs', () => {
     try {
       isManualProcessing.value = true
       console.log('🎯 Processing next job manually...')
-      const response = await useApiFetch('jobs/process-next', {
+      const response = (await useApiFetch('jobs/process-next', {
         method: 'POST'
-      }) as any
-      
+      })) as any
+
       if (response.success) {
         console.log(`✅ Manual job processing successful: ${response.message}`)
         // Refresh jobs list to show the updated status
@@ -443,7 +438,7 @@ export const useJobsStore = defineStore('jobs', () => {
       } else if (response.skip) {
         console.log(`ℹ️ No job to process: ${response.message}`)
       }
-      
+
       return response
     } catch (error) {
       console.error('❌ Failed to process next job:', error)
@@ -468,11 +463,11 @@ export const useJobsStore = defineStore('jobs', () => {
     filters,
     isProcessing: readonly(isProcessing),
     isManualProcessing: readonly(isManualProcessing),
-    
+
     // WebSocket state
     wsConnected: readonly(wsConnected),
     systemStatus: readonly(systemStatus),
-    
+
     // Actions
     fetchJobs,
     fetchQueueStatus,
@@ -483,7 +478,7 @@ export const useJobsStore = defineStore('jobs', () => {
     toggleProcessing,
     getProcessingStatus,
     processNextJob,
-    
+
     // WebSocket actions
     connectWebSocket,
     disconnectWebSocket,

@@ -6,7 +6,9 @@ export default withNuxt(
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      'no-empty': 'warn'
+      'no-empty': 'warn',
+      'vue/max-len': 'off',
+      'max-len': 'off'
     }
   }
 )

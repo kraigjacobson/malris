@@ -17,11 +17,15 @@ const { initializeSubjects } = useSubjects()
 
 // Initialize subjects cache when app loads (only when user is authenticated)
 // This runs in the background without blocking app startup
-watch(user, (newUser) => {
-  if (newUser) {
-    initializeSubjects().catch((error) => {
-      console.error('❌ Failed to initialize subjects cache:', error)
-    })
-  }
-}, { immediate: true })
+watch(
+  user,
+  newUser => {
+    if (newUser) {
+      initializeSubjects().catch(error => {
+        console.error('❌ Failed to initialize subjects cache:', error)
+      })
+    }
+  },
+  { immediate: true }
+)
 </script>

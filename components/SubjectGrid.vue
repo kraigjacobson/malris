@@ -15,67 +15,39 @@
 
     <!-- Error State -->
     <div v-else-if="error" class="text-center py-12">
-      <UAlert
-        color="error"
-        title="Error"
-        :description="error"
-        variant="subtle"
-      />
+      <UAlert color="error" title="Error" :description="error" variant="subtle" />
     </div>
 
     <!-- Grid View -->
     <div v-else class="grid grid-cols-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-      <div
-        v-for="subject in subjects"
-        :key="subject.uuid || subject.id"
-        class="cursor-pointer relative"
+      <div v-for="subject in subjects" :key="subject.uuid || subject.id" class="cursor-pointer relative"
         :class="{ 'ring-2 ring-blue-500': multiSelect && isSelected(subject) }"
-        @click="$emit('subject-click', subject)"
-      >
+        @click="$emit('subject-click', subject)">
         <!-- Selection Indicator for Multi-Select -->
-        <div
-          v-if="multiSelect"
-          class="absolute top-2 left-2 z-10"
-        >
-          <div
-            class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
-            :class="isSelected(subject)
-              ? 'bg-blue-500 border-blue-500 text-white'
-              : 'bg-white/80 border-gray-300 text-gray-600'"
-          >
-            <UIcon
-              v-if="isSelected(subject)"
-              name="i-heroicons-check"
-              class="w-4 h-4"
-            />
+        <div v-if="multiSelect" class="absolute top-2 left-2 z-10">
+          <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors" :class="isSelected(subject)
+            ? 'bg-blue-500 border-blue-500 text-white'
+            : 'bg-white/80 border-gray-300 text-gray-600'">
+            <UIcon v-if="isSelected(subject)" name="i-heroicons-check" class="w-4 h-4" />
           </div>
         </div>
-        
-        <!-- Pending/Total Job Count Badge (bottom left) -->
-        <div
-          v-if="displayImages && (subject.pending_job_count > 0 || subject.total_job_count > 0)"
-          class="absolute bottom-1 left-1 z-10"
-        >
+
+        <!-- Output Video Count Badge (bottom left) -->
+        <div v-if="displayImages && subject.output_video_count > 0" class="absolute bottom-1 left-1 z-10">
           <div class="subject-count-badge text-white text-xs font-medium px-1.5 py-0.5 rounded">
-            {{ subject.pending_job_count || 0 }}/{{ subject.total_job_count || 0 }}
+            {{ subject.output_video_count }}
           </div>
         </div>
-        
+
         <!-- Image Only (only show when displayImages is true) -->
         <div v-if="displayImages" class="aspect-square bg-gray-100 dark:bg-gray-700">
-          <img
-            v-if="subject.has_thumbnail && subject.thumbnail_url"
-            :src="subject.thumbnail_url"
-            :alt="subject.name"
-            class="w-full h-full object-cover object-top"
-            loading="lazy"
-            @error="handleImageError"
-          />
+          <img v-if="subject.has_thumbnail && subject.thumbnail_url" :src="subject.thumbnail_url" :alt="subject.name"
+            class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" />
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-heroicons-user-circle" class="text-4xl text-gray-400" />
           </div>
         </div>
-        
+
         <!-- Subject name when images are hidden -->
         <div v-else class="p-3 bg-gray-100 dark:bg-gray-700 rounded">
           <h3 class="font-medium text-sm text-gray-900 dark:text-white text-center">
@@ -166,7 +138,7 @@ const isSelected = (subject) => {
 const handleImageError = (event) => {
   // Hide the broken image and show placeholder instead
   event.target.style.display = 'none'
-  
+
   // Find the parent container and add a placeholder
   const container = event.target.parentElement
   if (container && !container.querySelector('.image-error-placeholder')) {
