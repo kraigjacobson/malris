@@ -1182,7 +1182,7 @@ const handleDeleteJob = async () => {
     await useApiFetch(`jobs/${props.job.id}/delete`, {
       method: 'DELETE',
       query: {
-        delete_all: deleteAllData
+        cascade: deleteAllData
       }
     })
 

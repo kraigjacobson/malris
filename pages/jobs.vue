@@ -314,7 +314,7 @@
       </div>
 
       <div v-else class="h-80 sm:h-96 overflow-y-auto">
-        <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="viewJobDetails(job.id)">
+        <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
           <!-- Main job info row -->
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
@@ -1549,7 +1549,8 @@ const bulkDelete = async () => {
 
   try {
     for (const jobId of selectedJobsArray.value) {
-      await useApiFetch(`jobs/${jobId}/delete`, { method: 'DELETE' })
+      // Default to non-cascade delete for bulk operations to be safe
+      await useApiFetch(`jobs/${jobId}/delete?cascade=false`, { method: 'DELETE' })
     }
 
     const toast = useToast()

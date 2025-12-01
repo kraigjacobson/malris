@@ -73,20 +73,28 @@ export default defineEventHandler(async event => {
       }
 
       // If not cascading, just delete the job associated with this record
-      if (!cascade) {
-        const jobQuery = 'SELECT job_id FROM media_records WHERE uuid = $1'
-        const jobResult = await client.query(jobQuery, [uuid])
-        if (jobResult.rows.length > 0 && jobResult.rows[0].job_id) {
-          const deleteJobQuery = 'DELETE FROM jobs WHERE id = $1'
-          await client.query(deleteJobQuery, [jobResult.rows[0].job_id])
-          deletedJobs = 1
-        }
-      }
+      // Delete the original record first to avoid FK constraints
+      const jobQuery = 'SELECT job_id FROM media_records WHERE uuid = $1'
+      const jobResult = await client.query(jobQuery, [uuid])
 
-      // Delete the original record
       const deleteQuery = 'DELETE FROM media_records WHERE uuid = $1'
       await client.query(deleteQuery, [uuid])
       deletedCount += 1
+
+      if (!cascade) {
+        if (jobResult.rows.length > 0 && jobResult.rows[0].job_id) {
+          const jobId = jobResult.rows[0].job_id
+
+          // Delete any other output media records associated with this job
+          const deleteJobMediaQuery = "DELETE FROM media_records WHERE job_id = $1 AND purpose = 'output'"
+          const jobMediaResult = await client.query(deleteJobMediaQuery, [jobId])
+          deletedCount += jobMediaResult.rowCount || 0
+
+          const deleteJobQuery = 'DELETE FROM jobs WHERE id = $1'
+          await client.query(deleteJobQuery, [jobId])
+          deletedJobs = 1
+        }
+      }
 
       return {
         message: cascade && destMediaUuid ? `Media record deleted successfully along with ${deletedCount - 1} related media records and ${deletedJobs} jobs` : deletedJobs > 0 ? `Media record and associated job deleted successfully` : 'Media record deleted successfully',
