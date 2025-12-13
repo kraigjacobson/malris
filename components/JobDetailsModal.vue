@@ -39,7 +39,7 @@
               </div>
 
               <!-- Star Rating Overlay for output video -->
-              <StarRating v-if="job.output_uuid && isMainVideoReady" :media-uuid="job.output_uuid" :rating="outputRating" :job-id="job.id" :top-position="'52px'" @updated="handleOutputRatingUpdate" />
+              <StarRating v-if="job.output_uuid && isMainVideoReady" :media-uuid="job.output_uuid" :rating="outputRating" :job-id="job.id" @updated="handleOutputRatingUpdate" />
             </div>
 
             <!-- Navigation Buttons - Only on non-mobile -->
@@ -460,17 +460,13 @@ const handleOutputRatingUpdate = rating => {
 // Fetch rating for output video
 const fetchOutputRating = async outputUuid => {
   if (!outputUuid) {
-    console.log('🌟 [RATING DEBUG] No output UUID provided')
     outputRating.value = null
     return
   }
 
   try {
-    console.log('🌟 [RATING DEBUG] Fetching rating for output UUID:', outputUuid)
     const response = await useApiFetch(`media/${outputUuid}/info`)
-    console.log('🌟 [RATING DEBUG] Media info response:', response)
     outputRating.value = response.rating || null
-    console.log('🌟 [RATING DEBUG] Set outputRating to:', outputRating.value)
   } catch (error) {
     console.error('🌟 [RATING DEBUG] Failed to fetch output rating:', error)
     outputRating.value = null

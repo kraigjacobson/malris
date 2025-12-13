@@ -20,7 +20,7 @@
           <div class="flex gap-2 items-center">
             <!-- Search and Clear Buttons -->
             <UButton variant="outline" size="sm" @click="clearFilters"> Clear </UButton>
-            <UButton v-if="!isLoading" color="primary" size="sm" @click="searchMedia"> Search </UButton>
+            <UButton v-if="!isLoading" color="primary" size="sm" @click="searchMedia()"> Search </UButton>
             <UButton v-else color="error" variant="outline" size="sm" @click="cancelSearch">
               <UIcon name="i-heroicons-x-mark" class="mr-1 sm:mr-2" />
               <span class="hidden sm:inline">Cancel Search</span>
@@ -140,19 +140,15 @@
 
       <!-- Grid View -->
       <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3">
-        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group">
+        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group relative">
           <!-- Image Preview -->
-          <div v-if="media.type === 'image'" class="aspect-[3/4] relative cursor-pointer" @click="openModal(media)">
+          <div v-if="media.type === 'image'" class="aspect-[3/4] cursor-pointer" @click="openModal(media)">
             <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`" :alt="media.type" class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" @load="handleImageLoad" />
             <ImagePlaceholder v-else class="w-full h-full" />
-            <!-- Delete Button - Top Right Corner -->
-            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
-              <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" class="opacity-0 group-hover:opacity-75 sm:group-hover:opacity-25 transition-opacity duration-200 shadow-lg" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
-            </div>
           </div>
 
           <!-- Video Preview -->
-          <div v-else-if="media.type === 'video'" class="aspect-[3/4] relative cursor-pointer" :data-video-uuid="media.uuid" @click="openModal(media)" @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null" @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null">
+          <div v-else-if="media.type === 'video'" class="aspect-[3/4] cursor-pointer" :data-video-uuid="media.uuid" @click="openModal(media)" @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null" @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null">
             <!-- Video element (only when displayImages is true) -->
             <video v-if="settingsStore.displayImages" :ref="`video-${media.uuid}`" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" class="w-full h-full object-cover object-top" muted loop preload="none" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture>
               <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
@@ -168,14 +164,12 @@
             <div v-if="!settingsStore.displayImages" class="w-full h-full bg-gray-800 flex items-center justify-center">
               <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
             </div>
+          </div>
 
-            <!-- Delete Button - Top Right Corner -->
-            <div class="absolute top-1 right-1 sm:top-2 sm:right-2 z-10">
-              <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
-            </div>
-
-            <!-- Star Rating Overlay - Below Delete Button -->
-            <StarRating :media-uuid="media.uuid" :rating="media.rating" :top-position="'52px'" @updated="rating => handleRatingUpdated(media.uuid, rating)" />
+          <!-- Star Rating and Delete Button - Across Top (Outside media preview for DRY) -->
+          <div class="absolute top-1 left-1 right-1 sm:top-2 sm:left-2 sm:right-2 z-10 flex flex-row justify-between items-start">
+            <StarRating :media-uuid="media.uuid" :rating="media.rating" @updated="rating => handleRatingUpdated(media.uuid, rating)" />
+            <UButton icon="i-heroicons-x-mark" color="error" variant="ghost" size="xl" class="!p-0 min-w-[48px] min-h-[48px] flex items-center justify-center" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
           </div>
         </div>
       </div>
@@ -236,11 +230,20 @@
         </div>
       </div>
 
-      <!-- Pagination -->
-      <div v-if="pagination.total > pagination.limit || pagination.has_more" class="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-gray-200 dark:border-gray-700 p-2 sm:p-4 z-50">
-        <div class="flex justify-center">
-          <UPagination v-model:page="currentPage" :items-per-page="pagination.limit" :total="pagination.total" show-last show-first />
+      <!-- Loading More Indicator -->
+      <div v-if="isLoadingMore" class="flex justify-center py-8">
+        <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <UIcon name="i-heroicons-arrow-path" class="animate-spin text-xl" />
+          <span class="text-sm">Loading more...</span>
         </div>
+      </div>
+
+      <!-- Infinite Scroll Sentinel -->
+      <div v-if="hasMoreResults && !isLoadingMore" ref="scrollSentinel" class="h-px"></div>
+
+      <!-- End of Results -->
+      <div v-if="!hasMoreResults && hasSearched && mediaResults.length > 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
+        <p class="text-sm">End of results</p>
       </div>
     </div>
 
@@ -300,9 +303,6 @@
 import { useSettingsStore } from '~/stores/settings'
 import { useMediaGalleryFilters } from '~/composables/useMediaGalleryFilters'
 
-// Device detection
-const { isMobile } = useDevice()
-
 // Page metadata
 definePageMeta({
   title: 'Media Gallery'
@@ -332,7 +332,9 @@ const onlyShowOrphans = ref(false)
 
 const mediaResults = ref([])
 const isLoading = ref(false)
+const isLoadingMore = ref(false) // Prevent multiple simultaneous infinite scroll requests
 const hasSearched = ref(false)
+const hasMoreResults = ref(false) // Track if there are more results to load
 const selectedMedia = ref(null)
 const deletingIds = ref([])
 const isModalOpen = ref(false)
@@ -346,6 +348,10 @@ const pagination = ref({
 
 // Store the actual total count from database
 const totalDbCount = ref(0)
+
+// Infinite scroll
+const scrollObserver = ref(null) // Observer for infinite scroll
+const scrollSentinel = ref(null) // Template ref for sentinel element
 
 // Video hover state
 const hoveredVideoId = ref(null)
@@ -511,8 +517,12 @@ const toggleRating = rating => {
 const addPaginationAndSorting = params => {
   // Handle limit - extract value if it's an object, use paginationLimit from composable
   const limit = typeof paginationLimit.value === 'object' ? paginationLimit.value.value : paginationLimit.value
+  const offset = (currentPage.value - 1) * limit
+
+  console.log('🔍 Adding pagination:', { currentPage: currentPage.value, limit, offset })
+
   params.append('limit', limit.toString())
-  params.append('offset', ((currentPage.value - 1) * limit).toString())
+  params.append('offset', offset.toString())
 
   // Add sort parameters
   const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
@@ -555,13 +565,23 @@ const updatePagination = (response, searchType) => {
 }
 
 // Methods
-const searchMedia = async () => {
-  isLoading.value = true
-  hasSearched.value = true
+const searchMedia = async (append = false) => {
+  // Prevent multiple simultaneous loads
+  if (append && isLoadingMore.value) {
+    return
+  }
 
-  // Only collapse filters on mobile devices after search is submitted
-  if (isMobile) {
+  if (append) {
+    isLoadingMore.value = true
+  } else {
+    isLoading.value = true
+    hasSearched.value = true
+    currentPage.value = 1 // Reset to first page for new search
+
+    // Collapse filters after search is submitted
+    console.log('🔽 Collapsing filters, current value:', filtersCollapsed.value)
     filtersCollapsed.value = true
+    console.log('🔽 Filters collapsed value after set:', filtersCollapsed.value)
   }
 
   // Create new AbortController for this search
@@ -575,15 +595,25 @@ const searchMedia = async () => {
       addPaginationAndSorting(params)
     }
 
-    const response = await useApiFetch(`media/search?${params.toString()}`, {
+    const queryString = params.toString()
+    console.log('🌐 Making API request:', {
+      searchType,
+      append,
+      currentPage: currentPage.value,
+      queryString,
+      hasOffset: queryString.includes('offset=')
+    })
+
+    const response = await useApiFetch(`media/search?${queryString}`, {
       signal: searchController.value.signal
     })
 
     const allResults = response.results || []
 
     // Filter results based on media type selection (only for normal searches)
+    let filteredResults = []
     if (searchType === 'normal') {
-      mediaResults.value = allResults.filter(media => {
+      filteredResults = allResults.filter(media => {
         // If searching specifically for images, exclude thumbnails to avoid duplicates
         if (mediaType === 'image') {
           return media.type === 'image' && media.purpose !== 'thumbnail'
@@ -597,18 +627,37 @@ const searchMedia = async () => {
       })
 
       // Log any videos without thumbnails but don't filter them out
-      mediaResults.value.forEach(media => {
+      filteredResults.forEach(media => {
         if (media.type === 'video' && !media.thumbnail_uuid) {
           console.warn(`Video ${media.uuid} (${media.filename}) has no thumbnail_uuid`)
         }
       })
     } else {
       // For direct searches (UUID/filename), use results as-is
-      mediaResults.value = allResults
+      filteredResults = allResults
+    }
+
+    // Append or replace results
+    if (append) {
+      mediaResults.value = [...mediaResults.value, ...filteredResults]
+    } else {
+      mediaResults.value = filteredResults
     }
 
     // Update pagination
     updatePagination(response, searchType)
+
+    // Check if there are more results to load
+    hasMoreResults.value = pagination.value.has_more || false
+
+    console.log('📊 Search completed:', {
+      append,
+      resultsCount: filteredResults.length,
+      totalResults: mediaResults.value.length,
+      hasMoreResults: hasMoreResults.value,
+      pagination: pagination.value,
+      totalDbCount: response.total_count
+    })
 
     // Store the total database count if available
     if (response.total_count !== undefined) {
@@ -638,11 +687,80 @@ const searchMedia = async () => {
       timeout: 5000
     })
 
-    mediaResults.value = []
+    if (!append) {
+      mediaResults.value = []
+    }
   } finally {
-    isLoading.value = false
+    if (append) {
+      isLoadingMore.value = false
+    } else {
+      isLoading.value = false
+    }
     searchController.value = null
   }
+}
+
+// Load more results for infinite scroll
+const loadMoreResults = async () => {
+  if (!hasMoreResults.value || isLoadingMore.value || isLoading.value) {
+    return
+  }
+
+  console.log('🔄 Loading more results...')
+  currentPage.value++
+  await searchMedia(true)
+}
+
+// Setup IntersectionObserver for infinite scroll
+const setupScrollObserver = () => {
+  console.log('📡 Setting up scroll observer', {
+    hasSentinel: !!scrollSentinel.value,
+    hasMoreResults: hasMoreResults.value,
+    hasSearched: hasSearched.value,
+    isLoading: isLoading.value,
+    isLoadingMore: isLoadingMore.value
+  })
+
+  // Disconnect existing observer if any
+  if (scrollObserver.value) {
+    scrollObserver.value.disconnect()
+  }
+
+  // Wait for sentinel to be available
+  if (!scrollSentinel.value) {
+    console.warn('⚠️ Sentinel element not found, cannot setup observer')
+    return
+  }
+
+  // Create IntersectionObserver to detect when sentinel becomes visible
+  scrollObserver.value = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        console.log('👁️ Sentinel intersection:', {
+          isIntersecting: entry.isIntersecting,
+          isLoading: isLoading.value,
+          isLoadingMore: isLoadingMore.value,
+          hasMoreResults: hasMoreResults.value,
+          hasSearched: hasSearched.value
+        })
+
+        // Don't check hasSearched - if we have results and more to load, that's enough
+        if (entry.isIntersecting && !isLoading.value && !isLoadingMore.value && hasMoreResults.value) {
+          console.log('🔄 IntersectionObserver triggered load more')
+          loadMoreResults()
+        }
+      })
+    },
+    {
+      root: null, // Use viewport as root
+      rootMargin: '400px', // Start loading 400px before reaching the sentinel
+      threshold: 0
+    }
+  )
+
+  // Start observing the sentinel
+  scrollObserver.value.observe(scrollSentinel.value)
+  console.log('✅ Observer started observing sentinel')
 }
 
 const cancelSearch = () => {
@@ -1600,11 +1718,37 @@ onMounted(() => {
   })
 })
 
-// Watch for page changes
-watch(currentPage, (newPage, oldPage) => {
-  if (newPage !== oldPage && hasSearched.value) {
-    searchMedia()
-  }
+// Watch for results changes to re-setup observer
+watch(mediaResults, newResults => {
+  console.log('👀 mediaResults watcher fired:', {
+    resultsCount: newResults.length,
+    hasSearched: hasSearched.value,
+    hasMoreResults: hasMoreResults.value
+  })
+
+  // Re-setup observer when results change to ensure sentinel is observed
+  nextTick(() => {
+    console.log('⏭️ After nextTick, checking sentinel:', {
+      hasSentinel: !!scrollSentinel.value,
+      hasSearched: hasSearched.value,
+      hasMoreResults: hasMoreResults.value
+    })
+
+    // Set up observer if we have results and more results to load
+    // If we have results, we've searched - don't check hasSearched as timing can vary
+    if (newResults.length > 0 && hasMoreResults.value) {
+      // Always try to set up observer after results, even if sentinel doesn't exist yet
+      // It will be available after the next render
+      setTimeout(() => {
+        if (scrollSentinel.value) {
+          console.log('🎯 Setting up observer with sentinel')
+          setupScrollObserver()
+        } else {
+          console.warn('⚠️ Sentinel still not available after timeout')
+        }
+      }, 100)
+    }
+  })
 })
 
 // Watch for modal close to clean up video sources
@@ -1686,6 +1830,12 @@ onMounted(async () => {
   $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onMounted - START' } }).catch(() => {})
   await settingsStore.initializeSettings()
   await loadFilters()
+
+  // Set up IntersectionObserver for infinite scroll after DOM is ready
+  nextTick(() => {
+    setupScrollObserver()
+  })
+
   console.log('🔵 [LIFECYCLE] media-gallery onMounted - COMPLETE')
   $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onMounted - COMPLETE' } }).catch(() => {})
 })
@@ -1699,6 +1849,12 @@ onBeforeMount(() => {
 onBeforeUnmount(() => {
   console.log('🔴 [LIFECYCLE] media-gallery onBeforeUnmount - page is about to be destroyed')
   $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onBeforeUnmount - PAGE DESTROYING' } }).catch(() => {})
+
+  // Clean up IntersectionObserver
+  if (scrollObserver.value) {
+    scrollObserver.value.disconnect()
+    scrollObserver.value = null
+  }
 })
 
 onUnmounted(() => {

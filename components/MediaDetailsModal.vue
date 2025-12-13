@@ -34,45 +34,42 @@
         <!-- Tag Mode Layout -->
         <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0">
           <!-- Media Display -->
-          <div class="space-y-4 flex flex-col flex-1">
-            <div class="flex flex-1">
-              <div class="w-full relative touch-pan-y flex flex-col">
-                <!-- Image display -->
-                <img v-if="media.type === 'image' && settingsStore.displayImages" :key="`tag-image-${media.uuid}`" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="w-full flex-1 object-contain rounded-lg shadow-md" @error="handleImageError" />
-                <!-- Image placeholder -->
-                <div v-else-if="media.type === 'image'" :key="`tag-image-placeholder-${media.uuid}`" class="w-full flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                  <div class="text-center">
-                    <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
-                  </div>
+          <div class="space-y-4 flex flex-col">
+            <!-- Fixed height media container -->
+            <div class="relative touch-pan-y" style="height: 70vh; min-height: 400px">
+              <!-- Image display -->
+              <img v-if="media.type === 'image' && settingsStore.displayImages" :key="`tag-image-${media.uuid}`" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="w-full h-full object-contain rounded-lg shadow-md" @error="handleImageError" />
+              <!-- Image placeholder -->
+              <div v-else-if="media.type === 'image'" :key="`tag-image-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                <div class="text-center">
+                  <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
                 </div>
-                <!-- Video display -->
-                <div v-else-if="media.type === 'video'" class="relative" :key="`tag-video-${media.uuid}`">
-                  <video v-if="settingsStore.displayImages && media.thumbnail_uuid" :key="`video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full flex-1 object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
-                    <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
-                  <!-- Video placeholder (when displayImages is false or no thumbnail) -->
-                  <div v-else class="w-full flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                    <div class="text-center">
-                      <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
-                    </div>
-                  </div>
+              </div>
+              <!-- Video display -->
+              <video v-else-if="media.type === 'video' && settingsStore.displayImages && media.thumbnail_uuid" :key="`tag-video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full h-full object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
+                <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+              <!-- Video placeholder (when displayImages is false or no thumbnail) -->
+              <div v-else-if="media.type === 'video'" :key="`tag-video-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                <div class="text-center">
+                  <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
                 </div>
+              </div>
 
-                <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
-                <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
-                  <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">{{ currentIndex + 1 }} / {{ totalCount }}</div>
-                </div>
+              <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
+              <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
+                <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">{{ currentIndex + 1 }} / {{ totalCount }}</div>
+              </div>
 
-                <!-- Overlaid Navigation Buttons (Desktop Only) -->
-                <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
-                  <UButton :disabled="!props.hasPrevious" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" class="shadow-lg w-12 h-12" @click="navigatePrevious" />
-                  <UButton :disabled="!props.hasNext" variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" class="shadow-lg w-12 h-12" @click="navigateNext" />
-                </div>
+              <!-- Overlaid Navigation Buttons (Desktop Only) -->
+              <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
+                <UButton :disabled="!props.hasPrevious" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" class="shadow-lg w-12 h-12" @click="navigatePrevious" />
+                <UButton :disabled="!props.hasNext" variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" class="shadow-lg w-12 h-12" @click="navigateNext" />
               </div>
             </div>
 
-            <!-- Current/Total counter and Save & Close button -->
+            <!-- Save & Close button -->
             <div class="flex justify-between items-center">
               <UButton v-if="!props.hasNext" variant="solid" color="success" trailing-icon="i-heroicons-check" :loading="isSavingTags" @click="saveAndClose"> Save & Close </UButton>
             </div>

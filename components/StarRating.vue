@@ -1,13 +1,13 @@
 <template>
-  <div class="star-rating-overlay" :style="{ top: topPosition }">
+  <div class="star-rating-wrapper">
     <UPopover v-model:open="isPopoverOpen" :content="{ align: 'center', side: 'bottom', sideOffset: 8 }">
-      <UButton :icon="currentRating ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="currentRating ? 'yellow' : 'white'" variant="ghost" size="xl" :loading="isUpdating" class="opacity-80 hover:opacity-100 transition-opacity p-3 min-w-[48px] min-h-[48px] star-icon-shadow" :label="currentRating ? String(currentRating) : undefined" @click.stop @touchstart.stop />
+      <UButton :icon="currentRating ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="currentRating ? 'yellow' : 'white'" variant="ghost" size="xl" :loading="isUpdating" class="opacity-80 hover:opacity-100 transition-opacity !p-0 min-w-[48px] min-h-[48px] star-icon-shadow flex items-center justify-center" :label="currentRating ? String(currentRating) : undefined" @click.stop @touchstart.stop @touchend.stop @touchmove.stop />
 
       <template #content>
         <div class="p-4 bg-white dark:bg-gray-800">
           <div class="flex gap-2">
-            <UButton v-for="star in [1, 2, 3, 4, 5]" :key="`star-${star}`" :icon="star <= (hoverRating || currentRating || 0) ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="star <= (hoverRating || currentRating || 0) ? 'yellow' : 'neutral'" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(star)" @touchend.stop.prevent="handleTouchRating(star)" @mouseenter="!isTouchDevice && (hoverRating = star)" @mouseleave="!isTouchDevice && (hoverRating = 0)" />
-            <UButton v-if="currentRating" icon="i-heroicons-x-mark-20-solid" color="error" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(null)" @touchend.stop.prevent="handleTouchRating(null)" title="Clear rating" />
+            <UButton v-if="currentRating" icon="i-heroicons-x-mark-20-solid" color="error" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(null)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(null)" @touchmove.stop title="Clear rating" />
+            <UButton v-for="star in [1, 2, 3, 4, 5]" :key="`star-${star}`" :icon="star <= (hoverRating || currentRating || 0) ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="star <= (hoverRating || currentRating || 0) ? 'yellow' : 'neutral'" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(star)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(star)" @touchmove.stop @mouseenter="!isTouchDevice && (hoverRating = star)" @mouseleave="!isTouchDevice && (hoverRating = 0)" />
           </div>
         </div>
       </template>
@@ -28,10 +28,6 @@ const props = defineProps({
   jobId: {
     type: String,
     default: null
-  },
-  topPosition: {
-    type: String,
-    default: '8px'
   }
 })
 
@@ -51,18 +47,14 @@ onMounted(() => {
 // Handle rating click with proper state management
 const handleRatingClick = async rating => {
   if (isTouchDevice.value) return // Ignore clicks on touch devices
-  console.log('🌟 [RATING DEBUG] Clicking star:', rating, 'Current rating before update:', currentRating.value)
   await updateRating(rating)
   hoverRating.value = 0
-  console.log('🌟 [RATING DEBUG] After update, currentRating is:', currentRating.value)
 }
 
 // Handle touch events separately to prevent double-firing
 const handleTouchRating = async rating => {
-  console.log('🌟 [RATING DEBUG] Touch rating:', rating, 'Current rating before update:', currentRating.value)
   await updateRating(rating)
   hoverRating.value = 0
-  console.log('🌟 [RATING DEBUG] After update, currentRating is:', currentRating.value)
 }
 
 const updateRating = async rating => {
@@ -113,7 +105,6 @@ const updateRating = async rating => {
 watch(
   () => props.rating,
   newRating => {
-    console.log('🌟 [RATING DEBUG] Rating prop changed from', currentRating.value, 'to', newRating)
     currentRating.value = newRating
   },
   { immediate: true }
@@ -127,22 +118,10 @@ watch(isPopoverOpen, newValue => {
     emit('popover-closed')
   }
 })
-
-// Debug mounted lifecycle
-onMounted(() => {
-  console.log('🌟 [RATING DEBUG] StarRating mounted with:', {
-    mediaUuid: props.mediaUuid,
-    initialRating: props.rating,
-    currentRating: currentRating.value
-  })
-})
 </script>
 
 <style scoped>
-.star-rating-overlay {
-  position: absolute;
-  right: 8px;
-  z-index: 50;
+.star-rating-wrapper {
   pointer-events: auto;
 }
 
