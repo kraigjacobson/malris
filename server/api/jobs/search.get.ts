@@ -123,17 +123,17 @@ export default defineEventHandler(async event => {
 
     // Rating filter - add to WHERE conditions at database level
     if (unrated_only === 'true' || unrated_only === true) {
-      // Show only jobs where output_uuid is NULL OR output media has no rating
+      // Show only jobs where dest_media_uuid is NULL OR dest media has no rating
       // This requires a subquery or left join
-      logger.info('🔍 [JOBS API] Filtering for unrated outputs only')
+      logger.info('🔍 [JOBS API] Filtering for unrated dest media only')
     } else if (ratings) {
-      // Show jobs with specific output ratings
+      // Show jobs with specific dest media ratings
       const ratingList = (ratings as string)
         .split(',')
         .map(r => parseInt(r.trim()))
         .filter(r => r >= 1 && r <= 5)
       if (ratingList.length > 0) {
-        logger.info(`🔍 [JOBS API] Filtering for output ratings: ${ratingList.join(', ')}`)
+        logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')}`)
       }
     }
 
@@ -175,13 +175,13 @@ export default defineEventHandler(async event => {
     const conditionsTime = performance.now() - conditionsStartTime
     logger.info(`🔍 [JOBS API DEBUG] Query conditions built in ${conditionsTime.toFixed(2)}ms - ${conditions.length} conditions`)
 
-    // Add rating conditions to WHERE clause
+    // Add rating conditions to WHERE clause - filtering by dest_media rating
     if (unrated_only === 'true' || unrated_only === true) {
-      // Join only for the condition check
+      // Join only for the condition check - filter by dest_media_uuid instead of output_uuid
       conditions.push(
-        sql`(${jobs.outputUuid} IS NULL OR NOT EXISTS (
+        sql`(${jobs.destMediaUuid} IS NULL OR NOT EXISTS (
           SELECT 1 FROM media_records mr
-          WHERE mr.uuid = ${jobs.outputUuid} AND mr.rating IS NOT NULL
+          WHERE mr.uuid = ${jobs.destMediaUuid} AND mr.rating IS NOT NULL
         ))`
       )
     } else if (ratings) {
@@ -194,7 +194,7 @@ export default defineEventHandler(async event => {
         conditions.push(
           sql`EXISTS (
             SELECT 1 FROM media_records mr
-            WHERE mr.uuid = ${jobs.outputUuid}
+            WHERE mr.uuid = ${jobs.destMediaUuid}
             AND mr.rating IN (${sql.raw(ratingValues)})
           )`
         )
@@ -303,19 +303,19 @@ export default defineEventHandler(async event => {
       output_media: job.output_uuid ? mediaMap.get(job.output_uuid) || null : null
     }))
 
-    // Apply rating filter to enhanced results (client-side for now - will optimize later)
+    // Apply rating filter to enhanced results - filtering by dest_media instead of output_media
     let filteredResults = enhancedResults
     if (unrated_only === 'true' || unrated_only === true) {
-      filteredResults = enhancedResults.filter(job => !job.output_media || !job.output_media.rating)
-      logger.info(`🔍 [JOBS API] Filtered for unrated: ${filteredResults.length}/${enhancedResults.length} jobs`)
+      filteredResults = enhancedResults.filter(job => !job.dest_media || !job.dest_media.rating)
+      logger.info(`🔍 [JOBS API] Filtered for unrated dest media: ${filteredResults.length}/${enhancedResults.length} jobs`)
     } else if (ratings) {
       const ratingList = (ratings as string)
         .split(',')
         .map(r => parseInt(r.trim()))
         .filter(r => r >= 1 && r <= 5)
       if (ratingList.length > 0) {
-        filteredResults = enhancedResults.filter(job => job.output_media && ratingList.includes(job.output_media.rating))
-        logger.info(`🔍 [JOBS API] Filtered for ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
+        filteredResults = enhancedResults.filter(job => job.dest_media && ratingList.includes(job.dest_media.rating))
+        logger.info(`🔍 [JOBS API] Filtered for dest media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
       }
     }
 

@@ -1,10 +1,12 @@
 <template>
   <UModal v-model:open="isOpen" @close="handleCancel" :ui="{ overlay: 'z-[60]', content: 'z-[60]' }">
+    <template #header>
+      <h3 class="text-lg font-semibold leading-6">
+        {{ title }}
+      </h3>
+    </template>
     <template #body>
       <div class="p-6">
-        <h3 class="text-lg font-semibold leading-6 mb-2">
-          {{ title }}
-        </h3>
         <p class="text-sm text-neutral-500 mb-4">
           {{ message }}
         </p>

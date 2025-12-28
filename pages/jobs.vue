@@ -12,6 +12,11 @@
               <span class="hidden sm:inline">Submit Job</span>
             </UButton>
 
+            <!-- Force Restart Button (⚡) - Always visible -->
+            <UButton type="button" size="lg" variant="ghost" color="error" :loading="isStopping" @click.prevent="stopAllProcessing()" title="Force Restart ComfyUI">
+              <UIcon name="i-heroicons-power" class="w-3 h-3 sm:w-4 sm:h-4" />
+            </UButton>
+
             <!-- Processing Control Buttons -->
             <template v-if="!isAnyProcessingActive">
               <!-- Single Job Processing Button (▶️) -->
@@ -35,8 +40,8 @@
               </UButton>
 
               <!-- Processing Mode Indicator -->
-              <UBadge :color="processingMode === 'single' ? 'primary' : 'blue'" variant="soft" size="xs" class="hidden sm:inline-flex">
-                {{ processingMode === 'single' ? 'Processing One' : 'Processing All' }}
+              <UBadge :color="processingMode === 'single' ? 'primary' : 'neutral'" variant="soft" size="lg" class="hidden sm:inline-flex">
+                {{ processingMode === 'single' ? 'One' : 'All' }}
               </UBadge>
             </template>
           </div>
@@ -270,8 +275,8 @@
       </div>
 
       <!-- Star Rating Filter -->
-      <div class="mt-3 sm:mt-4 flex items-center gap-1">
-        <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-6 h-6 cursor-pointer transition-colors" :class="selectedRatings.includes(star) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500'" @click="toggleRating(star)" />
+      <div class="mt-3 sm:mt-4">
+        <RatingFilter v-model="selectedRatings" v-model:show-unrated="showUnrated" @update:model-value="handleRatingFilterChange" @update:show-unrated="handleRatingFilterChange" />
       </div>
     </UCard>
 
@@ -289,6 +294,12 @@
 
           <!-- Results Limit and Bulk Actions -->
           <div class="flex items-center gap-2">
+            <!-- View Toggle -->
+            <div class="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg mr-2">
+              <UButton :variant="viewMode === 'list' ? 'solid' : 'ghost'" size="xs" icon="i-heroicons-list-bullet" @click="viewMode = 'list'" />
+              <UButton :variant="viewMode === 'grid' ? 'solid' : 'ghost'" size="xs" icon="i-heroicons-squares-2x2" @click="viewMode = 'grid'" />
+            </div>
+
             <!-- Results Limit Dropdown -->
             <div v-if="!hasSelectedJobs" class="flex items-center gap-2">
               <label class="text-xs font-medium text-gray-600 dark:text-gray-400"> Results: </label>
@@ -314,66 +325,118 @@
       </div>
 
       <div v-else class="h-80 sm:h-96 overflow-y-auto">
-        <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
-          <!-- Main job info row -->
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
-              <!-- Checkbox -->
-              <UCheckbox :model-value="selectedJobs.has(job.id)" @update:model-value="checked => toggleJobSelection(job.id, checked)" @click.stop />
-              <!-- Time since updated - moved to left side -->
-              <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ formatDateCompact(job.updated_at) }}
-              </span>
-              <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">
-                {{ getStatusDisplayText(job.status) }}
-              </UBadge>
-              <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
-                {{ job.subject?.name || 'Unknown Subject' }}
-              </span>
-              <!-- Desktop: Show full text -->
-              <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
-                {{ job.source_media_uuid ? 'vid' : 'source' }}
-              </span>
-              <!-- Mobile: Show single letter badges -->
-              <UBadge v-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
-              <UBadge v-else color="green" variant="soft" size="xs" class="sm:hidden"> S </UBadge>
-              <!-- Show progress bar when available (mobile and desktop) -->
-              <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
-                <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
-                  <div class="bg-blue-600 h-1 rounded-full transition-all duration-300" :style="{ width: `${job.progress}%` }" />
+        <!-- List View -->
+        <div v-if="viewMode === 'list'">
+          <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
+            <!-- Main job info row -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
+                <!-- Checkbox -->
+                <UCheckbox :model-value="selectedJobs.has(job.id)" @update:model-value="checked => toggleJobSelection(job.id, checked)" @click.stop />
+                <!-- Time since updated - moved to left side -->
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatDateCompact(job.updated_at) }}
+                </span>
+                <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">
+                  {{ getStatusDisplayText(job.status) }}
+                </UBadge>
+                <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
+                  {{ job.subject?.name || 'Unknown Subject' }}
+                </span>
+                <!-- Desktop: Show full text -->
+                <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
+                  {{ job.source_media_uuid ? 'vid' : 'source' }}
+                </span>
+                <!-- Mobile: Show single letter badges -->
+                <UBadge v-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
+                <UBadge v-else color="green" variant="soft" size="xs" class="sm:hidden"> S </UBadge>
+                <!-- Show progress bar when available (mobile and desktop) -->
+                <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
+                  <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                    <div class="bg-blue-600 h-1 rounded-full transition-all duration-300" :style="{ width: `${job.progress}%` }" />
+                  </div>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
                 </div>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
+                <!-- Show star rating if job has dest media with rating -->
+                <div v-if="job.dest_media && job.dest_media.rating" class="flex items-center space-x-1">
+                  <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-3 h-3" :class="star <= job.dest_media.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" />
+                </div>
               </div>
-              <!-- Show star rating if job has output media with rating -->
-              <div v-if="job.output_media && job.output_media.rating" class="flex items-center space-x-1">
-                <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-3 h-3" :class="star <= job.output_media.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" />
+            </div>
+
+            <!-- Full-height button container positioned absolutely -->
+            <div class="absolute top-0 right-0 h-full flex items-center">
+              <!-- Select button for need_input jobs -->
+              <div v-if="job.status === 'need_input'" class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop="openImageSelectionModal(job)">
+                <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                  <span class="hidden sm:inline">Select</span>
+                  <span class="sm:hidden">Sel</span>
+                </span>
               </div>
+
+              <!-- Dropdown menu button -->
+              <UDropdownMenu :items="getJobActions(job)" :ui="{ content: 'w-48' }">
+                <div class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop>
+                  <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                </div>
+              </UDropdownMenu>
             </div>
           </div>
+        </div>
 
-          <!-- Full-height button container positioned absolutely -->
-          <div class="absolute top-0 right-0 h-full flex items-center">
-            <!-- Select button for need_input jobs -->
-            <div v-if="job.status === 'need_input'" class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop="openImageSelectionModal(job)">
-              <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                <span class="hidden sm:inline">Select</span>
-                <span class="sm:hidden">Sel</span>
-              </span>
+        <!-- Grid View -->
+        <div v-else-if="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4">
+          <div v-for="job in jobs" :key="job.id" class="relative group bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-200 dark:border-gray-700 cursor-pointer" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
+            <!-- Media Preview -->
+            <div class="aspect-[2/3] bg-gray-100 dark:bg-gray-900 relative">
+              <MediaCard v-if="job.output_media" :media="job.output_media" class="w-full h-full" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)" @delete="deleteJob(job)">
+                <template #overlays>
+                  <!-- Status Badge -->
+                  <div class="absolute top-2 right-2 z-10">
+                    <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ getStatusDisplayText(job.status) }}</UBadge>
+                  </div>
+                  <!-- Selection Checkbox -->
+                  <div class="absolute top-2 left-2 z-10" @click.stop>
+                    <UCheckbox :model-value="selectedJobs.has(job.id)" @update:model-value="checked => toggleJobSelection(job.id, checked)" />
+                  </div>
+                </template>
+              </MediaCard>
+
+              <!-- Fallback if no output media -->
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-heroicons-photo" class="w-12 h-12 text-gray-300" />
+                <!-- Status Badge -->
+                <div class="absolute top-2 right-2 z-10">
+                  <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ getStatusDisplayText(job.status) }}</UBadge>
+                </div>
+                <!-- Selection Checkbox -->
+                <div class="absolute top-2 left-2 z-10" @click.stop>
+                  <UCheckbox :model-value="selectedJobs.has(job.id)" @update:model-value="checked => toggleJobSelection(job.id, checked)" />
+                </div>
+              </div>
             </div>
 
-            <!-- Dropdown menu button -->
-            <UDropdownMenu :items="getJobActions(job)" :ui="{ content: 'w-48' }">
-              <div class="h-full flex items-center justify-center px-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop>
-                <UIcon name="i-heroicons-ellipsis-horizontal" class="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              </div>
-            </UDropdownMenu>
+            <!-- Footer Info -->
+            <div class="p-2 text-xs">
+              <div class="font-medium truncate">{{ job.subject?.name || 'Unknown' }}</div>
+              <div class="text-gray-500 truncate">{{ formatDateCompact(job.updated_at) }}</div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="mt-3 sm:mt-6 flex justify-center">
-        <UPagination v-model:page="pageNumber" :total="totalJobs" :items-per-page="itemsPerPage" :max="5" @update:page="handlePageChange" />
+      <div v-if="totalPages > 1" class="mt-3 sm:mt-6 space-y-3">
+        <div class="flex justify-center">
+          <UPagination v-model:page="pageNumber" show-edges :sibling-count="1" :total="totalJobs" :items-per-page="itemsPerPage" @update:page="handlePageChange" />
+        </div>
+
+        <!-- Manual Page Input -->
+        <div class="flex justify-center items-center gap-2">
+          <label class="text-xs font-medium text-gray-600 dark:text-gray-400">Go to page:</label>
+          <UInput v-model.number="manualPageInput" type="number" :min="1" :max="totalPages" placeholder="Page #" class="w-20" size="xs" @keyup.enter="goToManualPage" />
+          <UButton size="xs" variant="outline" @click="goToManualPage">Go</UButton>
+        </div>
       </div>
     </UCard>
 
@@ -392,6 +455,7 @@
 import { nextTick } from 'vue'
 import JobDetailsModal from '~/components/JobDetailsModal.vue'
 import SubmitJobModal from '~/components/SubmitJobModal.vue'
+import MediaCard from '~/components/MediaCard.vue'
 
 // Page metadata
 definePageMeta({
@@ -424,6 +488,7 @@ const showSubmitJobModal = ref(false)
 // Pagination
 const pageNumber = ref(1)
 const itemsPerPage = ref(25)
+const manualPageInput = ref(null)
 
 // Limit options for dropdown
 const limitOptions = [
@@ -436,6 +501,9 @@ const limitOptions = [
 
 // Local reactive filter state
 const currentFilter = ref('')
+
+// View mode state
+const viewMode = ref('list')
 
 // Bulk selection state
 const selectedJobs = ref(new Set())
@@ -459,6 +527,7 @@ const sourceTypeOptions = [
 
 // Star rating filter state - default to empty (show only unrated)
 const selectedRatings = ref([])
+const showUnrated = ref(false)
 
 // Direct API call function to replace store method
 const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid = '', sourceType = 'all') => {
@@ -486,34 +555,28 @@ const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid 
     // Add rating filter
     if (selectedRatings.value.length > 0) {
       query.ratings = selectedRatings.value.join(',')
-    } else {
-      // If no ratings selected, only show unrated jobs
+    }
+
+    // Add unrated filter - only if showUnrated is true
+    if (showUnrated.value) {
       query.unrated_only = 'true'
     }
 
-    console.log('🔍 [FETCH DEBUG] fetchJobsDirectly called with:', { page, limit, status, subjectUuid, sourceType })
-    console.log('🔍 [FETCH DEBUG] Query params:', query)
-
     const response = await useApiFetch('jobs/search', { query })
-
-    console.log('🔍 [FETCH DEBUG] API response:', response)
 
     if (response.results) {
       jobs.value = response.results
-      totalJobs.value = response.count || 0 // Use filtered count for pagination
-      console.log('🔍 [FETCH DEBUG] Set jobs from response.results:', jobs.value.length, 'jobs, filtered total:', totalJobs.value)
+      // API returns total_jobs_count for the total number of jobs matching the filter
+      totalJobs.value = response.total_jobs_count || response.total || response.total_count || response.count || 0
     } else if (response.jobs) {
       jobs.value = response.jobs
-      totalJobs.value = response.count || 0
-      console.log('🔍 [FETCH DEBUG] Set jobs from response.jobs:', jobs.value.length, 'jobs, filtered total:', totalJobs.value)
+      totalJobs.value = response.total_jobs_count || response.total || response.total_count || response.count || 0
     } else if (Array.isArray(response)) {
       jobs.value = response
       totalJobs.value = response.length
-      console.log('🔍 [FETCH DEBUG] Set jobs from array response:', jobs.value.length, 'jobs')
     } else {
       jobs.value = []
       totalJobs.value = 0
-      console.log('🔍 [FETCH DEBUG] No valid response format, setting empty jobs')
     }
   } catch (error) {
     console.error('Failed to fetch jobs:', error)
@@ -625,14 +688,8 @@ const clearSourceTypeFilter = async () => {
   await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, 'all')
 }
 
-// Toggle rating selection
-const toggleRating = rating => {
-  const index = selectedRatings.value.indexOf(rating)
-  if (index > -1) {
-    selectedRatings.value.splice(index, 1)
-  } else {
-    selectedRatings.value.push(rating)
-  }
+// Handle rating filter changes
+const handleRatingFilterChange = () => {
   // Refresh jobs with new rating filter
   pageNumber.value = 1
   const statusFilter = currentFilter.value || ''
@@ -898,7 +955,7 @@ const stopAllProcessing = async () => {
       const toast = useToast()
       toast.add({
         title: 'Processing Stopped',
-        description: 'All job processing has been stopped',
+        description: 'All job processing has been stopped and ComfyUI is restarting...',
         color: 'success',
         duration: 3000
       })
@@ -937,6 +994,21 @@ const handlePageChange = async newPage => {
   const totalTime = performance.now() - startTime
   console.log(`📄 [PAGE DEBUG] Page change API calls completed in ${apiTime.toFixed(2)}ms`)
   console.log(`📄 [PAGE DEBUG] handlePageChange completed in ${totalTime.toFixed(2)}ms`)
+}
+
+// Handle manual page navigation
+const goToManualPage = () => {
+  if (!manualPageInput.value) return
+
+  const targetPage = Math.max(1, Math.min(manualPageInput.value, totalPages.value))
+
+  if (targetPage !== pageNumber.value) {
+    pageNumber.value = targetPage
+    handlePageChange(targetPage)
+  }
+
+  // Clear the input
+  manualPageInput.value = null
 }
 
 // Handle limit change
@@ -1303,7 +1375,6 @@ const deleteJob = async job => {
       console.log('🤔 Showing confirmation dialog with preview...')
       const result = await confirm({
         title: 'Delete Job',
-        message: `Choose deletion option:`,
         confirmLabel: 'Delete All',
         alternateLabel: thisJobMedia.length > 0 ? 'Delete This' : '',
         cancelLabel: 'Cancel',

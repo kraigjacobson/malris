@@ -99,9 +99,7 @@
         </div>
 
         <!-- Star Rating Filter -->
-        <div class="flex items-center gap-1">
-          <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-6 h-6 cursor-pointer transition-colors" :class="selectedRatings.includes(star) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500'" @click="!mediaUuid && toggleRating(star)" />
-        </div>
+        <RatingFilter v-model="selectedRatings" v-model:show-unrated="showUnrated" :disabled="!!mediaUuid" />
 
         <!-- Sort Options and Limit -->
         <div class="flex gap-2 sm:gap-4 mt-3 sm:mt-4">
@@ -140,38 +138,7 @@
 
       <!-- Grid View -->
       <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3">
-        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 shadow-md overflow-hidden hover:shadow-lg transition-shadow group relative">
-          <!-- Image Preview -->
-          <div v-if="media.type === 'image'" class="aspect-[3/4] cursor-pointer" @click="openModal(media)">
-            <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`" :alt="media.type" class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" @load="handleImageLoad" />
-            <ImagePlaceholder v-else class="w-full h-full" />
-          </div>
-
-          <!-- Video Preview -->
-          <div v-else-if="media.type === 'video'" class="aspect-[3/4] cursor-pointer" :data-video-uuid="media.uuid" @click="openModal(media)" @mouseenter="settingsStore.displayImages ? handleVideoHover(media.uuid, true) : null" @mouseleave="settingsStore.displayImages ? handleVideoHover(media.uuid, false) : null">
-            <!-- Video element (only when displayImages is true) -->
-            <video v-if="settingsStore.displayImages" :ref="`video-${media.uuid}`" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" class="w-full h-full object-cover object-top" muted loop preload="none" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture>
-              <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
-
-            <!-- Fallback for videos without thumbnails (when displayImages is true) -->
-            <div v-if="settingsStore.displayImages && !media.thumbnail_uuid" class="absolute inset-0 bg-gray-800 flex items-center justify-center">
-              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
-            </div>
-
-            <!-- Video placeholder (when displayImages is false) -->
-            <div v-if="!settingsStore.displayImages" class="w-full h-full bg-gray-800 flex items-center justify-center">
-              <UIcon name="i-heroicons-play-circle" class="text-4xl text-gray-400" />
-            </div>
-          </div>
-
-          <!-- Star Rating and Delete Button - Across Top (Outside media preview for DRY) -->
-          <div class="absolute top-1 left-1 right-1 sm:top-2 sm:left-2 sm:right-2 z-10 flex flex-row justify-between items-start">
-            <StarRating :media-uuid="media.uuid" :rating="media.rating" @updated="rating => handleRatingUpdated(media.uuid, rating)" />
-            <UButton icon="i-heroicons-x-mark" color="error" variant="ghost" size="xl" class="!p-0 min-w-[48px] min-h-[48px] flex items-center justify-center" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
-          </div>
-        </div>
+        <MediaCard v-for="media in mediaResults" :key="media.uuid" :media="media" class="aspect-[3/4]" @click="openModal(media)" @delete="confirmDelete(media)" @rating-updated="rating => handleRatingUpdated(media.uuid, rating)" />
       </div>
 
       <!-- List View -->
@@ -179,34 +146,8 @@
         <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group">
           <div class="flex items-center gap-2 sm:gap-4">
             <!-- Thumbnail -->
-            <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 dark:bg-gray-700 shrink-0 cursor-pointer" @click="openModal(media)">
-              <!-- Image thumbnail -->
-              <img v-if="media.type === 'image' && settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=sm`" :alt="media.type" class="w-full h-full object-cover object-top" loading="lazy" @error="handleImageError" />
-              <!-- Image placeholder -->
-              <div v-else-if="media.type === 'image'" class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                <UIcon name="i-heroicons-photo" class="text-2xl text-gray-400" />
-              </div>
-              <!-- Video thumbnail (when displayImages is true) -->
-              <div v-else-if="media.type === 'video' && settingsStore.displayImages" class="w-full h-full relative" :data-video-uuid="media.uuid" @mouseenter="handleVideoHover(media.uuid, true)" @mouseleave="handleVideoHover(media.uuid, false)">
-                <!-- Video element -->
-                <video :ref="`video-list-${media.uuid}`" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" class="w-full h-full object-cover object-top" muted loop preload="none" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture>
-                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
-
-                <!-- Fallback for videos without thumbnails -->
-                <div v-if="!media.thumbnail_uuid" class="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                  <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
-                </div>
-              </div>
-              <!-- Video placeholder (when displayImages is false) -->
-              <div v-else-if="media.type === 'video'" class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                <UIcon name="i-heroicons-play-circle" class="text-2xl text-gray-400" />
-              </div>
-              <!-- Other media types -->
-              <div v-else class="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                <UIcon name="i-heroicons-document" class="text-2xl text-gray-400" />
-              </div>
+            <div class="w-12 h-12 sm:w-16 sm:h-16 shrink-0 cursor-pointer" @click="openModal(media)">
+              <MediaCard :media="media" :show-duration="false" class="w-full h-full" />
             </div>
 
             <!-- Info -->
@@ -302,6 +243,7 @@
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
 import { useMediaGalleryFilters } from '~/composables/useMediaGalleryFilters'
+import MediaCard from '~/components/MediaCard.vue'
 
 // Page metadata
 definePageMeta({
@@ -324,8 +266,9 @@ const selectedSubjects = ref([])
 // Filename search state
 const filenameSearch = ref('')
 
-// Star rating filter state - default to empty (show only unrated)
+// Star rating filter state - default to empty (show all)
 const selectedRatings = ref([])
+const showUnrated = ref(false) // Separate toggle for unrated filter
 
 // Orphan filter state
 const onlyShowOrphans = ref(false)
@@ -352,9 +295,6 @@ const totalDbCount = ref(0)
 // Infinite scroll
 const scrollObserver = ref(null) // Observer for infinite scroll
 const scrollSentinel = ref(null) // Template ref for sentinel element
-
-// Video hover state
-const hoveredVideoId = ref(null)
 
 // Slideshow state
 const isSlideshow = ref(false)
@@ -491,26 +431,18 @@ const buildSearchParams = () => {
     params.append('only_orphans', 'true')
   }
 
-  // Add rating filter
+  // Add rating filter - only if something is selected
   if (selectedRatings.value.length > 0) {
     params.append('ratings', selectedRatings.value.join(','))
-  } else {
-    // If no ratings selected, only show unrated media
+  }
+
+  // Add unrated filter - only if showUnrated is true
+  if (showUnrated.value) {
     params.append('unrated_only', 'true')
   }
 
   params.append('include_thumbnails', 'true')
   return { params, searchType: 'normal' }
-}
-
-// Toggle rating selection
-const toggleRating = rating => {
-  const index = selectedRatings.value.indexOf(rating)
-  if (index > -1) {
-    selectedRatings.value.splice(index, 1)
-  } else {
-    selectedRatings.value.push(rating)
-  }
 }
 
 // Helper function to add pagination and sorting
@@ -802,6 +734,7 @@ const clearFilters = () => {
 
   // Reset rating filter
   selectedRatings.value = []
+  showUnrated.value = false
 
   // Reset orphan filter
   onlyShowOrphans.value = false
@@ -812,36 +745,6 @@ const handleSubjectSelection = selected => {
   // selected is now an array of subject UUIDs
   // Store the array for query building
   selectedSubjects.value = selected || []
-}
-
-const handleImageLoad = event => {
-  console.debug('✅ Image loaded successfully:', {
-    src: event.target.src.substring(0, 50) + '...',
-    isBase64: event.target.src.startsWith('data:'),
-    naturalWidth: event.target.naturalWidth,
-    naturalHeight: event.target.naturalHeight
-  })
-}
-
-const handleImageError = event => {
-  console.error('❌ Image failed to load:', {
-    src: event.target.src.substring(0, 100) + '...',
-    isBase64: event.target.src.startsWith('data:'),
-    displayImages: settingsStore.displayImages,
-    error: event
-  })
-
-  // Hide the broken image and show placeholder instead
-  event.target.style.display = 'none'
-
-  // Find the parent container and add a placeholder
-  const container = event.target.parentElement
-  if (container && !container.querySelector('.image-error-placeholder')) {
-    const placeholder = document.createElement('div')
-    placeholder.className = 'image-error-placeholder w-full h-full bg-muted flex items-center justify-center'
-    placeholder.innerHTML = '<div class="text-center"><svg class="w-8 h-8 text-muted-foreground mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>'
-    container.appendChild(placeholder)
-  }
 }
 
 const formatDate = dateString => {
@@ -870,8 +773,8 @@ const confirmDelete = async media => {
       // Section for "This Media" records
       if (previewThis.willDelete.jobs.length > 0) {
         items.push({
-          label: `This Media - ${previewThis.willDelete.jobs.length} Job(s)`,
-          items: previewThis.willDelete.jobs.map(j => `${j.jobType} - ${j.status}`)
+          label: `This Media - ${previewThis.willDelete.jobs.length} Job${previewThis.willDelete.jobs.length !== 1 ? 's' : ''}`,
+          items: previewThis.willDelete.jobs.map(j => `${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
       }
 
@@ -881,21 +784,33 @@ const confirmDelete = async media => {
 
       if (allJobs.length > 0) {
         items.push({
-          label: `All Associated - ${allJobs.length} Job(s)`,
-          items: allJobs.map(j => `${j.jobType} - ${j.status}`)
+          label: `All Associated - ${allJobs.length} Job${allJobs.length !== 1 ? 's' : ''}`,
+          items: allJobs.map(j => `${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
       }
 
       if (allMedia.length > 0) {
+        // Group media records by subject and count them
+        const mediaBySubject = {}
+        allMedia.forEach(m => {
+          const subjectName = m.subjectName || 'Unknown Subject'
+          if (!mediaBySubject[subjectName]) {
+            mediaBySubject[subjectName] = 0
+          }
+          mediaBySubject[subjectName]++
+        })
+
+        // Convert to array of count strings
+        const mediaCounts = Object.entries(mediaBySubject).map(([subjectName, count]) => `${subjectName}: ${count} record${count !== 1 ? 's' : ''}`)
+
         items.push({
-          label: `All Associated - ${allMedia.length} Media Record(s)`,
-          items: allMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
+          label: `All Associated - ${allMedia.length} Media Record${allMedia.length !== 1 ? 's' : ''}`,
+          items: mediaCounts
         })
       }
 
       const result = await confirm({
         title: 'Delete Media with Cascade',
-        message: `Choose deletion option:`,
         confirmLabel: 'Delete All',
         alternateLabel: 'Delete This',
         cancelLabel: 'Cancel',
@@ -926,7 +841,7 @@ const confirmDelete = async media => {
 
       if (preview.willDelete.jobs.length > 0) {
         items.push({
-          label: `${preview.willDelete.jobs.length} Job(s)`,
+          label: `${preview.willDelete.jobs.length} Job${preview.willDelete.jobs.length !== 1 ? 's' : ''}`,
           items: preview.willDelete.jobs.map(j => `${j.id.substring(0, 8)}... - ${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
       }
@@ -1079,116 +994,6 @@ const navigateMedia = direction => {
   const newIndex = currentMediaIndex.value + direction
   if (newIndex >= 0 && newIndex < allMediaResults.value.length) {
     selectedMedia.value = allMediaResults.value[newIndex]
-  }
-}
-
-const handleVideoHover = async (videoId, isHovering) => {
-  if (isHovering) {
-    hoveredVideoId.value = videoId
-    await nextTick()
-
-    // Find the video container using the data attribute
-    const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
-
-    if (videoContainer) {
-      // Find the video element within this container
-      const targetVideo = videoContainer.querySelector('video')
-
-      if (targetVideo) {
-        console.log('🎬 Hover video ready, attempting autoplay')
-
-        // Keep poster visible during loading - don't remove it yet
-        const originalPoster = targetVideo.poster
-
-        // Store original poster for potential restoration
-        targetVideo.dataset.originalPoster = originalPoster
-
-        // Ensure the video has a proper src attribute set from the source element
-        const sourceElement = targetVideo.querySelector('source')
-        if (sourceElement && sourceElement.src && !targetVideo.src) {
-          targetVideo.src = sourceElement.src
-          console.log('🔧 Set video src from source element:', sourceElement.src)
-        }
-
-        // Add event listeners for debugging
-        const onLoadedData = () => {
-          console.log('✅ Video loadeddata - ready to play')
-          // Now remove poster since video is ready
-          targetVideo.removeAttribute('poster')
-          // Try to play once data is loaded
-          targetVideo.play().catch(error => {
-            console.log('❌ Autoplay prevented:', error.message)
-          })
-        }
-        const onCanPlay = () => console.log('▶️ Video canplay')
-        const onError = e => {
-          console.error('❌ Video error:', e.target.error)
-          console.error('❌ Video error details:', {
-            code: e.target.error?.code,
-            message: e.target.error?.message,
-            src: e.target.src,
-            networkState: e.target.networkState,
-            readyState: e.target.readyState
-          })
-          // Restore poster on error
-          if (targetVideo.dataset.originalPoster) {
-            targetVideo.poster = targetVideo.dataset.originalPoster
-          }
-        }
-
-        // Add more detailed logging for network events
-        const onLoadStart = () => console.log('🌐 Video loadstart - browser started loading')
-        const onProgress = () => console.log('📊 Video progress - downloading')
-        const onLoadedMetadata = () => console.log('📋 Video loadedmetadata - metadata loaded')
-        const onSuspend = () => console.log('⏸️ Video suspend - loading suspended')
-        const onStalled = () => console.log('🚫 Video stalled - loading stalled')
-        const onAbort = () => console.log('🛑 Video abort - loading aborted')
-
-        targetVideo.addEventListener('loadeddata', onLoadedData, { once: true })
-        targetVideo.addEventListener('canplay', onCanPlay, { once: true })
-        targetVideo.addEventListener('error', onError, { once: true })
-        targetVideo.addEventListener('loadstart', onLoadStart, { once: true })
-        targetVideo.addEventListener('progress', onProgress)
-        targetVideo.addEventListener('loadedmetadata', onLoadedMetadata, { once: true })
-        targetVideo.addEventListener('suspend', onSuspend, { once: true })
-        targetVideo.addEventListener('stalled', onStalled, { once: true })
-        targetVideo.addEventListener('abort', onAbort, { once: true })
-
-        console.log('🎬 Starting video load for:', {
-          uuid: videoId,
-          src: targetVideo.src || sourceElement?.src,
-          preload: targetVideo.preload,
-          crossOrigin: targetVideo.crossOrigin
-        })
-
-        // Load the video
-        targetVideo.load()
-      } else {
-        console.error('❌ No video element found in container')
-      }
-    } else {
-      console.error('❌ No video container found for UUID:', videoId)
-    }
-  } else {
-    // Only clear hoveredVideoId if this video was the one being hovered
-    if (hoveredVideoId.value === videoId) {
-      hoveredVideoId.value = null
-    }
-
-    // Find and stop the specific video
-    const videoContainer = document.querySelector(`[data-video-uuid="${videoId}"]`)
-    if (videoContainer) {
-      const targetVideo = videoContainer.querySelector('video')
-      if (targetVideo) {
-        targetVideo.pause()
-        targetVideo.currentTime = 0
-
-        // Restore poster image
-        if (targetVideo.dataset.originalPoster) {
-          targetVideo.poster = targetVideo.dataset.originalPoster
-        }
-      }
-    }
   }
 }
 
@@ -1607,6 +1412,16 @@ const loadSlideshowBatch = async () => {
       params.append('tags', selectedTags.value.join(','))
     }
     params.append('tag_match_mode', 'partial')
+
+    // Add rating filter - only if something is selected
+    if (selectedRatings.value.length > 0) {
+      params.append('ratings', selectedRatings.value.join(','))
+    }
+
+    // Add unrated filter - only if showUnrated is true
+    if (showUnrated.value) {
+      params.append('unrated_only', 'true')
+    }
 
     // Use the same sort options as the media gallery
     const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value

@@ -2,44 +2,29 @@
   <UModal v-model:open="isOpen" :fullscreen="isMobile">
     <template #header>
       <div class="flex items-center justify-between w-full gap-3">
-        <h3 class="text-lg sm:text-xl font-semibold flex-shrink-0">Job Details</h3>
+        <h3 class="text-lg sm:text-xl font-semibold">Job Details</h3>
         <div v-if="hasMultipleJobs && currentJobInfo" class="text-base sm:text-sm text-gray-600 dark:text-gray-400 font-medium">Job {{ currentJobInfo.current }} of {{ currentJobInfo.total }}</div>
-        <UButton variant="ghost" :size="isMobile ? 'xl' : 'lg'" icon="i-heroicons-x-mark" @click="closeModal" class="flex-shrink-0 min-w-[44px] min-h-[44px]" />
+        <UButton variant="ghost" :size="isMobile ? 'xl' : 'lg'" icon="i-heroicons-x-mark" @click="closeModal" class="flex-shrinkz-0" />
       </div>
     </template>
 
     <template #body>
       <div v-if="job" class="space-y-4 h-[600px] overflow-y-auto custom-scrollbar" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
-        <!-- Main Video Display Section (only show when job is completed/failed/need_input and has video) -->
-        <div v-if="displayImages && !['queued', 'active'].includes(job.status) && (job.output_uuid || job.dest_media_uuid)" class="text-center">
+        <!-- Main Video Display Section-->
+        <div v-if="displayImages && (job.output_uuid || job.dest_media_uuid)" class="text-center">
           <!-- Main Video Container with Arrow Overlays -->
           <div class="relative w-full group">
             <!-- Video Container with Full Width -->
-            <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800">
-              <!-- Skeleton loader while video is loading -->
-              <div v-if="mainVideoUuid && !isMainVideoReady" class="w-full h-[600px] animate-pulse bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                <div class="text-center">
-                  <UIcon name="i-heroicons-arrow-path" class="w-12 h-12 text-gray-400 mx-auto mb-4 animate-spin" />
-                  <p class="text-gray-600 dark:text-gray-400">Loading video...</p>
-                </div>
-              </div>
+            <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800 aspect-auto">
+              <!-- Show output video if it exists, job is completed, and toggle is on -->
+              <template v-if="job.output_uuid && job.status === 'completed'">
+                <MediaCard v-show="showingOutputVideo" :key="`output-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleOutputRatingUpdate" class="!rounded-none" />
+              </template>
 
-              <!-- Main Video Player -->
-              <video v-if="mainVideoUuid" v-show="isMainVideoReady" class="w-full h-auto" controls autoplay muted loop :key="mainVideoUuid" @loadeddata="isMainVideoReady = true" @error="isMainVideoReady = false">
-                <source :src="`/api/stream/${mainVideoUuid}`" type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-
-              <!-- Fallback when no video available -->
-              <div v-if="!mainVideoUuid" class="w-full h-64 flex items-center justify-center">
-                <div class="text-center">
-                  <UIcon name="i-heroicons-film" class="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <p class="text-gray-600 dark:text-gray-400">No video available</p>
-                </div>
-              </div>
-
-              <!-- Star Rating Overlay for output video -->
-              <StarRating v-if="job.output_uuid && isMainVideoReady" :media-uuid="job.output_uuid" :rating="outputRating" :job-id="job.id" @updated="handleOutputRatingUpdate" />
+              <!-- Show dest video for queued jobs OR when toggle is off OR no output exists -->
+              <template v-if="job.dest_media_uuid">
+                <MediaCard v-show="job.status === 'queued' || !job.output_uuid || !showingOutputVideo" :key="`dest-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleDestRatingUpdate" class="!rounded-none" />
+              </template>
             </div>
 
             <!-- Navigation Buttons - Only on non-mobile -->
@@ -72,41 +57,37 @@
         <!-- Thumbnails Section (only show when displayImages is true) -->
         <div v-if="displayImages" class="space-y-3">
           <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
-          <div class="flex flex-wrap gap-2 sm:gap-4 justify-center">
+          <div class="flex gap-2 sm:gap-4">
             <!-- Subject Thumbnail -->
-            <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+            <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0">
               <div class="mb-1 sm:mb-2 text-center">
                 <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
               </div>
-              <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
-                <img :src="`/api/media/${job.subject_thumbnail_uuid}/image`" alt="Subject thumbnail" class="w-full h-full object-cover object-top" />
-              </div>
+              <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
             </div>
 
             <!-- Source Image Thumbnail -->
-            <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+            <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0">
               <div class="mb-1 sm:mb-2 text-center">
                 <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Source Image</span>
               </div>
-              <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4]">
-                <img :src="`/api/media/${job.source_media_thumbnail_uuid}/image`" alt="Source image thumbnail" class="w-full h-full object-cover object-top" />
-              </div>
+              <MediaCard :key="`source-${job.source_media_thumbnail_uuid}`" :media="{ uuid: job.source_media_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.source_media_thumbnail_uuid}/image`, filename: 'Source image thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
             </div>
 
-            <!-- Destination Media Thumbnail -->
-            <div v-if="job.dest_media_thumbnail_uuid" class="flex-1 min-w-0 max-w-32 sm:max-w-40">
+            <!-- Destination Media Thumbnail (don't show for queued jobs since it's the main video) -->
+            <div v-if="(job.dest_media_thumbnail_uuid || job.dest_media_uuid) && job.status !== 'queued'" class="flex-1 min-w-0">
               <div class="mb-1 sm:mb-2 text-center">
                 <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination Video</span>
               </div>
-              <div class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-[3/4] relative group">
-                <!-- Show thumbnail first, then replace with video when ready -->
-                <img v-if="job.dest_media_thumbnail_uuid && !destVideoReady" :src="`/api/media/${job.dest_media_thumbnail_uuid}/image`" alt="Destination media thumbnail" class="w-full h-full object-cover object-top" />
-                <!-- Video player for destination video -->
-                <video v-if="job.dest_media_uuid" :src="`/api/stream/${job.dest_media_uuid}`" autoplay loop muted class="w-full h-full object-cover object-top group-hover:[&::-webkit-media-controls]:opacity-100 [&::-webkit-media-controls]:opacity-0 [&::-webkit-media-controls]:transition-opacity" preload="metadata" controls @loadeddata="destVideoReady = true" @error="destVideoReady = false">
-                  <source :src="`/api/stream/${job.dest_media_uuid}`" type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
+              <MediaCard :key="`dest-thumb-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleDestRatingUpdate" />
+            </div>
+
+            <!-- Output Video Thumbnail (don't show for queued jobs) -->
+            <div v-if="job.output_uuid && job.status !== 'queued'" class="flex-1 min-w-0">
+              <div class="mb-1 sm:mb-2 text-center">
+                <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output Video</span>
               </div>
+              <MediaCard :key="`output-thumb-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleOutputRatingUpdate" />
             </div>
           </div>
 
@@ -114,16 +95,7 @@
           <div v-if="job.status === 'need_input' && jobOutputImages.length > 0 && displayImages" class="mt-6">
             <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white mb-3">Generated Images</h4>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
-              <div v-for="image in jobOutputImages" :key="image.uuid" class="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden aspect-square relative group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" @click="$emit('open-image-fullscreen', image)">
-                <img v-if="image.thumbnail" :src="image.thumbnail" :alt="image.filename" class="w-full h-full object-cover object-top" />
-                <div v-else class="w-full h-full flex items-center justify-center">
-                  <UIcon name="i-heroicons-photo" class="w-8 h-8 text-gray-400" />
-                </div>
-                <!-- Overlay with filename -->
-                <div class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {{ image.filename }}
-                </div>
-              </div>
+              <MediaCard v-for="image in jobOutputImages" :key="image.uuid" :media="image" :show-duration="false" :show-delete="false" aspect-ratio="square" @click="$emit('open-image-fullscreen', image)" />
             </div>
           </div>
         </div>
@@ -203,7 +175,6 @@
     <template #footer>
       <div class="flex justify-between items-center w-full">
         <div class="flex gap-2">
-          <UButton variant="outline" @click="closeModal"><span class="hidden sm:inline">Close</span></UButton>
           <!-- Job Navigation Buttons -->
           <div v-if="hasMultipleJobs" class="flex gap-2">
             <UButton variant="outline" size="lg" @click="goToPreviousJob" square class="w-12 h-12 flex items-center justify-center">
@@ -273,15 +244,12 @@ const {
   debug: false
 })
 
-// Video ready states
-const outputVideoReady = ref(false)
-const destVideoReady = ref(false)
-const isMainVideoReady = ref(false)
 const showingOutputVideo = ref(true) // Default to showing output video
 const videoContainer = ref(null)
 
 // Rating state
 const outputRating = ref(null)
+const destRating = ref(null)
 
 // Job navigation state
 const currentJobIndex = ref(0)
@@ -300,28 +268,6 @@ const currentJobInfo = computed(() => {
     current: currentJobIndex.value + 1,
     total: props.jobsList.length
   }
-})
-
-// Main video UUID computed property
-const mainVideoUuid = computed(() => {
-  if (!props.job) return null
-
-  // Prioritize output video if available and we're showing output
-  if (showingOutputVideo.value && props.job.output_uuid) {
-    return props.job.output_uuid
-  }
-
-  // Fall back to destination video
-  if (props.job.dest_media_uuid) {
-    return props.job.dest_media_uuid
-  }
-
-  // If no output video but we have destination video, show that
-  if (props.job.output_uuid) {
-    return props.job.output_uuid
-  }
-
-  return null
 })
 
 // Job details accordion items with conditional default open
@@ -364,14 +310,6 @@ const formatDate = dateString => {
   if (!dateString) return 'N/A'
   return new Date(dateString).toLocaleString()
 }
-
-// Reset video states when modal opens/closes
-watch(isOpen, newValue => {
-  if (!newValue) {
-    outputVideoReady.value = false
-    destVideoReady.value = false
-  }
-})
 
 // Job navigation methods
 const goToPreviousJob = () => {
@@ -445,16 +383,17 @@ onUnmounted(() => {
 // Reset video states when modal opens/closes
 watch(isOpen, newValue => {
   if (!newValue) {
-    outputVideoReady.value = false
-    destVideoReady.value = false
-    isMainVideoReady.value = false
     showingOutputVideo.value = true
   }
 })
 
-// Rating update handler
+// Rating update handlers
 const handleOutputRatingUpdate = rating => {
   outputRating.value = rating
+}
+
+const handleDestRatingUpdate = rating => {
+  destRating.value = rating
 }
 
 // Fetch rating for output video
@@ -473,13 +412,27 @@ const fetchOutputRating = async outputUuid => {
   }
 }
 
+// Fetch rating for destination video
+const fetchDestRating = async destUuid => {
+  if (!destUuid) {
+    destRating.value = null
+    return
+  }
+
+  try {
+    const response = await useApiFetch(`media/${destUuid}/info`)
+    destRating.value = response.rating || null
+  } catch (error) {
+    console.error('🌟 [RATING DEBUG] Failed to fetch dest rating:', error)
+    destRating.value = null
+  }
+}
+
 // Reset video states when job changes
 watch(
   () => props.job,
   async newJob => {
-    outputVideoReady.value = false
-    destVideoReady.value = false
-    isMainVideoReady.value = false
+    // Always default to showing output video (dest will show if no output exists)
     showingOutputVideo.value = true
 
     // Fetch rating for output video
@@ -488,6 +441,13 @@ watch(
     } else {
       console.log('🌟 [RATING DEBUG] Job has no output_uuid, setting rating to null')
       outputRating.value = null
+    }
+
+    // Fetch rating for destination video
+    if (newJob?.dest_media_uuid) {
+      await fetchDestRating(newJob.dest_media_uuid)
+    } else {
+      destRating.value = null
     }
 
     // Update current job index based on the new job

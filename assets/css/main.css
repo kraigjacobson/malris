@@ -15,3 +15,18 @@
 .overlay-button-bg:hover {
   background-color: rgba(0, 0, 0, 0.6);
 }
+
+/* Make button text non-selectable - targets all buttons and interactive elements */
+button,
+button *,
+[role='button'],
+[role='button'] *,
+a[role='button'],
+a[role='button'] *,
+.cursor-pointer,
+.cursor-pointer * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
