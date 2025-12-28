@@ -357,9 +357,11 @@
                   </div>
                   <span class="text-xs text-gray-500 dark:text-gray-400">{{ job.progress }}%</span>
                 </div>
-                <!-- Show star rating if job has dest media with rating -->
-                <div v-if="job.dest_media && job.dest_media.rating" class="flex items-center space-x-1">
-                  <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-3 h-3" :class="star <= job.dest_media.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" />
+                <!-- Show star rating based on job status -->
+                <!-- For completed jobs: show output media rating -->
+                <!-- For queued/other jobs: show dest media rating -->
+                <div v-if="(job.status === 'completed' && job.output_media && job.output_media.rating) || (job.status !== 'completed' && job.dest_media && job.dest_media.rating)" class="flex items-center space-x-1">
+                  <UIcon v-for="star in 5" :key="star" name="i-heroicons-star-solid" class="w-3 h-3" :class="star <= (job.status === 'completed' ? job.output_media.rating : job.dest_media.rating) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" />
                 </div>
               </div>
             </div>

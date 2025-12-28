@@ -121,19 +121,30 @@ export default defineEventHandler(async event => {
       }
     }
 
-    // Rating filter - add to WHERE conditions at database level
+    // Rating filter - conditional based on job status
+    // For 'completed' jobs, filter by output_uuid rating
+    // For 'queued' jobs (and others), filter by dest_media_uuid rating
     if (unrated_only === 'true' || unrated_only === true) {
-      // Show only jobs where dest_media_uuid is NULL OR dest media has no rating
-      // This requires a subquery or left join
-      logger.info('🔍 [JOBS API] Filtering for unrated dest media only')
+      if (status === 'completed') {
+        logger.info('🔍 [JOBS API] Filtering for unrated output media (completed jobs)')
+      } else if (status === 'queued') {
+        logger.info('🔍 [JOBS API] Filtering for unrated dest media (queued jobs)')
+      } else {
+        logger.info('🔍 [JOBS API] Filtering for unrated dest media (all statuses)')
+      }
     } else if (ratings) {
-      // Show jobs with specific dest media ratings
       const ratingList = (ratings as string)
         .split(',')
         .map(r => parseInt(r.trim()))
         .filter(r => r >= 1 && r <= 5)
       if (ratingList.length > 0) {
-        logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')}`)
+        if (status === 'completed') {
+          logger.info(`🔍 [JOBS API] Filtering for output media ratings: ${ratingList.join(', ')} (completed jobs)`)
+        } else if (status === 'queued') {
+          logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')} (queued jobs)`)
+        } else {
+          logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')} (all statuses)`)
+        }
       }
     }
 
@@ -175,15 +186,25 @@ export default defineEventHandler(async event => {
     const conditionsTime = performance.now() - conditionsStartTime
     logger.info(`🔍 [JOBS API DEBUG] Query conditions built in ${conditionsTime.toFixed(2)}ms - ${conditions.length} conditions`)
 
-    // Add rating conditions to WHERE clause - filtering by dest_media rating
+    // Add rating conditions to WHERE clause - conditional based on status
     if (unrated_only === 'true' || unrated_only === true) {
-      // Join only for the condition check - filter by dest_media_uuid instead of output_uuid
-      conditions.push(
-        sql`(${jobs.destMediaUuid} IS NULL OR NOT EXISTS (
-          SELECT 1 FROM media_records mr
-          WHERE mr.uuid = ${jobs.destMediaUuid} AND mr.rating IS NOT NULL
-        ))`
-      )
+      // For 'completed' jobs, filter by output_uuid rating
+      // For 'queued' jobs (and all others), filter by dest_media_uuid rating
+      if (status === 'completed') {
+        conditions.push(
+          sql`(${jobs.outputUuid} IS NULL OR NOT EXISTS (
+            SELECT 1 FROM media_records mr
+            WHERE mr.uuid = ${jobs.outputUuid} AND mr.rating IS NOT NULL
+          ))`
+        )
+      } else {
+        conditions.push(
+          sql`(${jobs.destMediaUuid} IS NULL OR NOT EXISTS (
+            SELECT 1 FROM media_records mr
+            WHERE mr.uuid = ${jobs.destMediaUuid} AND mr.rating IS NOT NULL
+          ))`
+        )
+      }
     } else if (ratings) {
       const ratingList = (ratings as string)
         .split(',')
@@ -191,13 +212,25 @@ export default defineEventHandler(async event => {
         .filter(r => r >= 1 && r <= 5)
       if (ratingList.length > 0) {
         const ratingValues = ratingList.map(r => `${r}`).join(',')
-        conditions.push(
-          sql`EXISTS (
-            SELECT 1 FROM media_records mr
-            WHERE mr.uuid = ${jobs.destMediaUuid}
-            AND mr.rating IN (${sql.raw(ratingValues)})
-          )`
-        )
+        // For 'completed' jobs, filter by output_uuid rating
+        // For 'queued' jobs (and all others), filter by dest_media_uuid rating
+        if (status === 'completed') {
+          conditions.push(
+            sql`EXISTS (
+              SELECT 1 FROM media_records mr
+              WHERE mr.uuid = ${jobs.outputUuid}
+              AND mr.rating IN (${sql.raw(ratingValues)})
+            )`
+          )
+        } else {
+          conditions.push(
+            sql`EXISTS (
+              SELECT 1 FROM media_records mr
+              WHERE mr.uuid = ${jobs.destMediaUuid}
+              AND mr.rating IN (${sql.raw(ratingValues)})
+            )`
+          )
+        }
       }
     }
 
@@ -303,19 +336,29 @@ export default defineEventHandler(async event => {
       output_media: job.output_uuid ? mediaMap.get(job.output_uuid) || null : null
     }))
 
-    // Apply rating filter to enhanced results - filtering by dest_media instead of output_media
+    // Apply rating filter to enhanced results - conditional based on status
     let filteredResults = enhancedResults
     if (unrated_only === 'true' || unrated_only === true) {
-      filteredResults = enhancedResults.filter(job => !job.dest_media || !job.dest_media.rating)
-      logger.info(`🔍 [JOBS API] Filtered for unrated dest media: ${filteredResults.length}/${enhancedResults.length} jobs`)
+      if (status === 'completed') {
+        filteredResults = enhancedResults.filter(job => !job.output_media || !job.output_media.rating)
+        logger.info(`🔍 [JOBS API] Filtered for unrated output media: ${filteredResults.length}/${enhancedResults.length} jobs`)
+      } else {
+        filteredResults = enhancedResults.filter(job => !job.dest_media || !job.dest_media.rating)
+        logger.info(`🔍 [JOBS API] Filtered for unrated dest media: ${filteredResults.length}/${enhancedResults.length} jobs`)
+      }
     } else if (ratings) {
       const ratingList = (ratings as string)
         .split(',')
         .map(r => parseInt(r.trim()))
         .filter(r => r >= 1 && r <= 5)
       if (ratingList.length > 0) {
-        filteredResults = enhancedResults.filter(job => job.dest_media && ratingList.includes(job.dest_media.rating))
-        logger.info(`🔍 [JOBS API] Filtered for dest media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
+        if (status === 'completed') {
+          filteredResults = enhancedResults.filter(job => job.output_media && ratingList.includes(job.output_media.rating))
+          logger.info(`🔍 [JOBS API] Filtered for output media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
+        } else {
+          filteredResults = enhancedResults.filter(job => job.dest_media && ratingList.includes(job.dest_media.rating))
+          logger.info(`🔍 [JOBS API] Filtered for dest media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
+        }
       }
     }
 
