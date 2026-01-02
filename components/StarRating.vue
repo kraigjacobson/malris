@@ -1,7 +1,7 @@
 <template>
   <div class="star-rating-wrapper">
     <UPopover v-model:open="isPopoverOpen" :content="{ align: 'center', side: 'bottom', sideOffset: 8 }">
-      <UButton :icon="currentRating ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="currentRating ? 'yellow' : 'white'" variant="ghost" size="xl" :loading="isUpdating" class="opacity-80 hover:opacity-100 transition-opacity !p-0 min-w-[48px] min-h-[48px] star-icon-shadow flex items-center justify-center" :label="currentRating ? String(currentRating) : undefined" @click.stop @touchstart.stop @touchend.stop @touchmove.stop />
+      <UButton :icon="currentRating ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="currentRating ? 'yellow' : 'white'" variant="ghost" size="xl" :loading="isUpdating" class="opacity-80 hover:opacity-100 transition-opacity !p-0 min-w-[48px] min-h-[48px] star-icon-shadow flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full" :label="currentRating ? String(currentRating) : undefined" @click.stop @touchstart.stop @touchend.stop @touchmove.stop />
 
       <template #content>
         <div class="p-4 bg-white dark:bg-gray-800">

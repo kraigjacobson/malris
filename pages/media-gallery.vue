@@ -201,39 +201,44 @@
     </div>
 
     <!-- Media Detail Modal -->
-    <MediaDetailsModal v-model:is-open="isModalOpen" :media="selectedMedia" :current-index="currentMediaIndex" :total-count="allMediaResults.length" :deleting-ids="deletingIds" :has-next="currentMediaIndex < allMediaResults.length - 1" :has-previous="currentMediaIndex > 0" :only-show-untagged="onlyShowUntagged" @navigate="navigateMedia" @confirm-delete="confirmDelete" @close="closeModal" @save-edits="handleMediaSaveEdits" @save="handleTagSave" />
+    <MediaDetailsModal v-model:is-open="isModalOpen" :media="selectedMedia" :current-index="currentMediaIndex" :total-count="allMediaResults.length" :deleting-ids="deletingIds" :has-next="currentMediaIndex < allMediaResults.length - 1" :has-previous="currentMediaIndex > 0" :only-show-untagged="onlyShowUntagged" @navigate="navigateMedia" @confirm-delete="confirmDelete" @close="closeModal" @save-edits="handleMediaSaveEdits" @save="handleTagSave" @media-duplicated="handleMediaDuplicated" />
 
-    <!-- Slideshow Overlay -->
-    <div v-if="isSlideshow" class="fixed top-0 left-0 w-full h-full z-[99999] bg-black">
-      <!-- Video Container -->
-      <div id="slideshow-video-container" class="absolute top-0 left-0 w-full h-full">
-        <!-- Simple Loading indicator -->
-        <div v-if="!slideshowVideo || isLoadingVideo" class="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75">
-          <div class="text-center">
-            <UIcon name="i-heroicons-arrow-path" class="animate-spin text-6xl mb-4" />
-            <p class="text-xl">Loading next video...</p>
+    <!-- Slideshow Modal -->
+    <UModal :open="isSlideshow" @update:open="handleSlideshowClose" :fullscreen="true">
+      <template #content="{ close }">
+        <div class="relative h-screen w-full bg-black" @touchstart="handleSlideshowTouchStart" @touchmove="handleSlideshowTouchMove" @touchend="handleSlideshowTouchEnd">
+          <!-- Video Container -->
+          <div id="slideshow-video-container" class="absolute top-0 left-0 w-full h-full">
+            <!-- Simple Loading indicator -->
+            <div v-if="!slideshowVideo || isLoadingVideo" class="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-75 z-20">
+              <div class="text-center">
+                <UIcon name="i-heroicons-arrow-path" class="animate-spin text-6xl mb-4" />
+                <p class="text-xl">Loading next video...</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Close Button (top right) -->
+          <div class="absolute top-2 right-2 z-50">
+            <UButton icon="i-heroicons-x-mark" color="white" variant="ghost" size="xl" class="opacity-80 hover:opacity-100 transition-opacity min-w-[48px] min-h-[48px] !p-0 flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full" @click.stop="close" @touchstart.stop="close" @touchend.prevent square />
+          </div>
+
+          <!-- Left side buttons using ThumbButtons component -->
+          <ThumbButtons :slot2="pausePlayButtonConfig" :slot4="slideshowDeleteButtonConfig" @thumb-click-slot-2="toggleSlideshowPause" @thumb-click-slot-4="confirmDeleteSlideshow">
+            <!-- Slot 3: Star Rating -->
+            <template #slot3>
+              <StarRating v-if="currentSlideshowVideoUuid" :media-uuid="currentSlideshowVideoUuid" :rating="currentSlideshowVideoRating" @updated="handleSlideshowRatingUpdate" @popover-opened="handleSlideshowPopoverOpened" @popover-closed="handleSlideshowPopoverClosed" />
+            </template>
+          </ThumbButtons>
+
+          <!-- Navigation Arrows (desktop only) - bottom left -->
+          <div class="absolute bottom-4 left-2 hidden sm:flex flex-col gap-3 z-40 pointer-events-auto">
+            <UButton variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" @click="slideshowNext" @touchstart="slideshowNext" @touchend.prevent />
+            <UButton v-if="slideshowCurrentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" @click="slideshowPrevious" @touchstart="slideshowPrevious" @touchend.prevent />
           </div>
         </div>
-
-        <!-- Star Rating Overlay for slideshow video -->
-        <StarRating v-if="currentSlideshowVideoUuid" :media-uuid="currentSlideshowVideoUuid" :rating="currentSlideshowVideoRating" @updated="handleSlideshowRatingUpdate" @popover-opened="handleSlideshowPopoverOpened" @popover-closed="handleSlideshowPopoverClosed" />
-      </div>
-
-      <!-- Exit Button -->
-      <div class="absolute top-4 right-4 z-50">
-        <UButton variant="solid" color="white" icon="i-heroicons-x-mark" size="sm" @click="stopSlideshow" @touchstart="stopSlideshow" @touchend.prevent />
-      </div>
-
-      <!-- Navigation Arrows -->
-      <div class="absolute top-0 left-0 w-full h-full flex items-center z-40">
-        <!-- Left side: Stacked navigation for one-handed mobile use -->
-        <div class="flex flex-col gap-3 pl-4">
-          <UButton variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" @click="slideshowNext" @touchstart="slideshowNext" @touchend.prevent />
-          <UButton v-if="slideshowCurrentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" @click="slideshowPrevious" @touchstart="slideshowPrevious" @touchend.prevent />
-          <UButton variant="solid" color="white" :icon="slideshowPaused ? 'i-heroicons-play' : 'i-heroicons-pause'" size="lg" @click="toggleSlideshowPause" @touchstart="toggleSlideshowPause" @touchend.prevent />
-        </div>
-      </div>
-    </div>
+      </template>
+    </UModal>
 
     <!-- Media Upload Modal -->
     <UploadModal v-model:is-open="isUploadModalOpen" @close="closeUploadModal" />
@@ -310,6 +315,18 @@ const slideshowBatchSize = ref(10) // Number of videos to fetch per batch
 const slideshowTotalCount = ref(0) // Total number of videos available from API
 const currentSlideshowVideoUuid = ref(null)
 const currentSlideshowVideoRating = ref(null)
+
+// Button configurations for ThumbButtons in slideshow
+const pausePlayButtonConfig = computed(() => ({
+  icon: slideshowPaused.value ? 'i-heroicons-play' : 'i-heroicons-pause',
+  title: slideshowPaused.value ? 'Play' : 'Pause'
+}))
+
+const slideshowDeleteButtonConfig = computed(() => ({
+  icon: 'i-heroicons-trash',
+  color: 'error',
+  title: 'Delete Video'
+}))
 
 // Filters collapsed state is now handled by the composable
 
@@ -767,12 +784,20 @@ const confirmDelete = async media => {
       // Fetch non-cascade preview to separate "this" records
       const previewThis = await useApiFetch(`media/${media.uuid}/delete-preview?cascade=false`)
 
-      // Build items list with separate sections
-      const items = []
+      // Build items list for "Delete All" option
+      const itemsAll = []
 
-      // Section for "This Media" records
+      // Section for "This Media" - files
+      if (previewThis.willDelete.mediaRecords.length > 0) {
+        itemsAll.push({
+          label: `This Media - ${previewThis.willDelete.mediaRecords.length} Media File${previewThis.willDelete.mediaRecords.length !== 1 ? 's' : ''}`,
+          items: previewThis.willDelete.mediaRecords.map(m => `${m.filename} (${m.purpose})`)
+        })
+      }
+
+      // Section for "This Media" - jobs
       if (previewThis.willDelete.jobs.length > 0) {
-        items.push({
+        itemsAll.push({
           label: `This Media - ${previewThis.willDelete.jobs.length} Job${previewThis.willDelete.jobs.length !== 1 ? 's' : ''}`,
           items: previewThis.willDelete.jobs.map(j => `${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
@@ -780,32 +805,37 @@ const confirmDelete = async media => {
 
       // Section for "All Associated" records
       const allJobs = preview.willDelete.jobs.filter(j => !previewThis.willDelete.jobs.some(tj => tj.id === j.id))
-      const allMedia = preview.willDelete.mediaRecords.filter(m => m.uuid !== media.uuid)
+      const allMedia = preview.willDelete.mediaRecords.filter(m => !previewThis.willDelete.mediaRecords.some(tm => tm.uuid === m.uuid))
+
+      if (allMedia.length > 0) {
+        itemsAll.push({
+          label: `All Associated - ${allMedia.length} Media File${allMedia.length !== 1 ? 's' : ''}`,
+          items: allMedia.map(m => `${m.filename} (${m.purpose})`)
+        })
+      }
 
       if (allJobs.length > 0) {
-        items.push({
+        itemsAll.push({
           label: `All Associated - ${allJobs.length} Job${allJobs.length !== 1 ? 's' : ''}`,
           items: allJobs.map(j => `${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
       }
 
-      if (allMedia.length > 0) {
-        // Group media records by subject and count them
-        const mediaBySubject = {}
-        allMedia.forEach(m => {
-          const subjectName = m.subjectName || 'Unknown Subject'
-          if (!mediaBySubject[subjectName]) {
-            mediaBySubject[subjectName] = 0
-          }
-          mediaBySubject[subjectName]++
+      // Build items list for "Delete This" option
+      const itemsThis = []
+
+      // Include the media files that will be deleted with "Delete This"
+      if (previewThis.willDelete.mediaRecords.length > 0) {
+        itemsThis.push({
+          label: `${previewThis.willDelete.mediaRecords.length} Media File${previewThis.willDelete.mediaRecords.length !== 1 ? 's' : ''} will be deleted`,
+          items: previewThis.willDelete.mediaRecords.map(m => `${m.filename} (${m.purpose})`)
         })
+      }
 
-        // Convert to array of count strings
-        const mediaCounts = Object.entries(mediaBySubject).map(([subjectName, count]) => `${subjectName}: ${count} record${count !== 1 ? 's' : ''}`)
-
-        items.push({
-          label: `All Associated - ${allMedia.length} Media Record${allMedia.length !== 1 ? 's' : ''}`,
-          items: mediaCounts
+      if (previewThis.willDelete.jobs.length > 0) {
+        itemsThis.push({
+          label: `${previewThis.willDelete.jobs.length} Job${previewThis.willDelete.jobs.length !== 1 ? 's' : ''} will be deleted`,
+          items: previewThis.willDelete.jobs.map(j => `${j.subjectName} - ${j.jobType} - ${j.status}`)
         })
       }
 
@@ -815,7 +845,8 @@ const confirmDelete = async media => {
         alternateLabel: 'Delete This',
         cancelLabel: 'Cancel',
         variant: 'error',
-        items
+        items: itemsAll,
+        alternateItems: itemsThis
       })
 
       if (result === 'confirm') {
@@ -884,6 +915,29 @@ const deleteMedia = async (uuid, cascade = false) => {
     const response = await useApiFetch(url, {
       method: 'DELETE'
     })
+
+    // Handle slideshow deletion
+    if (isSlideshow.value && currentSlideshowVideoUuid.value === uuid) {
+      // Remove from slideshow videos array
+      slideshowVideos.value = slideshowVideos.value.filter(videoUuid => videoUuid !== uuid)
+
+      // If there are more videos, advance to next (or previous if at end)
+      if (slideshowVideos.value.length > 0) {
+        // Adjust current index if we were past the deleted video
+        if (slideshowCurrentIndex.value >= slideshowVideos.value.length) {
+          slideshowCurrentIndex.value = slideshowVideos.value.length - 1
+        }
+
+        // Clear the popover pause flag since we're advancing after deletion
+        slideshowPausedByPopover.value = false
+
+        // Always transition to next video after deletion, even if paused
+        playCurrentSlideshowVideo()
+      } else {
+        // No more videos, stop slideshow
+        stopSlideshow()
+      }
+    }
 
     // Handle modal navigation if deleting current image
     if (isModalOpen.value && selectedMedia.value?.uuid === uuid) {
@@ -1093,8 +1147,9 @@ const addVideoEventListeners = videoElement => {
 
   // Add event listener for when video ends
   videoElement.addEventListener('ended', () => {
-    console.log('Video ended, advancing to next...')
-    if (isSlideshow.value && !slideshowPaused.value) {
+    console.log('Video ended, checking if we should advance...')
+    // Don't auto-advance if paused, or if a popover/dialog is open
+    if (isSlideshow.value && !slideshowPaused.value && !slideshowPausedByPopover.value) {
       slideshowNext()
     }
     // Note: When paused, video.loop = true handles looping automatically
@@ -1253,6 +1308,14 @@ const slideshowPrevious = () => {
 }
 
 const slideshowNext = () => {
+  // Debug: Log what triggered this
+  console.log('🚨 slideshowNext called!', {
+    caller: new Error().stack?.split('\n')[2]?.trim(),
+    slideshowPaused: slideshowPaused.value,
+    slideshowPausedByPopover: slideshowPausedByPopover.value,
+    currentIndex: slideshowCurrentIndex.value
+  })
+
   if (slideshowCurrentIndex.value < slideshowVideos.value.length - 1) {
     slideshowCurrentIndex.value++
     playCurrentSlideshowVideo()
@@ -1597,11 +1660,28 @@ const handleMediaSaveEdits = updatedMedia => {
   if (mediaIndex !== -1) {
     mediaResults.value[mediaIndex] = {
       ...mediaResults.value[mediaIndex],
-      ...updatedMedia
+      ...updatedMedia,
+      // Add cache-buster to force browser to reload video
+      _cacheBuster: Date.now()
     }
 
-    // Update selected media
-    selectedMedia.value = mediaResults.value[mediaIndex]
+    // Update selected media with cache buster
+    selectedMedia.value = {
+      ...mediaResults.value[mediaIndex],
+      _cacheBuster: Date.now()
+    }
+
+    // Force video elements to reload
+    nextTick(() => {
+      const videoElements = document.querySelectorAll('video')
+      videoElements.forEach(video => {
+        if (video.currentSrc.includes(updatedMedia.uuid)) {
+          const currentTime = video.currentTime
+          video.load()
+          video.currentTime = currentTime
+        }
+      })
+    })
   }
 }
 
@@ -1637,6 +1717,124 @@ const handleSlideshowPopoverClosed = () => {
     })
     slideshowPausedByPopover.value = false
   }
+}
+
+// Slideshow delete confirmation
+const confirmDeleteSlideshow = async () => {
+  if (!currentSlideshowVideoUuid.value) return
+
+  // Store the UUID we're trying to delete
+  const deletingUuid = currentSlideshowVideoUuid.value
+
+  // CRITICAL: Pause slideshow IMMEDIATELY before any async operations
+  // Set the flag first to prevent the video ended event from advancing
+  slideshowPausedByPopover.value = true
+
+  // Then pause the actual video element and enable loop to prevent auto-advance
+  if (slideshowVideo.value && !slideshowPaused.value) {
+    slideshowVideo.value.pause()
+    slideshowVideo.value.loop = true
+  }
+
+  let wasDeleted = false
+
+  try {
+    // Fetch current video media details
+    const currentMedia = await useApiFetch(`media/${deletingUuid}/info`)
+
+    // Use the same confirmDelete logic as the main gallery
+    await confirmDelete(currentMedia)
+
+    // Check if the video was actually deleted by seeing if current UUID changed
+    wasDeleted = currentSlideshowVideoUuid.value !== deletingUuid
+  } catch (error) {
+    console.error('Failed to confirm delete in slideshow:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Delete Failed',
+      description: 'Failed to load video details for deletion',
+      color: 'error',
+      duration: 3000
+    })
+  } finally {
+    // Always clear the pause flag
+    slideshowPausedByPopover.value = false
+
+    // Only resume playback if video was NOT deleted (user cancelled)
+    if (!wasDeleted && slideshowVideo.value && !slideshowPaused.value && isSlideshow.value) {
+      slideshowVideo.value.loop = false
+      slideshowVideo.value.play().catch(error => {
+        console.warn('Resume play after delete dialog cancelled:', error)
+      })
+    }
+    // If wasDeleted is true, deleteMedia already handled advancing to next video
+  }
+}
+
+// Slideshow modal close handler
+const handleSlideshowClose = newValue => {
+  if (!newValue) {
+    stopSlideshow()
+  }
+}
+
+// Slideshow gesture handlers for swipe navigation
+const {
+  handleTouchStart: originalHandleSlideshowTouchStart,
+  handleTouchMove: handleSlideshowTouchMove,
+  handleTouchEnd: originalHandleSlideshowTouchEnd
+} = useGesture({
+  minSwipeDistance: 50,
+  onSwipeLeft: () => {
+    slideshowNext()
+  },
+  onSwipeRight: () => {
+    slideshowPrevious()
+  },
+  debug: false
+})
+
+// Wrap gesture handlers to ignore touches on buttons/controls
+const handleSlideshowTouchStart = event => {
+  // Check if the touch target is a button or inside a button/control area
+  const target = event.target
+  const isButton = target.closest('button') || target.closest('[role="button"]')
+
+  if (isButton) {
+    // Don't start gesture tracking when touching buttons
+    return
+  }
+
+  originalHandleSlideshowTouchStart(event)
+}
+
+const handleSlideshowTouchEnd = event => {
+  // Check if the touch target is a button or inside a button/control area
+  const target = event.target
+  const isButton = target.closest('button') || target.closest('[role="button"]')
+
+  if (isButton) {
+    // Don't process gesture when releasing on buttons
+    return
+  }
+
+  originalHandleSlideshowTouchEnd(event)
+}
+
+// Handler for media duplication from the modal
+const handleMediaDuplicated = duplicatedMedia => {
+  const toast = useToast()
+
+  toast.add({
+    title: 'Media Duplicated',
+    description: `Copy created: ${duplicatedMedia.filename}`,
+    color: 'success',
+    duration: 3000
+  })
+
+  // Optionally refresh the search results to include the new media
+  // Uncomment the line below if you want to automatically show the duplicated media
+  // searchMedia()
 }
 
 // Initialize settings and load filters on mount (but don't auto-search)

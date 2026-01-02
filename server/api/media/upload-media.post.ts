@@ -4,6 +4,7 @@ import { storeMedia } from '~/server/services/hybridMediaStorage'
 import { eq, and } from 'drizzle-orm'
 import { unlink, mkdir, readFile } from 'fs/promises'
 import { createWriteStream } from 'fs'
+import { createHash } from 'crypto'
 import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
@@ -18,18 +19,18 @@ const execAsync = promisify(exec)
 const MAX_BATCH_SIZE = 10
 const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB per file
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     logger.info(`🔍 Starting upload handler - method: ${event.node.req.method}`)
-    
+
     // Parse multipart form data using busboy
     const result = await parseMultipartStream(event)
     const mediaFiles = result.mediaFiles
     const uploadCategories = result.uploadCategories
     const uploadPurpose = result.uploadPurpose
-    
+
     logger.info(`🔍 Parsed ${mediaFiles.length} files from multipart data`)
-    
+
     if (mediaFiles.length === 0) {
       throw createError({
         statusCode: 400,
@@ -46,7 +47,7 @@ export default defineEventHandler(async (event) => {
 
     const db = getDb()
     const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
-    
+
     if (!encryptionKey) {
       throw createError({
         statusCode: 500,
@@ -65,26 +66,26 @@ export default defineEventHandler(async (event) => {
       // Process each media file
       for (let i = 0; i < mediaFiles.length; i++) {
         const file = mediaFiles[i]
-        
+
         try {
           // Handle file data
           let processedFilePath = file.tempPath
           let processedFilename = file.filename
           let isConvertedGif = false
-          
+
           if (file.type === 'image/gif') {
             logger.info(`🔄 Converting GIF to MP4: ${file.filename}`)
             const convertedPath = await convertGifToVideo(processedFilePath, tempDir)
             processedFilePath = convertedPath
             processedFilename = file.filename.replace(/\.gif$/i, '.mp4')
             isConvertedGif = true
-            
+
             // Clean up original GIF file
             await unlink(file.tempPath)
           }
-          
+
           // Determine file type (GIFs are now converted to video)
-          const fileType = (file.type.startsWith('video/') || isConvertedGif) ? 'video' : 'image'
+          const fileType = file.type.startsWith('video/') || isConvertedGif ? 'video' : 'image'
           const emoji = fileType === 'video' ? '🎬' : '🖼️'
           logger.info(`${emoji} Processing ${fileType} ${i + 1}/${mediaFiles.length}: ${processedFilename}`)
 
@@ -107,29 +108,56 @@ export default defineEventHandler(async (event) => {
           } else {
             metadata = await getImageMetadata(tempFilePath)
           }
-          
+
           // Strip path from filename for storage and comparison
           const baseFilename = path.basename(processedFilename)
-          
-          // Check for duplicates based on dimensions and filename (basename only)
+
+          // Read media file to calculate checksum BEFORE storing
+          const mediaBuffer = await readFile(tempFilePath)
+
+          // Calculate checksum
+          const checksum = createHash('sha256').update(mediaBuffer).digest('hex')
+          logger.info(`📊 Calculated checksum for ${baseFilename}: ${checksum}`)
+
+          // Check for duplicates based on checksum first (most accurate)
+          const existingByChecksum = await db
+            .select()
+            .from(mediaRecords)
+            .where(and(eq(mediaRecords.checksum, checksum), eq(mediaRecords.type, fileType), eq(mediaRecords.purpose, uploadPurpose)))
+            .limit(1)
+
+          if (existingByChecksum.length > 0) {
+            const existing = existingByChecksum[0]
+            logger.info(`⚠️  Duplicate ${fileType} detected by checksum: ${baseFilename} (existing: ${existing.filename})`)
+
+            results.push({
+              filename: baseFilename,
+              success: true,
+              message: `Duplicate ${fileType} skipped (checksum match)`,
+              media_uuid: existing.uuid,
+              thumbnail_uuid: existing.thumbnailUuid,
+              type: fileType,
+              metadata: metadata
+            })
+
+            await unlink(tempFilePath)
+            continue
+          }
+
+          // Fallback: Check for duplicates based on dimensions and filename (for legacy data)
           const existingMedia = await db
             .select()
             .from(mediaRecords)
-            .where(and(
-              eq(mediaRecords.filename, baseFilename),
-              eq(mediaRecords.width, metadata.width),
-              eq(mediaRecords.height, metadata.height),
-              eq(mediaRecords.type, fileType)
-            ))
+            .where(and(eq(mediaRecords.filename, baseFilename), eq(mediaRecords.width, metadata.width), eq(mediaRecords.height, metadata.height), eq(mediaRecords.type, fileType)))
             .limit(1)
 
           if (existingMedia.length > 0) {
             const existing = existingMedia[0]
-            
+
             // If the existing media has a different purpose, update it to the new purpose
             if (existing.purpose !== uploadPurpose) {
               logger.info(`🔄 Updating ${fileType} purpose: ${baseFilename} (${existing.purpose} → ${uploadPurpose})`)
-              
+
               await db
                 .update(mediaRecords)
                 .set({
@@ -137,7 +165,7 @@ export default defineEventHandler(async (event) => {
                   updatedAt: new Date()
                 })
                 .where(eq(mediaRecords.uuid, existing.uuid))
-              
+
               results.push({
                 filename: baseFilename,
                 success: true,
@@ -160,7 +188,7 @@ export default defineEventHandler(async (event) => {
                 metadata: metadata
               })
             }
-            
+
             await unlink(tempFilePath)
             continue
           }
@@ -180,10 +208,7 @@ export default defineEventHandler(async (event) => {
             purpose: 'thumbnail'
           })
 
-          // Read media file from disk for storage
-          const mediaBuffer = await readFile(tempFilePath)
-          
-          // Store media using hybrid storage
+          // Store media using hybrid storage (mediaBuffer already read above for checksum)
           const mediaResult = await storeMedia(mediaBuffer, {
             filename: baseFilename,
             type: fileType,
@@ -220,10 +245,7 @@ export default defineEventHandler(async (event) => {
             }
           }
 
-          await db
-            .update(mediaRecords)
-            .set(updateData)
-            .where(eq(mediaRecords.uuid, mediaUuid))
+          await db.update(mediaRecords).set(updateData).where(eq(mediaRecords.uuid, mediaUuid))
 
           // Update the thumbnail record with dimensions
           await db
@@ -243,15 +265,11 @@ export default defineEventHandler(async (event) => {
           if (uploadCategories.length > 0) {
             // Get or create categories
             const categoryIds = []
-            
+
             for (const categoryName of uploadCategories) {
               // Check if category exists
-              const existingCategory = await db
-                .select()
-                .from(categories)
-                .where(eq(categories.name, categoryName.toLowerCase()))
-                .limit(1)
-              
+              const existingCategory = await db.select().from(categories).where(eq(categories.name, categoryName.toLowerCase())).limit(1)
+
               let categoryId
               if (existingCategory.length > 0) {
                 categoryId = existingCategory[0].id
@@ -264,23 +282,21 @@ export default defineEventHandler(async (event) => {
                     color: '#98D8C8' // Default color
                   })
                   .returning({ id: categories.id })
-                
+
                 categoryId = newCategory[0].id
               }
-              
+
               categoryIds.push(categoryId)
             }
-            
+
             // Create media-category relationships
             if (categoryIds.length > 0) {
-              await db
-                .insert(mediaRecordCategories)
-                .values(
-                  categoryIds.map(categoryId => ({
-                    mediaRecordUuid: mediaUuid,
-                    categoryId: categoryId
-                  }))
-                )
+              await db.insert(mediaRecordCategories).values(
+                categoryIds.map(categoryId => ({
+                  mediaRecordUuid: mediaUuid,
+                  categoryId: categoryId
+                }))
+              )
             }
           }
 
@@ -296,26 +312,24 @@ export default defineEventHandler(async (event) => {
 
           // Clean up temp file
           await unlink(tempFilePath)
-
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           const filename = path.basename(file.filename!)
-          
+
           logger.error(`❌ Error processing ${filename}:`, error)
           logger.info(`🔍 Debug - Error type: ${typeof error}, Error message: "${errorMessage}", Error object: ${JSON.stringify(error)}`)
-          
+
           // Log failed upload to daily file
           logger.info(`📝 About to log failed upload: ${filename} - ${errorMessage}`)
           await logFailedUpload(filename, errorMessage)
           logger.info(`📝 Finished logging failed upload for: ${filename}`)
-          
+
           errors.push({
             filename: filename,
             error: errorMessage
           })
         }
       }
-
     } finally {
       // Clean up temp directory
       try {
@@ -333,10 +347,9 @@ export default defineEventHandler(async (event) => {
       results,
       errors: errors.length > 0 ? errors : undefined
     }
-
   } catch (error: any) {
     logger.error('Media upload error:', error)
-    
+
     throw createError({
       statusCode: error.statusCode || 500,
       statusMessage: error.statusMessage || `Failed to upload media: ${error.message || 'Unknown error'}`
@@ -356,118 +369,120 @@ async function parseMultipartStream(event: any): Promise<{
     const mediaFiles: Array<{ filename: string; tempPath: string; size: number; type: string }> = []
     let uploadCategories: string[] = []
     let uploadPurpose = 'dest'
-    
+
     const tempDir = path.join(os.tmpdir(), `media-upload-stream-${Date.now()}`)
-    
+
     // Create temp directory
-    mkdir(tempDir, { recursive: true }).then(() => {
-      logger.info(`🔍 Request headers: ${JSON.stringify(event.node.req.headers)}`)
-      
-      const bb = busboy({
-        headers: event.node.req.headers,
-        limits: {
-          fileSize: MAX_FILE_SIZE,
-          files: MAX_BATCH_SIZE
-        }
-      })
-      
-      logger.info(`🔍 Busboy initialized successfully`)
-      
-      bb.on('file', (name, file, info) => {
-        const { filename, mimeType } = info
-        
-        logger.info(`🔍 Multipart file detected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
-        
-        if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/') || mimeType === 'image/gif')) {
-          logger.info(`✅ File accepted for processing: ${filename}`)
-          const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
-          const writeStream = createWriteStream(tempPath)
-          let fileSize = 0
-          
-          file.on('data', (chunk) => {
-            fileSize += chunk.length
-            if (fileSize > MAX_FILE_SIZE) {
-              file.destroy()
+    mkdir(tempDir, { recursive: true })
+      .then(() => {
+        logger.info(`🔍 Request headers: ${JSON.stringify(event.node.req.headers)}`)
+
+        const bb = busboy({
+          headers: event.node.req.headers,
+          limits: {
+            fileSize: MAX_FILE_SIZE,
+            files: MAX_BATCH_SIZE
+          }
+        })
+
+        logger.info(`🔍 Busboy initialized successfully`)
+
+        bb.on('file', (name, file, info) => {
+          const { filename, mimeType } = info
+
+          logger.info(`🔍 Multipart file detected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
+
+          if (name === 'media' && filename && (mimeType?.startsWith('video/') || mimeType?.startsWith('image/') || mimeType === 'image/gif')) {
+            logger.info(`✅ File accepted for processing: ${filename}`)
+            const tempPath = path.join(tempDir, `${Date.now()}_${filename}`)
+            const writeStream = createWriteStream(tempPath)
+            let fileSize = 0
+
+            file.on('data', chunk => {
+              fileSize += chunk.length
+              if (fileSize > MAX_FILE_SIZE) {
+                file.destroy()
+                writeStream.destroy()
+                unlink(tempPath).catch(() => {}) // Clean up
+                return
+              }
+            })
+
+            file.on('end', () => {
+              logger.info(`📁 File processing complete: ${filename} (${fileSize} bytes)`)
+              mediaFiles.push({
+                filename,
+                tempPath,
+                size: fileSize,
+                type: mimeType
+              })
+            })
+
+            file.on('error', err => {
+              logger.error('File stream error:', err)
               writeStream.destroy()
               unlink(tempPath).catch(() => {}) // Clean up
-              return
-            }
-          })
-          
-          file.on('end', () => {
-            logger.info(`📁 File processing complete: ${filename} (${fileSize} bytes)`)
-            mediaFiles.push({
-              filename,
-              tempPath,
-              size: fileSize,
-              type: mimeType
             })
-          })
-          
-          file.on('error', (err) => {
-            logger.error('File stream error:', err)
-            writeStream.destroy()
-            unlink(tempPath).catch(() => {}) // Clean up
-          })
-          
-          file.pipe(writeStream)
-        } else {
-          // Skip non-media files
-          logger.info(`❌ File rejected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
-          file.resume()
-        }
-      })
-      
-      bb.on('field', (name, value) => {
-        logger.info(`🔍 Form field received - name: "${name}", value: "${value}"`)
-        if (name === 'categories') {
-          try {
-            uploadCategories = JSON.parse(value)
-          } catch (e) {
-            logger.warn('Failed to parse categories:', e)
+
+            file.pipe(writeStream)
+          } else {
+            // Skip non-media files
+            logger.info(`❌ File rejected - name: "${name}", filename: "${filename}", mimeType: "${mimeType}"`)
+            file.resume()
           }
-        } else if (name === 'purpose') {
-          uploadPurpose = value
-        }
+        })
+
+        bb.on('field', (name, value) => {
+          logger.info(`🔍 Form field received - name: "${name}", value: "${value}"`)
+          if (name === 'categories') {
+            try {
+              uploadCategories = JSON.parse(value)
+            } catch (e) {
+              logger.warn('Failed to parse categories:', e)
+            }
+          } else if (name === 'purpose') {
+            uploadPurpose = value
+          }
+        })
+
+        // Add event listeners for debugging
+        bb.on('part', part => {
+          logger.info(`🔍 Busboy part detected - headers: ${JSON.stringify(part.headers)}`)
+        })
+
+        bb.on('close', () => {
+          logger.info(`🔍 Multipart parsing complete - found ${mediaFiles.length} media files`)
+          resolve({ mediaFiles, uploadCategories, uploadPurpose })
+        })
+
+        bb.on('error', err => {
+          logger.error('🔍 Busboy error:', err)
+          reject(err)
+        })
+
+        bb.on('partsLimit', () => {
+          logger.warn('🔍 Busboy parts limit reached')
+        })
+
+        bb.on('filesLimit', () => {
+          logger.warn('🔍 Busboy files limit reached')
+        })
+
+        bb.on('fieldsLimit', () => {
+          logger.warn('🔍 Busboy fields limit reached')
+        })
+
+        // Check if request has data
+        logger.info(`🔍 Request method: ${event.node.req.method}`)
+        logger.info(`🔍 Request readable: ${event.node.req.readable}`)
+        logger.info(`🔍 Request destroyed: ${event.node.req.destroyed}`)
+
+        // Pipe the request to busboy
+        event.node.req.pipe(bb)
+
+        logger.info(`🔍 Request piped to busboy`)
       })
-      
-      // Add event listeners for debugging
-      bb.on('part', (part) => {
-        logger.info(`🔍 Busboy part detected - headers: ${JSON.stringify(part.headers)}`)
-      })
-      
-      bb.on('close', () => {
-        logger.info(`🔍 Multipart parsing complete - found ${mediaFiles.length} media files`)
-        resolve({ mediaFiles, uploadCategories, uploadPurpose })
-      })
-      
-      bb.on('error', (err) => {
-        logger.error('🔍 Busboy error:', err)
-        reject(err)
-      })
-      
-      bb.on('partsLimit', () => {
-        logger.warn('🔍 Busboy parts limit reached')
-      })
-      
-      bb.on('filesLimit', () => {
-        logger.warn('🔍 Busboy files limit reached')
-      })
-      
-      bb.on('fieldsLimit', () => {
-        logger.warn('🔍 Busboy fields limit reached')
-      })
-      
-      // Check if request has data
-      logger.info(`🔍 Request method: ${event.node.req.method}`)
-      logger.info(`🔍 Request readable: ${event.node.req.readable}`)
-      logger.info(`🔍 Request destroyed: ${event.node.req.destroyed}`)
-      
-      // Pipe the request to busboy
-      event.node.req.pipe(bb)
-      
-      logger.info(`🔍 Request piped to busboy`)
-    }).catch(reject)
+      .catch(reject)
   })
 }
 
@@ -476,7 +491,7 @@ async function getVideoMetadata(videoPath: string): Promise<any> {
   try {
     const { stdout } = await execAsync(`ffprobe -v quiet -print_format json -show_format -show_streams "${videoPath}"`)
     const metadata = JSON.parse(stdout)
-    
+
     const videoStream = metadata.streams.find((stream: any) => stream.codec_type === 'video')
     if (!videoStream) {
       throw new Error('No video stream found')
@@ -502,7 +517,7 @@ async function getImageMetadata(imagePath: string): Promise<any> {
   try {
     const { stdout } = await execAsync(`ffprobe -v quiet -print_format json -show_format -show_streams "${imagePath}"`)
     const metadata = JSON.parse(stdout)
-    
+
     const imageStream = metadata.streams.find((stream: any) => stream.codec_type === 'video')
     if (!imageStream) {
       throw new Error('No image stream found')
@@ -523,15 +538,15 @@ async function getImageMetadata(imagePath: string): Promise<any> {
 // Helper function to generate video thumbnail using ffmpeg command
 async function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
   const tempThumbnailPath = `${videoPath}_thumb.jpg`
-  
+
   try {
     // Generate thumbnail at 10% of video duration, 320px width
     await execAsync(`ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf "scale=320:-1" "${tempThumbnailPath}"`)
-    
+
     const fs = await import('fs/promises')
     const thumbnailBuffer = await fs.readFile(tempThumbnailPath)
     await fs.unlink(tempThumbnailPath) // Clean up
-    
+
     return thumbnailBuffer
   } catch (error) {
     // Clean up temp file if it exists
@@ -541,7 +556,7 @@ async function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
     } catch {
       // Ignore cleanup errors
     }
-    
+
     throw new Error(`Failed to generate video thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
@@ -549,15 +564,15 @@ async function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
 // Helper function to generate image thumbnail using ffmpeg command
 async function generateImageThumbnail(imagePath: string): Promise<Buffer> {
   const tempThumbnailPath = `${imagePath}_thumb.jpg`
-  
+
   try {
     // Generate thumbnail with 320px width, maintaining aspect ratio
     await execAsync(`ffmpeg -i "${imagePath}" -vf "scale=320:-1" "${tempThumbnailPath}"`)
-    
+
     const fs = await import('fs/promises')
     const thumbnailBuffer = await fs.readFile(tempThumbnailPath)
     await fs.unlink(tempThumbnailPath) // Clean up
-    
+
     return thumbnailBuffer
   } catch (error) {
     // Clean up temp file if it exists
@@ -567,7 +582,7 @@ async function generateImageThumbnail(imagePath: string): Promise<Buffer> {
     } catch {
       // Ignore cleanup errors
     }
-    
+
     throw new Error(`Failed to generate image thumbnail: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
@@ -575,14 +590,14 @@ async function generateImageThumbnail(imagePath: string): Promise<Buffer> {
 // Helper function to convert GIF to MP4 video using ffmpeg
 async function convertGifToVideo(gifPath: string, outputDir: string): Promise<string> {
   const outputPath = path.join(outputDir, `${path.parse(gifPath).name}.mp4`)
-  
+
   try {
     // Convert GIF to MP4 with optimized settings for web playback
     // -vf "palettegen" and "paletteuse" maintain color quality from GIF
     // -movflags +faststart optimizes for web streaming
     // -pix_fmt yuv420p ensures compatibility with most players
     await execAsync(`ffmpeg -i "${gifPath}" -vf "fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`)
-    
+
     return outputPath
   } catch (error) {
     // Clean up output file if it exists
@@ -591,7 +606,7 @@ async function convertGifToVideo(gifPath: string, outputDir: string): Promise<st
     } catch {
       // Ignore cleanup errors
     }
-    
+
     throw new Error(`Failed to convert GIF to video: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

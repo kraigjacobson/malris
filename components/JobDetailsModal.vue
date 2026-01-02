@@ -4,172 +4,186 @@
       <div class="flex items-center justify-between w-full gap-3">
         <h3 class="text-lg sm:text-xl font-semibold">Job Details</h3>
         <div v-if="hasMultipleJobs && currentJobInfo" class="text-base sm:text-sm text-gray-600 dark:text-gray-400 font-medium">Job {{ currentJobInfo.current }} of {{ currentJobInfo.total }}</div>
-        <UButton variant="ghost" :size="isMobile ? 'xl' : 'lg'" icon="i-heroicons-x-mark" @click="closeModal" class="flex-shrinkz-0" />
+        <!-- Desktop only: Close button in header -->
+        <UButton v-if="!isMobile" variant="ghost" size="lg" icon="i-heroicons-x-mark" @click="closeModal" class="flex-shrink-0" />
       </div>
     </template>
 
     <template #body>
-      <div v-if="job" class="space-y-4 h-[600px] overflow-y-auto custom-scrollbar" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
-        <!-- Main Video Display Section-->
-        <div v-if="displayImages && (job.output_uuid || job.dest_media_uuid)" class="text-center">
-          <!-- Main Video Container with Arrow Overlays -->
-          <div class="relative w-full group">
-            <!-- Video Container with Full Width -->
-            <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800 aspect-auto">
-              <!-- Show output video if it exists, job is completed, and toggle is on -->
-              <template v-if="job.output_uuid && job.status === 'completed'">
-                <MediaCard v-show="showingOutputVideo" :key="`output-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleOutputRatingUpdate" class="!rounded-none" />
+      <div v-if="job" class="relative h-[600px]">
+        <!-- Left side overlay buttons using ThumbButtons component -->
+        <ThumbButtons :slot2="closeButtonConfig" :slot4="deleteButtonConfig" @thumb-click-slot-2="closeModal" @thumb-click-slot-4="$emit('delete-job')">
+          <!-- Slot 3: Star Rating -->
+          <template v-if="currentVideoUuid" #slot3>
+            <StarRating :media-uuid="currentVideoUuid" :rating="currentVideoRating" @updated="handleCurrentVideoRatingUpdate" />
+          </template>
+        </ThumbButtons>
+
+        <!-- Scrollable content area -->
+        <div class="space-y-4 h-full overflow-y-auto custom-scrollbar" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
+          <!-- Main Video Display Section-->
+          <div v-if="displayImages && (job.output_uuid || job.dest_media_uuid)" class="text-center">
+            <!-- Main Video Container with Arrow Overlays -->
+            <div class="relative w-full group">
+              <!-- Video Container with Full Width -->
+              <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800 aspect-auto">
+                <!-- Show output video if it exists, job is completed, and toggle is on -->
+                <template v-if="job.output_uuid && job.status === 'completed'">
+                  <MediaCard v-show="showingOutputVideo" :key="`output-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :show-rating="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleOutputRatingUpdate" class="!rounded-none" />
+                </template>
+
+                <!-- Show dest video for queued jobs OR when toggle is off OR no output exists -->
+                <template v-if="job.dest_media_uuid">
+                  <MediaCard v-show="job.status === 'queued' || !job.output_uuid || !showingOutputVideo" :key="`dest-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :show-rating="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleDestRatingUpdate" class="!rounded-none" />
+                </template>
+              </div>
+
+              <!-- Navigation Buttons - Only on non-mobile -->
+              <!-- Left side: Previous button only -->
+              <div v-if="!isMobile && hasMultipleJobs" class="absolute top-0 left-0 h-full flex items-center z-40">
+                <div class="flex flex-col gap-3 pl-4">
+                  <UButton variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" @click="goToPreviousJob" />
+                </div>
+              </div>
+
+              <!-- Right side: Next button only -->
+              <div v-if="!isMobile && hasMultipleJobs" class="absolute top-0 right-0 h-full flex items-center z-40">
+                <div class="flex flex-col gap-3 pr-4">
+                  <UButton variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" @click="goToNextJob" />
+                </div>
+              </div>
+
+              <!-- Job Counter -->
+              <div v-if="hasMultipleJobs" class="absolute top-2 left-2">
+                <div class="bg-black bg-opacity-70 text-white text-sm font-medium px-2 py-1 rounded">{{ currentJobInfo.current }}/{{ currentJobInfo.total }}</div>
+              </div>
+
+              <!-- Video Type Toggle Button -->
+              <div class="absolute top-2 right-2">
+                <UButton v-if="job.output_uuid && job.dest_media_uuid" :color="showingOutputVideo ? 'primary' : 'gray'" variant="solid" size="sm" :icon="showingOutputVideo ? 'i-heroicons-film' : 'i-heroicons-video-camera'" @click="toggleVideoType" class="opacity-80 hover:opacity-100 transition-opacity" :title="showingOutputVideo ? 'Show Destination Video' : 'Show Output Video'" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Thumbnails Section (only show when displayImages is true) -->
+          <div v-if="displayImages" class="space-y-3">
+            <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
+            <div class="flex gap-2 sm:gap-4">
+              <!-- Subject Thumbnail -->
+              <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
+                </div>
+                <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
+              </div>
+
+              <!-- Source Image Thumbnail -->
+              <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Source Image</span>
+                </div>
+                <MediaCard :key="`source-${job.source_media_thumbnail_uuid}`" :media="{ uuid: job.source_media_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.source_media_thumbnail_uuid}/image`, filename: 'Source image thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
+              </div>
+
+              <!-- Destination Media Thumbnail (don't show for queued jobs since it's the main video) -->
+              <div v-if="(job.dest_media_thumbnail_uuid || job.dest_media_uuid) && job.status !== 'queued'" class="flex-1 min-w-0">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination Video</span>
+                </div>
+                <MediaCard :key="`dest-thumb-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleDestRatingUpdate" />
+              </div>
+
+              <!-- Output Video Thumbnail (don't show for queued jobs) -->
+              <div v-if="job.output_uuid && job.status !== 'queued'" class="flex-1 min-w-0">
+                <div class="mb-1 sm:mb-2 text-center">
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output Video</span>
+                </div>
+                <MediaCard :key="`output-thumb-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleOutputRatingUpdate" />
+              </div>
+            </div>
+
+            <!-- Job Output Images Section (for need_input status, only show when displayImages is true) -->
+            <div v-if="job.status === 'need_input' && jobOutputImages.length > 0 && displayImages" class="mt-6">
+              <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white mb-3">Generated Images</h4>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
+                <MediaCard v-for="image in jobOutputImages" :key="image.uuid" :media="image" :show-duration="false" :show-delete="false" aspect-ratio="square" @click="$emit('open-image-fullscreen', image)" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Job Details Accordion -->
+          <div class="mt-4">
+            <UAccordion :items="jobDetailsAccordionItems" :default-open="defaultAccordionOpen">
+              <template #job-details>
+                <div class="space-y-3 text-left">
+                  <!-- Basic Info Grid -->
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                      <UBadge :color="getStatusColor(job.status)" size="sm">
+                        {{ job.status }}
+                      </UBadge>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.job_type }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.progress || 0 }}%</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.created_at) }}</span>
+                    </div>
+                    <div v-if="job.updated_at" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Updated</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.updated_at) }}</span>
+                    </div>
+                    <div v-if="job.completed_at" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.completed_at) }}</span>
+                    </div>
+                  </div>
+
+                  <!-- ID -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">ID</span>
+                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.id }}</span>
+                  </div>
+
+                  <!-- UUIDs Grid -->
+                  <div v-if="job.source_media_uuid || job.dest_media_uuid || job.subject_uuid || job.output_uuid" class="space-y-2">
+                    <div v-if="job.subject_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.subject_uuid }}</span>
+                    </div>
+                    <div v-if="job.source_media_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Source UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.source_media_uuid }}</span>
+                    </div>
+                    <div v-if="job.dest_media_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.dest_media_uuid }}</span>
+                    </div>
+                    <div v-if="job.output_uuid" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
+                      <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.output_uuid }}</span>
+                    </div>
+                  </div>
+                </div>
               </template>
-
-              <!-- Show dest video for queued jobs OR when toggle is off OR no output exists -->
-              <template v-if="job.dest_media_uuid">
-                <MediaCard v-show="job.status === 'queued' || !job.output_uuid || !showingOutputVideo" :key="`dest-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleDestRatingUpdate" class="!rounded-none" />
-              </template>
-            </div>
-
-            <!-- Navigation Buttons - Only on non-mobile -->
-            <!-- Left side: Previous button only -->
-            <div v-if="!isMobile && hasMultipleJobs" class="absolute top-0 left-0 h-full flex items-center z-40">
-              <div class="flex flex-col gap-3 pl-4">
-                <UButton variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" @click="goToPreviousJob" />
-              </div>
-            </div>
-
-            <!-- Right side: Next button only -->
-            <div v-if="!isMobile && hasMultipleJobs" class="absolute top-0 right-0 h-full flex items-center z-40">
-              <div class="flex flex-col gap-3 pr-4">
-                <UButton variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" @click="goToNextJob" />
-              </div>
-            </div>
-
-            <!-- Job Counter -->
-            <div v-if="hasMultipleJobs" class="absolute top-2 left-2">
-              <div class="bg-black bg-opacity-70 text-white text-sm font-medium px-2 py-1 rounded">{{ currentJobInfo.current }}/{{ currentJobInfo.total }}</div>
-            </div>
-
-            <!-- Video Type Toggle Button -->
-            <div class="absolute top-2 right-2">
-              <UButton v-if="job.output_uuid && job.dest_media_uuid" :color="showingOutputVideo ? 'primary' : 'gray'" variant="solid" size="sm" :icon="showingOutputVideo ? 'i-heroicons-film' : 'i-heroicons-video-camera'" @click="toggleVideoType" class="opacity-80 hover:opacity-100 transition-opacity" :title="showingOutputVideo ? 'Show Destination Video' : 'Show Output Video'" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Thumbnails Section (only show when displayImages is true) -->
-        <div v-if="displayImages" class="space-y-3">
-          <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
-          <div class="flex gap-2 sm:gap-4">
-            <!-- Subject Thumbnail -->
-            <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0">
-              <div class="mb-1 sm:mb-2 text-center">
-                <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
-              </div>
-              <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
-            </div>
-
-            <!-- Source Image Thumbnail -->
-            <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0">
-              <div class="mb-1 sm:mb-2 text-center">
-                <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Source Image</span>
-              </div>
-              <MediaCard :key="`source-${job.source_media_thumbnail_uuid}`" :media="{ uuid: job.source_media_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.source_media_thumbnail_uuid}/image`, filename: 'Source image thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
-            </div>
-
-            <!-- Destination Media Thumbnail (don't show for queued jobs since it's the main video) -->
-            <div v-if="(job.dest_media_thumbnail_uuid || job.dest_media_uuid) && job.status !== 'queued'" class="flex-1 min-w-0">
-              <div class="mb-1 sm:mb-2 text-center">
-                <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination Video</span>
-              </div>
-              <MediaCard :key="`dest-thumb-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleDestRatingUpdate" />
-            </div>
-
-            <!-- Output Video Thumbnail (don't show for queued jobs) -->
-            <div v-if="job.output_uuid && job.status !== 'queued'" class="flex-1 min-w-0">
-              <div class="mb-1 sm:mb-2 text-center">
-                <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output Video</span>
-              </div>
-              <MediaCard :key="`output-thumb-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleOutputRatingUpdate" />
-            </div>
+            </UAccordion>
           </div>
 
-          <!-- Job Output Images Section (for need_input status, only show when displayImages is true) -->
-          <div v-if="job.status === 'need_input' && jobOutputImages.length > 0 && displayImages" class="mt-6">
-            <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white mb-3">Generated Images</h4>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-4">
-              <MediaCard v-for="image in jobOutputImages" :key="image.uuid" :media="image" :show-duration="false" :show-delete="false" aspect-ratio="square" @click="$emit('open-image-fullscreen', image)" />
-            </div>
+          <div v-if="job.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+            <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
+            <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ job.error_message }}</p>
           </div>
         </div>
-
-        <!-- Job Details Accordion -->
-        <div class="mt-4">
-          <UAccordion :items="jobDetailsAccordionItems" :default-open="defaultAccordionOpen">
-            <template #job-details>
-              <div class="space-y-3 text-left">
-                <!-- Basic Info Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                    <UBadge :color="getStatusColor(job.status)" size="sm">
-                      {{ job.status }}
-                    </UBadge>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.job_type }}</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Progress</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.progress || 0 }}%</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.created_at) }}</span>
-                  </div>
-                  <div v-if="job.updated_at" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Updated</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.updated_at) }}</span>
-                  </div>
-                  <div v-if="job.completed_at" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completed</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(job.completed_at) }}</span>
-                  </div>
-                </div>
-
-                <!-- ID -->
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">ID</span>
-                  <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.id }}</span>
-                </div>
-
-                <!-- UUIDs Grid -->
-                <div v-if="job.source_media_uuid || job.dest_media_uuid || job.subject_uuid || job.output_uuid" class="space-y-2">
-                  <div v-if="job.subject_uuid" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Subject UUID</span>
-                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.subject_uuid }}</span>
-                  </div>
-                  <div v-if="job.source_media_uuid" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Source UUID</span>
-                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.source_media_uuid }}</span>
-                  </div>
-                  <div v-if="job.dest_media_uuid" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Destination UUID</span>
-                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.dest_media_uuid }}</span>
-                  </div>
-                  <div v-if="job.output_uuid" class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Output UUID</span>
-                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.output_uuid }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </UAccordion>
-        </div>
-
-        <div v-if="job.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-          <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
-          <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ job.error_message }}</p>
-        </div>
+        <!-- End scrollable content area -->
       </div>
+      <!-- End outer container -->
     </template>
 
     <template #footer>
@@ -185,10 +199,9 @@
             </UButton>
           </div>
         </div>
-        <div v-if="job" class="flex gap-2">
+        <div v-if="job && !isMobile" class="flex gap-2">
           <UButton v-if="job && ['queued', 'active', 'need_input'].includes(job.status)" color="error" variant="outline" icon="i-heroicons-x-mark" size="lg" @click="$emit('cancel-job')" class="h-12"><span class="hidden sm:inline">Cancel</span></UButton>
           <UButton v-if="job && ['canceled', 'failed', 'completed', 'need_input'].includes(job.status)" color="primary" variant="outline" icon="i-heroicons-arrow-path" size="lg" @click="$emit('retry-job')" class="h-12"><span class="hidden sm:inline">Retry</span></UButton>
-          <UButton v-if="job" color="error" variant="outline" icon="i-heroicons-trash" size="lg" @click="$emit('delete-job')" class="h-12"><span class="hidden sm:inline">Delete</span></UButton>
         </div>
       </div>
     </template>
@@ -197,9 +210,22 @@
 
 <script setup>
 import { useSettings } from '~/composables/useSettings'
+import StarRating from '~/components/StarRating.vue'
 
 // Use Nuxt's device detection
 const { isMobile } = useDevice()
+
+// Button configurations for ThumbButtons
+const closeButtonConfig = computed(() => ({
+  icon: 'i-heroicons-x-mark',
+  title: 'Close'
+}))
+
+const deleteButtonConfig = computed(() => ({
+  icon: 'i-heroicons-trash',
+  color: 'error',
+  title: 'Delete Job'
+}))
 
 const props = defineProps({
   modelValue: {
@@ -250,6 +276,25 @@ const videoContainer = ref(null)
 // Rating state
 const outputRating = ref(null)
 const destRating = ref(null)
+
+// Computed properties for current video (used by mobile overlay rating button)
+const currentVideoUuid = computed(() => {
+  if (!props.job) return null
+  // Return the UUID of whichever video is currently being displayed
+  if (props.job.status === 'completed' && props.job.output_uuid && showingOutputVideo.value) {
+    return props.job.output_uuid
+  }
+  return props.job.dest_media_uuid
+})
+
+const currentVideoRating = computed(() => {
+  if (!props.job) return null
+  // Return the rating of whichever video is currently being displayed
+  if (props.job.status === 'completed' && props.job.output_uuid && showingOutputVideo.value) {
+    return outputRating.value
+  }
+  return destRating.value
+})
 
 // Job navigation state
 const currentJobIndex = ref(0)
@@ -394,6 +439,15 @@ const handleOutputRatingUpdate = rating => {
 
 const handleDestRatingUpdate = rating => {
   destRating.value = rating
+}
+
+const handleCurrentVideoRatingUpdate = rating => {
+  // Update the rating for whichever video is currently being displayed
+  if (props.job?.status === 'completed' && props.job?.output_uuid && showingOutputVideo.value) {
+    outputRating.value = rating
+  } else {
+    destRating.value = rating
+  }
 }
 
 // Fetch rating for output video

@@ -45,12 +45,12 @@
     </div>
 
     <!-- Right side buttons stack - positioned right -->
-    <div class="absolute top-2 right-2 flex flex-col gap-2 items-end z-40">
+    <div v-if="showDelete || showRating" class="absolute top-2 right-2 flex flex-col gap-2 items-end z-40">
       <!-- Delete Button -->
       <UButton v-if="showDelete" icon="i-heroicons-x-mark" color="error" variant="ghost" size="xl" class="opacity-80 hover:opacity-100 transition-opacity min-w-[48px] min-h-[48px] !p-0 flex items-center justify-center" @click.stop="handleDelete" square />
 
       <!-- Star Rating -->
-      <StarRating :media-uuid="media.uuid" :rating="media.rating" :job-id="media.job_id" @updated="handleRatingUpdated" />
+      <StarRating v-if="showRating" :media-uuid="media.uuid" :rating="media.rating" :job-id="media.job_id" @updated="handleRatingUpdated" />
     </div>
   </div>
 </template>
@@ -64,7 +64,8 @@ const props = defineProps({
   autoplay: { type: Boolean, default: false },
   aspectRatio: { type: String, default: 'square' }, // 'square', '3/4', '16/9', 'auto', or custom like '4/3'
   showControls: { type: Boolean, default: false }, // Show persistent video controls
-  showDelete: { type: Boolean, default: true } // Show delete button
+  showDelete: { type: Boolean, default: true }, // Show delete button
+  showRating: { type: Boolean, default: true } // Show star rating button
 })
 
 const emit = defineEmits(['click', 'delete', 'rating-updated'])

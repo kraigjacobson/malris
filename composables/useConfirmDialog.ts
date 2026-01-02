@@ -7,7 +7,8 @@ const globalState = {
   alternateLabel: ref(''),
   cancelLabel: ref('Cancel'),
   variant: ref<'primary' | 'error' | 'warning' | 'info'>('primary'),
-  items: ref<Array<{ label: string; items: Array<string> }>>([])
+  items: ref<Array<{ label: string; items: Array<string> }>>([]),
+  alternateItems: ref<Array<{ label: string; items: Array<string> }>>([])
 }
 
 let globalResolveFn: (value: 'confirm' | 'alternate' | 'cancel') => void
@@ -22,6 +23,7 @@ export function useConfirmDialog() {
       cancelLabel?: string
       variant?: 'primary' | 'error' | 'warning' | 'info'
       items?: Array<{ label: string; items: Array<string> }>
+      alternateItems?: Array<{ label: string; items: Array<string> }>
     } = {}
   ) => {
     console.log('confirm called with options:', options)
@@ -33,6 +35,7 @@ export function useConfirmDialog() {
     globalState.cancelLabel.value = options.cancelLabel || 'Cancel'
     globalState.variant.value = options.variant || 'primary'
     globalState.items.value = options.items || []
+    globalState.alternateItems.value = options.alternateItems || []
 
     globalState.isOpen.value = true
     console.log('Modal should be open now, isOpen:', globalState.isOpen.value)
@@ -47,6 +50,7 @@ export function useConfirmDialog() {
     globalResolveFn('confirm')
     globalState.isOpen.value = false
     globalState.items.value = []
+    globalState.alternateItems.value = []
     globalState.alternateLabel.value = ''
   }
 
@@ -55,6 +59,7 @@ export function useConfirmDialog() {
     globalResolveFn('alternate')
     globalState.isOpen.value = false
     globalState.items.value = []
+    globalState.alternateItems.value = []
     globalState.alternateLabel.value = ''
   }
 
@@ -63,6 +68,7 @@ export function useConfirmDialog() {
     globalResolveFn('cancel')
     globalState.isOpen.value = false
     globalState.items.value = []
+    globalState.alternateItems.value = []
     globalState.alternateLabel.value = ''
   }
 
@@ -75,6 +81,7 @@ export function useConfirmDialog() {
     cancelLabel: globalState.cancelLabel,
     variant: globalState.variant,
     items: globalState.items,
+    alternateItems: globalState.alternateItems,
     confirm,
     handleConfirm,
     handleAlternate,

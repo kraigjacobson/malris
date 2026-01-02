@@ -89,6 +89,51 @@ export default defineEventHandler(async event => {
       // Find jobs that reference this dest media UUID
       const { subjects } = await import('~/server/utils/schema')
 
+      // First, always include the target media record itself
+      preview.willDelete.mediaRecords.push({
+        uuid: record.uuid,
+        filename: record.filename,
+        type: record.type,
+        purpose: record.purpose || '',
+        relatedTo: 'target',
+        subjectName: 'This Media'
+      })
+
+      // If this media record has a thumbnail, include it
+      const [mediaWithThumbnailInfo] = await db
+        .select({
+          thumbnailUuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, uuid))
+        .limit(1)
+
+      if (mediaWithThumbnailInfo?.thumbnailUuid) {
+        const [thumbnail] = await db
+          .select({
+            uuid: mediaRecords.uuid,
+            filename: mediaRecords.filename,
+            type: mediaRecords.type,
+            purpose: mediaRecords.purpose,
+            subjectName: subjects.name
+          })
+          .from(mediaRecords)
+          .leftJoin(subjects, eq(mediaRecords.subjectUuid, subjects.id))
+          .where(eq(mediaRecords.uuid, mediaWithThumbnailInfo.thumbnailUuid))
+          .limit(1)
+
+        if (thumbnail) {
+          preview.willDelete.mediaRecords.push({
+            uuid: thumbnail.uuid,
+            filename: thumbnail.filename,
+            type: thumbnail.type,
+            purpose: thumbnail.purpose || '',
+            relatedTo: 'thumbnail',
+            subjectName: 'This Media'
+          })
+        }
+      }
+
       const relatedJobs = await db
         .select({
           id: jobs.id,
@@ -189,9 +234,55 @@ export default defineEventHandler(async event => {
         }
       }
     } else {
-      // Not cascading, just check for associated job
+      // Not cascading, just check for associated job and related media
       const { subjects } = await import('~/server/utils/schema')
 
+      // Include the target media record itself
+      preview.willDelete.mediaRecords.push({
+        uuid: record.uuid,
+        filename: record.filename,
+        type: record.type,
+        purpose: record.purpose || '',
+        relatedTo: 'target',
+        subjectName: 'This Media'
+      })
+
+      // If this media record has a thumbnail, include it
+      const [mediaWithThumbnailInfo] = await db
+        .select({
+          thumbnailUuid: mediaRecords.thumbnailUuid
+        })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, uuid))
+        .limit(1)
+
+      if (mediaWithThumbnailInfo?.thumbnailUuid) {
+        const [thumbnail] = await db
+          .select({
+            uuid: mediaRecords.uuid,
+            filename: mediaRecords.filename,
+            type: mediaRecords.type,
+            purpose: mediaRecords.purpose,
+            subjectName: subjects.name
+          })
+          .from(mediaRecords)
+          .leftJoin(subjects, eq(mediaRecords.subjectUuid, subjects.id))
+          .where(eq(mediaRecords.uuid, mediaWithThumbnailInfo.thumbnailUuid))
+          .limit(1)
+
+        if (thumbnail) {
+          preview.willDelete.mediaRecords.push({
+            uuid: thumbnail.uuid,
+            filename: thumbnail.filename,
+            type: thumbnail.type,
+            purpose: thumbnail.purpose || '',
+            relatedTo: 'thumbnail',
+            subjectName: 'This Media'
+          })
+        }
+      }
+
+      // Check for associated job
       const associatedJobs = await db
         .select({
           id: jobs.id,

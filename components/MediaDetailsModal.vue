@@ -21,6 +21,9 @@
           <UButton v-if="currentMode === 'edit'" variant="solid" color="success" :size="isMobile ? 'md' : 'xs'" :loading="isSavingEdits" @click="confirmSaveEdits"> Save </UButton>
           <UButton v-if="currentMode === 'edit'" variant="outline" :size="isMobile ? 'md' : 'xs'" @click="confirmCancelEdits"> Cancel </UButton>
 
+          <!-- Duplicate button (only in none mode) -->
+          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-document-duplicate" color="primary" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="isDuplicating" @click="duplicateMedia" square />
+
           <!-- Delete button (only in none mode) -->
           <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-trash" color="error" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="deletingIds.includes(media.uuid)" @click="$emit('confirmDelete', media)" square />
 
@@ -141,10 +144,10 @@
           </div>
 
           <!-- Video Display -->
-          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}`" class="w-full">
+          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}-${media._cacheBuster || 0}`" class="w-full">
             <div class="relative">
               <video v-if="settingsStore.displayImages" :ref="modalVideo" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" controls muted loop class="w-full object-contain rounded" preload="metadata" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture crossorigin="anonymous" @loadedmetadata="onVideoLoaded" @timeupdate="onTimeUpdate">
-                <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
+                <source :src="`/api/stream/${media.uuid}?v=${media._cacheBuster || 0}`" type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
 
@@ -158,36 +161,9 @@
               <!-- Star Rating Overlay -->
               <StarRating v-if="currentMode === 'none'" :media-uuid="media.uuid" :rating="currentRating" @updated="handleRatingUpdate" />
 
-              <!-- Custom Crop overlay (only visible in edit mode) -->
-              <div v-if="currentMode === 'edit' && showCropOverlay" class="absolute inset-0 cursor-crosshair" style="z-index: 20" @mousedown="startCropDrag" @mousemove="updateCropDrag" @mouseup="endCropDrag" @mouseleave="endCropDrag">
-                <!-- Dark overlay -->
-                <div class="absolute inset-0" :ui="{ opacity: 50 }" />
-
-                <!-- Crop selection rectangle -->
-                <div
-                  class="absolute border-2 border-white shadow-lg"
-                  :style="{
-                    left: cropOverlayStyle.left + 'px',
-                    top: cropOverlayStyle.top + 'px',
-                    width: cropOverlayStyle.width + 'px',
-                    height: cropOverlayStyle.height + 'px'
-                  }"
-                >
-                  <!-- Clear area inside crop -->
-                  <div class="absolute inset-0 bg-transparent"></div>
-
-                  <!-- Corner handles -->
-                  <div class="absolute -top-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-nw-resize" @mousedown.stop="startResize('nw')"></div>
-                  <div class="absolute -top-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-ne-resize" @mousedown.stop="startResize('ne')"></div>
-                  <div class="absolute -bottom-1 -left-1 w-3 h-3 bg-white border border-gray-400 cursor-sw-resize" @mousedown.stop="startResize('sw')"></div>
-                  <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-white border border-gray-400 cursor-se-resize" @mousedown.stop="startResize('se')"></div>
-
-                  <!-- Edge handles -->
-                  <div class="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-n-resize" @mousedown.stop="startResize('n')"></div>
-                  <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border border-gray-400 cursor-s-resize" @mousedown.stop="startResize('s')"></div>
-                  <div class="absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border border-gray-400 cursor-w-resize" @mousedown.stop="startResize('w')"></div>
-                  <div class="absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border border-gray-400 cursor-e-resize" @mousedown.stop="startResize('e')"></div>
-                </div>
+              <!-- Cropper overlay (only visible in edit mode) -->
+              <div v-if="currentMode === 'edit'" class="absolute inset-0 z-20 bg-black">
+                <Cropper ref="cropperRef" class="h-full w-full" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=lg`" @change="onCropperChange" />
               </div>
             </div>
           </div>
@@ -221,42 +197,6 @@
                   </div>
 
                   <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded">New Duration: {{ formatTime((editSettings.trimEnd || videoDuration || 0) - (editSettings.trimStart || 0)) }}</div>
-                </div>
-              </UCard>
-
-              <!-- Crop Controls -->
-              <UCard>
-                <template #header>
-                  <div class="flex justify-between items-center">
-                    <h4 class="font-semibold text-gray-900 dark:text-white">Crop Video</h4>
-                    <USwitch v-model="showCropOverlay" label="Show Overlay" />
-                  </div>
-                </template>
-
-                <div class="space-y-4">
-                  <div class="grid grid-cols-2 gap-2">
-                    <div>
-                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">X Position</label>
-                      <UInput v-model.number="editSettings.crop.x" type="number" min="0" :max="videoWidth" size="sm" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Y Position</label>
-                      <UInput v-model.number="editSettings.crop.y" type="number" min="0" :max="videoHeight" size="sm" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Width</label>
-                      <UInput v-model.number="editSettings.crop.width" type="number" min="1" :max="videoWidth" size="sm" />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Height</label>
-                      <UInput v-model.number="editSettings.crop.height" type="number" min="1" :max="videoHeight" size="sm" />
-                    </div>
-                  </div>
-
-                  <div class="flex gap-2">
-                    <UButton size="sm" variant="outline" @click="resetCrop"> Reset </UButton>
-                    <UButton size="sm" variant="outline" @click="centerCrop"> Center </UButton>
-                  </div>
                 </div>
               </UCard>
 
@@ -394,6 +334,8 @@
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
+import { Cropper } from 'vue-advanced-cropper'
+import 'vue-advanced-cropper/dist/style.css'
 
 // Device detection
 const { isMobile } = useDevice()
@@ -435,7 +377,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update:isOpen', 'navigate', 'confirmDelete', 'close', 'saveEdits', 'save', 'purposeUpdated'])
+const emit = defineEmits(['update:isOpen', 'navigate', 'confirmDelete', 'close', 'saveEdits', 'save', 'purposeUpdated', 'mediaDuplicated'])
 
 // Stores
 const settingsStore = useSettingsStore()
@@ -465,7 +407,6 @@ const purposeOptions = computed(() => [
 
 // Video editing state
 const isSavingEdits = ref(false)
-const showCropOverlay = ref(false)
 const currentTime = ref(0)
 const videoDuration = ref(0)
 const videoWidth = ref(0)
@@ -480,6 +421,9 @@ const totalUntaggedInDatabase = ref(0)
 
 // Rating state
 const currentRating = ref(null)
+
+// Duplicate state
+const isDuplicating = ref(false)
 
 // Media navigation gesture handling
 const {
@@ -508,11 +452,8 @@ const ageBodyTags = ['teen', 'milf', 'chub', 'glasses']
 const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34', 'scat']
 
 // Custom crop overlay state
-const isDragging = ref(false)
-const isResizing = ref(false)
-const resizeHandle = ref('')
-const dragStart = ref({ x: 0, y: 0 })
-const cropStart = ref({ x: 0, y: 0, width: 0, height: 0 })
+const cropperRef = ref(null)
+const isUpdatingFromCropper = ref(false)
 
 // Edit settings
 const editSettings = ref({
@@ -546,26 +487,6 @@ const hasCropChanges = computed(() => {
 
 const hasEditOperations = computed(() => {
   return editSettings.value.trimStart || editSettings.value.trimEnd || hasCropChanges.value || editSettings.value.deletedFrames.length > 0
-})
-
-const cropOverlayStyle = computed(() => {
-  const crop = editSettings.value.crop
-  const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
-
-  if (!videoEl) {
-    return { left: 0, top: 0, width: 0, height: 0 }
-  }
-
-  const videoRect = videoEl.getBoundingClientRect()
-  const scaleX = videoRect.width / videoWidth.value
-  const scaleY = videoRect.height / videoHeight.value
-
-  return {
-    left: crop.x * scaleX,
-    top: crop.y * scaleY,
-    width: crop.width * scaleX,
-    height: crop.height * scaleY
-  }
 })
 
 // Computed to check if tags have changed
@@ -714,9 +635,55 @@ const getVideoBitrate = media => {
   }
 }
 
+// Duplicate media method
+const duplicateMedia = async () => {
+  if (!props.media) return
+
+  const { confirm } = useConfirmDialog()
+
+  const result = await confirm({
+    title: 'Duplicate Media',
+    message: 'Create a copy of this media record and its thumbnail? The copy will have "_copy" appended to the filename.',
+    confirmLabel: 'Duplicate',
+    cancelLabel: 'Cancel',
+    variant: 'primary'
+  })
+
+  if (result !== 'confirm') return
+
+  isDuplicating.value = true
+  const toast = useToast()
+
+  try {
+    const response = await useApiFetch(`media/${props.media.uuid}/duplicate`, {
+      method: 'POST'
+    })
+
+    if (response.success) {
+      toast.add({
+        title: 'Media Duplicated',
+        description: 'Media and thumbnail have been duplicated successfully.',
+        color: 'success',
+        duration: 3000
+      })
+
+      emit('mediaDuplicated', response.duplicatedMedia)
+    }
+  } catch (error) {
+    console.error('Failed to duplicate media:', error)
+    toast.add({
+      title: 'Duplication Failed',
+      description: error.data?.message || 'Failed to duplicate media. Please try again.',
+      color: 'error',
+      duration: 3000
+    })
+  } finally {
+    isDuplicating.value = false
+  }
+}
+
 // Video editing methods
 const exitEditMode = () => {
-  showCropOverlay.value = false
   resetEditSettings()
 }
 
@@ -778,20 +745,27 @@ const saveVideoEdits = async () => {
   const toast = useToast()
 
   try {
+    const operations = {}
+
+    if (editSettings.value.trimStart || editSettings.value.trimEnd) {
+      operations.trim = {
+        start: editSettings.value.trimStart || 0,
+        end: editSettings.value.trimEnd || videoDuration.value
+      }
+    }
+
+    if (hasCropChanges.value) {
+      operations.crop = editSettings.value.crop
+    }
+
+    if (editSettings.value.deletedFrames.length > 0) {
+      operations.deletedFrames = editSettings.value.deletedFrames
+    }
+
     const response = await useApiFetch(`media/${props.media.uuid}/edit`, {
       method: 'POST',
       body: {
-        operations: {
-          trim:
-            editSettings.value.trimStart || editSettings.value.trimEnd
-              ? {
-                  start: editSettings.value.trimStart || 0,
-                  end: editSettings.value.trimEnd || videoDuration.value
-                }
-              : null,
-          crop: hasCropChanges.value ? editSettings.value.crop : null,
-          deletedFrames: editSettings.value.deletedFrames.length > 0 ? editSettings.value.deletedFrames : null
-        }
+        operations
       }
     })
 
@@ -861,27 +835,6 @@ const setCurrentTimeAsEnd = () => {
   editSettings.value.trimEnd = currentTime.value
 }
 
-const resetCrop = () => {
-  editSettings.value.crop = {
-    x: 0,
-    y: 0,
-    width: videoWidth.value,
-    height: videoHeight.value
-  }
-}
-
-const centerCrop = () => {
-  const cropWidth = Math.floor(videoWidth.value * 0.8)
-  const cropHeight = Math.floor(videoHeight.value * 0.8)
-
-  editSettings.value.crop = {
-    x: Math.floor((videoWidth.value - cropWidth) / 2),
-    y: Math.floor((videoHeight.value - cropHeight) / 2),
-    width: cropWidth,
-    height: cropHeight
-  }
-}
-
 const deleteCurrentFrame = () => {
   const frameTime = currentTime.value
   const frameNumber = Math.floor(frameTime * (videoFPS.value || 30))
@@ -928,81 +881,53 @@ const restoreFrame = index => {
   })
 }
 
-// Custom crop drag functionality
-const startCropDrag = event => {
-  if (isResizing.value) return
+// Cropper methods
+const onCropperChange = ({ coordinates, image }) => {
+  if (!coordinates || !image || !image.width || !image.height) return
 
-  isDragging.value = true
-  dragStart.value = { x: event.clientX, y: event.clientY }
-  cropStart.value = { ...editSettings.value.crop }
-  event.preventDefault()
-}
+  isUpdatingFromCropper.value = true
 
-const updateCropDrag = event => {
-  if (!isDragging.value && !isResizing.value) return
+  const scaleX = videoWidth.value / image.width
+  const scaleY = videoHeight.value / image.height
 
-  const videoEl = modalVideo.value || document.querySelector('.max-w-full video[controls]')
-  if (!videoEl) return
-
-  const videoRect = videoEl.getBoundingClientRect()
-  const scaleX = videoWidth.value / videoRect.width
-  const scaleY = videoHeight.value / videoRect.height
-
-  if (isDragging.value) {
-    const deltaX = (event.clientX - dragStart.value.x) * scaleX
-    const deltaY = (event.clientY - dragStart.value.y) * scaleY
-
-    const newX = Math.max(0, Math.min(cropStart.value.x + deltaX, videoWidth.value - cropStart.value.width))
-    const newY = Math.max(0, Math.min(cropStart.value.y + deltaY, videoHeight.value - cropStart.value.height))
-
-    editSettings.value.crop.x = Math.round(newX)
-    editSettings.value.crop.y = Math.round(newY)
+  editSettings.value.crop = {
+    x: Math.round(coordinates.left * scaleX),
+    y: Math.round(coordinates.top * scaleY),
+    width: Math.round(coordinates.width * scaleX),
+    height: Math.round(coordinates.height * scaleY)
   }
 
-  if (isResizing.value) {
-    const deltaX = (event.clientX - dragStart.value.x) * scaleX
-    const deltaY = (event.clientY - dragStart.value.y) * scaleY
-
-    const handle = resizeHandle.value
-    const newCrop = { ...cropStart.value }
-
-    if (handle.includes('n')) {
-      newCrop.y = Math.max(0, cropStart.value.y + deltaY)
-      newCrop.height = Math.max(10, cropStart.value.height - deltaY)
-    }
-    if (handle.includes('s')) {
-      newCrop.height = Math.max(10, Math.min(cropStart.value.height + deltaY, videoHeight.value - cropStart.value.y))
-    }
-    if (handle.includes('w')) {
-      newCrop.x = Math.max(0, cropStart.value.x + deltaX)
-      newCrop.width = Math.max(10, cropStart.value.width - deltaX)
-    }
-    if (handle.includes('e')) {
-      newCrop.width = Math.max(10, Math.min(cropStart.value.width + deltaX, videoWidth.value - cropStart.value.x))
-    }
-
-    editSettings.value.crop = {
-      x: Math.round(newCrop.x),
-      y: Math.round(newCrop.y),
-      width: Math.round(newCrop.width),
-      height: Math.round(newCrop.height)
-    }
-  }
+  // Reset flag after a tick to allow watcher to skip
+  nextTick(() => {
+    isUpdatingFromCropper.value = false
+  })
 }
 
-const endCropDrag = () => {
-  isDragging.value = false
-  isResizing.value = false
-  resizeHandle.value = ''
-}
+// Watcher for manual input changes to update cropper
+watch(
+  () => editSettings.value.crop,
+  newCrop => {
+    if (isUpdatingFromCropper.value) return
+    if (!cropperRef.value) return
 
-const startResize = handle => {
-  isResizing.value = true
-  resizeHandle.value = handle
-  dragStart.value = { x: event.clientX, y: event.clientY }
-  cropStart.value = { ...editSettings.value.crop }
-  event.preventDefault()
-}
+    // We need the image dimensions to scale back.
+    // We can get them from the cropper instance if it's loaded.
+    const result = cropperRef.value.getResult()
+    if (!result || !result.image) return
+
+    const image = result.image
+    const scaleX = image.width / videoWidth.value
+    const scaleY = image.height / videoHeight.value
+
+    cropperRef.value.setCoordinates({
+      left: newCrop.x * scaleX,
+      top: newCrop.y * scaleY,
+      width: newCrop.width * scaleX,
+      height: newCrop.height * scaleY
+    })
+  },
+  { deep: true }
+)
 
 // Tag editing methods
 const formatTagDisplay = tag => {
@@ -1207,41 +1132,4 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped>
-/* Custom crop overlay styles */
-.cursor-crosshair {
-  cursor: crosshair;
-}
-
-.cursor-nw-resize {
-  cursor: nw-resize;
-}
-
-.cursor-ne-resize {
-  cursor: ne-resize;
-}
-
-.cursor-sw-resize {
-  cursor: sw-resize;
-}
-
-.cursor-se-resize {
-  cursor: se-resize;
-}
-
-.cursor-n-resize {
-  cursor: n-resize;
-}
-
-.cursor-s-resize {
-  cursor: s-resize;
-}
-
-.cursor-w-resize {
-  cursor: w-resize;
-}
-
-.cursor-e-resize {
-  cursor: e-resize;
-}
-</style>
+<style scoped></style>

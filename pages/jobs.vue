@@ -303,7 +303,7 @@
             <!-- Results Limit Dropdown -->
             <div v-if="!hasSelectedJobs" class="flex items-center gap-2">
               <label class="text-xs font-medium text-gray-600 dark:text-gray-400"> Results: </label>
-              <USelectMenu v-model="itemsPerPage" :items="limitOptions" class="w-24" size="xs" @change="handleLimitChange" />
+              <USelect v-model="itemsPerPage" :items="limitOptions" class="w-24" size="xs" @change="handleLimitChange" />
             </div>
 
             <!-- Bulk Actions -->
@@ -489,7 +489,7 @@ const showSubmitJobModal = ref(false)
 
 // Pagination
 const pageNumber = ref(1)
-const itemsPerPage = ref(25)
+const itemsPerPage = ref(24)
 const manualPageInput = ref(null)
 
 // Limit options for dropdown
@@ -1330,55 +1330,22 @@ const deleteJob = async job => {
   console.log('🗑️ deleteJob called with job:', job.id)
   try {
     const { confirm } = useConfirmDialog()
+    const { formatJobDeletePreview } = useDeletePreview()
     const toast = useToast()
 
     // Fetch deletion preview
     try {
       const preview = await useApiFetch(`jobs/${job.id}/delete-preview`)
 
-      // Separate "this" records from "all" records
-      const thisJobMedia = preview.willDelete.mediaRecords.filter(m => m.relatedTo === job.id)
-      const allOtherMedia = preview.willDelete.mediaRecords.filter(m => m.relatedTo !== job.id)
-
-      // Build items list with separate sections
-      const items = []
-
-      // Section for "This Job" - show the job itself first
-      items.push({
-        label: `This Job`,
-        items: [`${job.id.substring(0, 8)}... - ${preview.targetJob.subjectName} - ${preview.targetJob.jobType} - ${preview.targetJob.status}`]
-      })
-
-      // Section for "This Job" media records
-      if (thisJobMedia.length > 0) {
-        items.push({
-          label: `This Job - ${thisJobMedia.length} Media Record(s)`,
-          items: thisJobMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
-        })
-      }
-
-      // Section for "All Associated" records
-      if (allOtherMedia.length > 0 || preview.willDelete.jobs.length > 0) {
-        if (allOtherMedia.length > 0) {
-          items.push({
-            label: `All Associated - ${allOtherMedia.length} Media Record(s)`,
-            items: allOtherMedia.map(m => (m.purpose === 'dest' ? `${m.filename} (${m.purpose})` : `${m.subjectName} - ${m.filename} (${m.purpose})`))
-          })
-        }
-
-        if (preview.willDelete.jobs.length > 0) {
-          items.push({
-            label: `All Associated - ${preview.willDelete.jobs.length} Related Job(s)`,
-            items: preview.willDelete.jobs.map(j => `${j.id.substring(0, 8)}... - ${j.subjectName} - ${j.jobType} - ${j.status}`)
-          })
-        }
-      }
+      // Format the preview using the composable
+      const { items, thisJobMediaCount } = formatJobDeletePreview(preview, job.id)
 
       console.log('🤔 Showing confirmation dialog with preview...')
       const result = await confirm({
         title: 'Delete Job',
+        message: `Job ID: ${job.id}`,
         confirmLabel: 'Delete All',
-        alternateLabel: thisJobMedia.length > 0 ? 'Delete This' : '',
+        alternateLabel: 'Delete This',
         cancelLabel: 'Cancel',
         variant: 'error',
         items
@@ -1411,7 +1378,7 @@ const deleteJob = async job => {
       } else {
         toast.add({
           title: 'Job Deleted Successfully',
-          description: `Deleted this job and ${thisJobMedia.length} associated media record(s).`,
+          description: `Deleted this job and ${thisJobMediaCount} associated media record(s).`,
           color: 'success',
           duration: 1000
         })
@@ -1471,9 +1438,42 @@ const cancelJobFromModal = async () => {
 const deleteJobFromModal = async () => {
   console.log('🗑️ deleteJobFromModal called')
   if (selectedJob.value) {
-    console.log('🗑️ selectedJob exists, closing modal and calling deleteJob')
-    showJobModal.value = false
+    console.log('🗑️ selectedJob exists, calling deleteJob and navigating to next')
+
+    // Find current job index before deletion
+    const currentIndex = jobs.value.findIndex(j => j.id === selectedJob.value.id)
+
+    // Perform deletion (this will refresh the jobs list)
     await deleteJob(selectedJob.value)
+
+    // After deletion, check if there are still jobs
+    if (jobs.value.length > 0) {
+      // Determine which job to show next
+      let nextIndex = currentIndex
+
+      // If current index is now beyond the array, go to the last job
+      if (nextIndex >= jobs.value.length) {
+        nextIndex = jobs.value.length - 1
+      }
+
+      // Navigate to the next job
+      const nextJob = jobs.value[nextIndex]
+      if (nextJob) {
+        // Fetch full job details for the next job
+        try {
+          const response = await useApiFetch(`jobs/${nextJob.id}?include_thumbnails=true&thumbnail_size=md`)
+          selectedJob.value = response.job
+        } catch (error) {
+          console.error('Failed to fetch next job details:', error)
+          // Fallback to basic job data
+          selectedJob.value = nextJob
+        }
+      }
+    } else {
+      // No more jobs, close the modal
+      console.log('🗑️ No more jobs, closing modal')
+      showJobModal.value = false
+    }
   } else {
     console.log('❌ No selectedJob found!')
   }
@@ -1610,39 +1610,132 @@ const bulkCancel = async () => {
 
 const bulkDelete = async () => {
   const { confirm } = useConfirmDialog()
-  const confirmed = await confirm({
-    title: 'Delete Selected Jobs',
-    message: `Are you sure you want to delete ${selectedJobs.value.size} job(s)? This action cannot be undone and will remove the jobs and any associated output media.`,
-    confirmLabel: 'Delete Jobs',
-    cancelLabel: 'Cancel',
-    variant: 'error'
-  })
-
-  if (confirmed !== 'confirm') return
+  const { formatJobDeletePreview } = useDeletePreview()
+  const toast = useToast()
 
   try {
-    for (const jobId of selectedJobsArray.value) {
-      // Default to non-cascade delete for bulk operations to be safe
-      await useApiFetch(`jobs/${jobId}/delete?cascade=false`, { method: 'DELETE' })
+    // Fetch delete previews for all selected jobs
+    const previewsData = await Promise.all(
+      selectedJobsArray.value.map(async jobId => {
+        try {
+          const preview = await useApiFetch(`jobs/${jobId}/delete-preview`)
+          return { jobId, preview }
+        } catch (err) {
+          console.error(`Failed to fetch preview for job ${jobId}:`, err)
+          return { jobId, preview: null }
+        }
+      })
+    )
+
+    // Format previews using the composable
+    const items = []
+    let thisJobMediaCount = 0
+    let totalMediaCount = 0
+    let totalJobsCount = selectedJobs.value.size
+    const validPreviews = previewsData.filter(p => p.preview !== null)
+
+    // Collect all "Delete This" sections
+    const thisJobSections = []
+    validPreviews.forEach(({ jobId, preview }) => {
+      if (!preview.targetJob) return
+
+      const formatted = formatJobDeletePreview(preview, jobId)
+      thisJobMediaCount += formatted.thisJobMediaCount
+
+      // Get the "Delete This" section
+      const thisSection = formatted.items.find(item => item.label.includes('Delete This'))
+      if (thisSection) {
+        thisJobSections.push(...thisSection.items)
+      }
+    })
+
+    // Add "Delete This" section
+    if (thisJobSections.length > 0) {
+      items.push({
+        label: `"Delete This" will remove (${selectedJobs.value.size} jobs):`,
+        items: thisJobSections
+      })
     }
 
-    const toast = useToast()
-    toast.add({
-      title: 'Jobs Deleted Successfully',
-      description: `${selectedJobs.value.size} job(s) have been deleted.`,
-      color: 'success',
-      duration: 2000
+    // Collect all "Delete All" sections
+    const allJobSections = []
+    validPreviews.forEach(({ jobId, preview }) => {
+      if (!preview.targetJob) return
+
+      const formatted = formatJobDeletePreview(preview, jobId)
+
+      // Get the "Delete All" section if it exists
+      const allSection = formatted.items.find(item => item.label.includes('Delete All'))
+      if (allSection) {
+        allJobSections.push(...allSection.items)
+        // Count additional items from cascade
+        totalMediaCount += preview.willDelete.mediaRecords.length
+        totalJobsCount += preview.willDelete.jobs.length
+      }
     })
+
+    // Add "Delete All" section if there are cascade items
+    if (allJobSections.length > 0) {
+      items.push({
+        label: `"Delete All" will remove (${totalJobsCount} jobs + related):`,
+        items: allJobSections
+      })
+    }
+
+    const result = await confirm({
+      title: 'Delete Selected Jobs',
+      message: `${selectedJobs.value.size} job(s) selected`,
+      confirmLabel: 'Delete All',
+      alternateLabel: 'Delete This',
+      cancelLabel: 'Cancel',
+      variant: 'error',
+      items
+    })
+
+    if (result === 'cancel') return
+
+    // Determine cascade based on user choice
+    const shouldCascade = result === 'confirm'
+
+    // Proceed with deletion
+    for (const jobId of selectedJobsArray.value) {
+      const deleteUrl = shouldCascade ? `jobs/${jobId}/delete` : `jobs/${jobId}/delete?cascade=false`
+      await useApiFetch(deleteUrl, { method: 'DELETE' })
+    }
+
+    // Show success toast
+    if (shouldCascade) {
+      toast.add({
+        title: 'All Jobs Deleted Successfully',
+        description: `Deleted ${totalJobsCount} job(s) and ${totalMediaCount} media record(s).`,
+        color: 'success',
+        duration: 2000
+      })
+    } else {
+      toast.add({
+        title: 'Jobs Deleted Successfully',
+        description: `Deleted ${selectedJobs.value.size} job(s) and ${thisJobMediaCount} output media file(s).`,
+        color: 'success',
+        duration: 2000
+      })
+    }
 
     clearSelection()
     await refreshJobsWithCurrentState()
     await jobsStore.fetchQueueStatus()
   } catch (error) {
     console.error('Failed to delete jobs:', error)
-    const { confirm } = useConfirmDialog()
+
+    let errorMessage = 'Failed to delete some jobs. Please try again.'
+    if (error.data?.statusMessage) {
+      errorMessage = error.data.statusMessage
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+
     await confirm({
       title: 'Error',
-      message: 'Failed to delete some jobs. Please try again.',
+      message: errorMessage,
       confirmLabel: 'OK',
       cancelLabel: '',
       variant: 'error'
