@@ -1,49 +1,30 @@
 <template>
   <div class="container mx-auto p-3 sm:p-6 max-w-4xl">
     <div class="mb-4 sm:mb-8">
-      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-        Submit Job
-      </h1>
+      <h1 class="text-md sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">Submit Job</h1>
     </div>
 
     <UCard class="w-full">
       <!-- Job Type Selection -->
       <div class="space-y-2 mb-6">
-        <USelectMenu
-          v-model="form.job_type"
-          :items="jobTypeOptions"
-          placeholder="Select job type..."
-          class="w-full"
-        />
+        <USelectMenu v-model="form.job_type" :items="jobTypeOptions" placeholder="Select job type..." class="w-full" />
         <p class="text-xs text-gray-500 hidden sm:block">Choose the type of processing job</p>
       </div>
 
       <!-- Initial Selection Mode (when no workflow is active) -->
       <div v-if="!workflowMode && (form.job_type?.value === 'vid_faceswap' || form.job_type === 'vid_faceswap')" class="space-y-4">
         <div class="text-center">
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Choose your workflow to create batch jobs:
-          </p>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Choose your workflow to create batch jobs:</p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <!-- Subject First Workflow -->
-            <UButton
-              variant="outline"
-              size="lg"
-              class="h-24 flex flex-col items-center justify-center space-y-2"
-              @click="startSubjectFirstWorkflow"
-            >
+            <UButton variant="outline" size="lg" class="h-24 flex flex-col items-center justify-center space-y-2" @click="startSubjectFirstWorkflow">
               <UIcon name="i-heroicons-user-20-solid" class="w-6 h-6" />
               <span class="text-sm font-medium">Select Subject First</span>
               <span class="text-xs text-gray-500">Choose subject, then select multiple videos</span>
             </UButton>
-            
+
             <!-- Video First Workflow -->
-            <UButton
-              variant="outline"
-              size="lg"
-              class="h-24 flex flex-col items-center justify-center space-y-2"
-              @click="startVideoFirstWorkflow"
-            >
+            <UButton variant="outline" size="lg" class="h-24 flex flex-col items-center justify-center space-y-2" @click="startVideoFirstWorkflow">
               <UIcon name="i-heroicons-film-20-solid" class="w-6 h-6" />
               <span class="text-sm font-medium">Select Video First</span>
               <span class="text-xs text-gray-500">Choose video, then select multiple subjects</span>
@@ -57,27 +38,13 @@
         <!-- Step 1: Subject Selection -->
         <div v-if="!selectedSubject" class="space-y-4">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 1: Select Subject</h3>
-          
+
           <!-- Subject Search Filters -->
-          <SubjectSearchFilters
-            :selected-subject="selectedSubject"
-            @search="searchSubjects"
-            @clear="clearSubjectFilters"
-            @subject-select="handleSubjectSelection"
-            :loading="subjectLoading"
-          />
-          
+          <SubjectSearchFilters :selected-subject="selectedSubject" @search="searchSubjects" @clear="clearSubjectFilters" @subject-select="handleSubjectSelection" :loading="subjectLoading" />
+
           <!-- Subject Grid -->
           <div v-if="subjectHasSearched || subjectLoading" class="max-h-[60vh] overflow-y-auto">
-            <SubjectGrid
-              :subjects="subjects"
-              :loading="subjectLoading"
-              :has-searched="subjectHasSearched"
-              :error="subjectError"
-              :selection-mode="true"
-              :display-images="displayImages"
-              @subject-click="handleSubjectGridSelection"
-            />
+            <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :display-images="displayImages" @subject-click="handleSubjectGridSelection" />
           </div>
         </div>
 
@@ -90,82 +57,38 @@
                 <UIcon name="i-heroicons-user-20-solid" class="w-5 h-5 text-white" />
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  Selected Subject: {{ selectedSubject.label }}
-                </p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">Selected Subject: {{ selectedSubject.label }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
                   {{ selectedSubject.value }}
                 </p>
               </div>
             </div>
-            <UButton
-              variant="ghost"
-              color="error"
-              icon="i-heroicons-x-mark-20-solid"
-              size="xs"
-              @click="clearSelectedSubject"
-              :disabled="isSubmitting"
-            />
+            <UButton variant="ghost" color="error" icon="i-heroicons-x-mark-20-solid" size="xs" @click="clearSelectedSubject" :disabled="isSubmitting" />
           </div>
 
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 2: Select Videos</h3>
-          
+
           <!-- Video Search Filters -->
-          <VideoSearchFilters 
-            @search="searchVideos"
-            @clear="clearVideoFilters"
-            :loading="videoLoading"
-          />
+          <VideoSearchFilters @search="searchVideos" @clear="clearVideoFilters" :loading="videoLoading" />
 
           <!-- Selected Videos Count -->
           <div v-if="selectedVideos.length > 0" class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
-              {{ selectedVideos.length }} video{{ selectedVideos.length !== 1 ? 's' : '' }} selected
-            </span>
-            <UButton
-              variant="ghost"
-              color="error"
-              size="xs"
-              @click="clearSelectedVideos"
-            >
-              Clear All
-            </UButton>
+            <span class="text-sm font-medium text-blue-900 dark:text-blue-100"> {{ selectedVideos.length }} video{{ selectedVideos.length !== 1 ? 's' : '' }} selected </span>
+            <UButton variant="ghost" color="error" size="xs" @click="clearSelectedVideos"> Clear All </UButton>
           </div>
 
           <!-- Video Grid -->
           <div class="max-h-[60vh] overflow-y-auto">
             <div v-if="videoError" class="text-center py-12">
-              <UAlert
-                color="error"
-                title="Error"
-                :description="videoError"
-                variant="subtle"
-              />
+              <UAlert color="error" title="Error" :description="videoError" variant="subtle" />
             </div>
 
-            <MediaGrid
-              v-else
-              ref="mediaGrid"
-              :media-results="videos"
-              :loading="videoLoading"
-              :has-searched="videoHasSearched"
-              :selection-mode="true"
-              :multi-select="true"
-              :selected-items="selectedVideos"
-              @media-click="toggleVideoSelection"
-            />
+            <MediaGrid v-else ref="mediaGrid" :media-results="videos" :loading="videoLoading" :has-searched="videoHasSearched" :selection-mode="true" :multi-select="true" :selected-items="selectedVideos" @media-click="toggleVideoSelection" />
           </div>
 
           <!-- Video Pagination -->
           <div v-if="videoHasSearched && videos.length > 0" class="flex justify-center mt-4">
-            <UPagination
-              v-model:page="videoCurrentPage"
-              :items-per-page="videoLimit"
-              :total="videoTotalEstimate"
-              show-last
-              show-first
-              @update:page="handleVideoPageChange"
-            />
+            <UPagination v-model:page="videoCurrentPage" :items-per-page="videoLimit" :total="videoTotalEstimate" show-last show-first @update:page="handleVideoPageChange" />
           </div>
         </div>
       </div>
@@ -175,48 +98,22 @@
         <!-- Step 1: Video Selection -->
         <div v-if="!selectedVideo" class="space-y-4">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 1: Select Video</h3>
-          
+
           <!-- Video Search Filters -->
-          <VideoSearchFilters
-            @search="searchVideos"
-            @clear="clearVideoFilters"
-            :loading="videoLoading"
-          />
+          <VideoSearchFilters @search="searchVideos" @clear="clearVideoFilters" :loading="videoLoading" />
 
           <!-- Video Grid -->
           <div class="max-h-[60vh] overflow-y-auto">
             <div v-if="videoError" class="text-center py-12">
-              <UAlert
-                color="error"
-                title="Error"
-                :description="videoError"
-                variant="subtle"
-              />
+              <UAlert color="error" title="Error" :description="videoError" variant="subtle" />
             </div>
 
-            <MediaGrid
-              v-else
-              ref="mediaGrid"
-              :media-results="videos"
-              :loading="videoLoading"
-              :has-searched="videoHasSearched"
-              :selection-mode="true"
-              :multi-select="false"
-              :selected-items="selectedVideo ? [selectedVideo] : []"
-              @media-click="handleVideoSelection"
-            />
+            <MediaGrid v-else ref="mediaGrid" :media-results="videos" :loading="videoLoading" :has-searched="videoHasSearched" :selection-mode="true" :multi-select="false" :selected-items="selectedVideo ? [selectedVideo] : []" @media-click="handleVideoSelection" />
           </div>
 
           <!-- Video Pagination -->
           <div v-if="videoHasSearched && videos.length > 0" class="flex justify-center mt-4">
-            <UPagination
-              v-model:page="videoCurrentPage"
-              :items-per-page="videoLimit"
-              :total="videoTotalEstimate"
-              show-last
-              show-first
-              @update:page="handleVideoPageChange"
-            />
+            <UPagination v-model:page="videoCurrentPage" :items-per-page="videoLimit" :total="videoTotalEstimate" show-last show-first @update:page="handleVideoPageChange" />
           </div>
         </div>
 
@@ -226,66 +123,29 @@
           <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
             <div class="flex items-center gap-3">
               <div v-if="displayImages" class="w-16 h-12 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden shrink-0">
-                <img
-                  v-if="selectedVideo.thumbnail_uuid"
-                  :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm`"
-                  :alt="selectedVideo.filename"
-                  class="w-full h-full object-cover object-top"
-                />
+                <img v-if="selectedVideo.thumbnail_uuid" :src="`/api/media/${selectedVideo.thumbnail_uuid}/image?size=sm`" :alt="selectedVideo.filename" class="w-full h-full object-cover object-top" />
                 <div v-else class="w-full h-full flex items-center justify-center">
                   <UIcon name="i-heroicons-film-20-solid" class="w-4 h-4 text-gray-400" />
                 </div>
               </div>
             </div>
-            <UButton
-              variant="ghost"
-              color="error"
-              icon="i-heroicons-x-mark-20-solid"
-              size="xs"
-              @click="clearSelectedVideo"
-              :disabled="isSubmitting"
-            />
+            <UButton variant="ghost" color="error" icon="i-heroicons-x-mark-20-solid" size="xs" @click="clearSelectedVideo" :disabled="isSubmitting" />
           </div>
 
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Step 2: Select Subjects</h3>
-          
+
           <!-- Subject Search Filters -->
-          <SubjectSearchFilters
-            :selected-subject="selectedSubject"
-            @search="searchSubjects"
-            @clear="clearSubjectFilters"
-            @subject-select="handleSubjectSelection"
-            :loading="subjectLoading"
-          />
+          <SubjectSearchFilters :selected-subject="selectedSubject" @search="searchSubjects" @clear="clearSubjectFilters" @subject-select="handleSubjectSelection" :loading="subjectLoading" />
 
           <!-- Selected Subjects Count -->
           <div v-if="selectedSubjects.length > 0" class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
-              {{ selectedSubjects.length }} subject{{ selectedSubjects.length !== 1 ? 's' : '' }} selected
-            </span>
-            <UButton
-              variant="ghost"
-              color="error"
-              size="xs"
-              @click="clearSelectedSubjects"
-            >
-              Clear All
-            </UButton>
+            <span class="text-sm font-medium text-blue-900 dark:text-blue-100"> {{ selectedSubjects.length }} subject{{ selectedSubjects.length !== 1 ? 's' : '' }} selected </span>
+            <UButton variant="ghost" color="error" size="xs" @click="clearSelectedSubjects"> Clear All </UButton>
           </div>
 
           <!-- Subject Grid -->
           <div class="max-h-[60vh] overflow-y-auto">
-            <SubjectGrid
-              :subjects="subjects"
-              :loading="subjectLoading"
-              :has-searched="subjectHasSearched"
-              :error="subjectError"
-              :selection-mode="true"
-              :multi-select="true"
-              :selected-items="selectedSubjects"
-              :display-images="displayImages"
-              @subject-click="toggleSubjectSelection"
-            />
+            <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :multi-select="true" :selected-items="selectedSubjects" :display-images="displayImages" @subject-click="toggleSubjectSelection" />
           </div>
         </div>
       </div>
@@ -293,14 +153,7 @@
       <!-- Action Buttons -->
       <div v-if="workflowMode && canCreateJobs" class="flex justify-center pt-6">
         <!-- Create Jobs Button -->
-        <UButton
-          type="button"
-          :loading="isSubmitting"
-          :disabled="!canCreateJobs"
-          size="sm"
-          color="primary"
-          @click="createBatchJobs"
-        >
+        <UButton type="button" :loading="isSubmitting" :disabled="!canCreateJobs" size="sm" color="primary" @click="createBatchJobs">
           {{ isSubmitting ? 'Creating Jobs...' : `Create Jobs (${jobCount})` }}
         </UButton>
       </div>
@@ -308,29 +161,13 @@
       <!-- Footer with Back Button -->
       <template v-if="workflowMode" #footer>
         <div class="flex justify-center">
-          <UButton
-            variant="outline"
-            @click="resetWorkflow"
-            :disabled="isSubmitting"
-            size="sm"
-            color="primary"
-          >
-            Back
-          </UButton>
+          <UButton variant="outline" @click="resetWorkflow" :disabled="isSubmitting" size="sm" color="primary"> Back </UButton>
         </div>
       </template>
     </UCard>
 
-
     <!-- Subject Selection Modal (for video-first workflow only) -->
-    <SubjectSelectionModal
-      v-if="workflowMode === 'video-first'"
-      v-model="showSubjectModal"
-      :initial-tags="videoHairTags"
-      :selected-video="selectedVideo"
-      @select="handleSubjectSelection"
-    />
-
+    <SubjectSelectionModal v-if="workflowMode === 'video-first'" v-model="showSubjectModal" :initial-tags="videoHairTags" :selected-video="selectedVideo" @select="handleSubjectSelection" />
   </div>
 </template>
 
@@ -387,9 +224,7 @@ const subjectHasSearched = ref(false)
 const showSubjectModal = ref(false)
 
 // Job type options
-const jobTypeOptions = [
-  { label: 'Face Swap', value: 'vid_faceswap' }
-]
+const jobTypeOptions = [{ label: 'Face Swap', value: 'vid_faceswap' }]
 
 // Cross-modal tag synchronization
 const videoHairTags = computed(() => getVideoHairTags())
@@ -437,7 +272,7 @@ const resetSelections = () => {
   videos.value = []
   videoHasSearched.value = false
   videoTotalEstimate.value = 0
-  
+
   // Clear video-first workflow
   selectedVideo.value = null
   selectedSubjects.value = []
@@ -446,9 +281,9 @@ const resetSelections = () => {
 }
 
 // Subject selection handlers
-const handleSubjectSelection = (selected) => {
+const handleSubjectSelection = selected => {
   selectedSubject.value = selected
-  
+
   if (selected) {
     storeSubjectTags(selected)
     // Auto-populate video search tags with all subject tags
@@ -462,7 +297,7 @@ const handleSubjectSelection = (selected) => {
   }
 }
 
-const handleSubjectGridSelection = (subject) => {
+const handleSubjectGridSelection = subject => {
   const selected = {
     value: subject.id,
     label: subject.name,
@@ -478,13 +313,13 @@ const clearSelectedSubject = () => {
   searchStore.videoSearch.selectedTags = []
 }
 
-const toggleSubjectSelection = (subject) => {
+const toggleSubjectSelection = subject => {
   const subjectData = {
     id: subject.id,
     name: subject.name,
     tags: subject.tags
   }
-  
+
   const index = selectedSubjects.value.findIndex(s => s.id === subject.id)
   if (index > -1) {
     selectedSubjects.value.splice(index, 1)
@@ -498,7 +333,7 @@ const clearSelectedSubjects = () => {
 }
 
 // Video selection handlers
-const handleVideoSelection = (video) => {
+const handleVideoSelection = video => {
   selectedVideo.value = video
   storeVideoTags(video)
 }
@@ -508,7 +343,7 @@ const clearSelectedVideo = () => {
   setVideoTags([])
 }
 
-const toggleVideoSelection = (video) => {
+const toggleVideoSelection = video => {
   const index = selectedVideos.value.findIndex(v => v.uuid === video.uuid)
   if (index > -1) {
     selectedVideos.value.splice(index, 1)
@@ -522,7 +357,7 @@ const clearSelectedVideos = () => {
 }
 
 // Helper functions for tag storage
-const storeSubjectTags = (subject) => {
+const storeSubjectTags = subject => {
   if (subject && subject.tags && subject.tags.tags) {
     setSubjectTags(subject.tags.tags)
   } else {
@@ -530,7 +365,7 @@ const storeSubjectTags = (subject) => {
   }
 }
 
-const storeVideoTags = (video) => {
+const storeVideoTags = video => {
   if (video && video.tags && video.tags.tags) {
     setVideoTags(video.tags.tags)
   } else {
@@ -565,37 +400,36 @@ const clearSubjectFilters = () => {
   subjectError.value = null
 }
 
-
 // Load videos function with pagination
 const loadVideos = async (reset = false) => {
   videoLoading.value = true
-  
+
   if (reset) {
     videos.value = []
     videoCurrentPage.value = 1
   }
-  
+
   videoError.value = null
   videoHasSearched.value = true
 
   try {
     const params = new URLSearchParams()
-    
+
     params.append('media_type', 'video')
     params.append('purpose', 'dest')
-    
+
     // Use limit from search store
     const limit = videoLimit.value
     params.append('limit', limit.toString())
     params.append('offset', ((videoCurrentPage.value - 1) * limit).toString())
-    
+
     // Handle dynamic sorting with separate sortType and sortOrder
     const sortType = typeof searchStore.videoSearch.sortType === 'object' ? searchStore.videoSearch.sortType.value : searchStore.videoSearch.sortType
     const sortOrder = typeof searchStore.videoSearch.sortOrder === 'object' ? searchStore.videoSearch.sortOrder.value : searchStore.videoSearch.sortOrder
-    
+
     console.log('🔍 submit-job.vue sort type:', sortType, 'order:', sortOrder)
     console.log('🔍 submit-job.vue searchStore.videoSearch:', JSON.stringify(searchStore.videoSearch, null, 2))
-    
+
     // Always append sort parameters - check if random sorting is selected
     if (sortType === 'random') {
       params.append('sort_by', 'random')
@@ -607,12 +441,22 @@ const loadVideos = async (reset = false) => {
       params.append('sort_order', sortOrder || 'desc')
       console.log('✅ Using sort in submit-job.vue:', sortType, sortOrder)
     }
-    
+
     console.log('🔍 Final params before API call:', params.toString())
 
     // Add selected tags
     if (searchStore.videoSearch.selectedTags.length > 0) {
       params.append('tags', searchStore.videoSearch.selectedTags.join(','))
+    }
+
+    // Add rating filter - only if something is selected
+    if (searchStore.videoSearch.selectedRatings.length > 0) {
+      params.append('ratings', searchStore.videoSearch.selectedRatings.join(','))
+    }
+
+    // Add unrated filter - only if showUnrated is true
+    if (searchStore.videoSearch.showUnrated) {
+      params.append('unrated_only', 'true')
     }
 
     // Add duration filters
@@ -622,7 +466,6 @@ const loadVideos = async (reset = false) => {
     if (searchStore.videoSearch.durationFilters.max_duration != null && searchStore.videoSearch.durationFilters.max_duration > 0) {
       params.append('max_duration', searchStore.videoSearch.durationFilters.max_duration.toString())
     }
-
 
     // Filter out videos already assigned to the selected subject UUID
     if (selectedSubject.value && selectedSubject.value.value) {
@@ -634,15 +477,14 @@ const loadVideos = async (reset = false) => {
     const response = await useApiFetch(`media/search?${params.toString()}`)
 
     videos.value = response.results || []
-    
+
     // Estimate total for pagination based on whether we got a full page
     const gotFullPage = (response.results || []).length === limit
     if (gotFullPage) {
-      videoTotalEstimate.value = (videoCurrentPage.value * limit) + 1
+      videoTotalEstimate.value = videoCurrentPage.value * limit + 1
     } else {
-      videoTotalEstimate.value = ((videoCurrentPage.value - 1) * limit) + videos.value.length
+      videoTotalEstimate.value = (videoCurrentPage.value - 1) * limit + videos.value.length
     }
-
   } catch (err) {
     console.error('Error loading videos:', err)
     videoError.value = err.message || 'Failed to load videos'
@@ -652,7 +494,7 @@ const loadVideos = async (reset = false) => {
 }
 
 // Handle pagination page changes
-const handleVideoPageChange = (page) => {
+const handleVideoPageChange = page => {
   videoCurrentPage.value = page
   loadVideos(false)
 }
@@ -662,19 +504,15 @@ const loadSubjects = async () => {
   subjectLoading.value = true
   subjects.value = []
   subjectCurrentPage.value = 1
-  
+
   subjectError.value = null
   subjectHasSearched.value = true
 
   try {
     // Parse sort options
-    const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object'
-      ? searchStore.subjectSearch.sortOptions.value
-      : searchStore.subjectSearch.sortOptions
-    
-    const [sortBy, sortOrder] = sortValue.includes('_')
-      ? sortValue.split('_')
-      : ['total_jobs', 'desc']
+    const sortValue = typeof searchStore.subjectSearch.sortOptions === 'object' ? searchStore.subjectSearch.sortOptions.value : searchStore.subjectSearch.sortOptions
+
+    const [sortBy, sortOrder] = sortValue.includes('_') ? sortValue.split('_') : ['total_jobs', 'desc']
 
     // Get subjects with new filtering
     subjects.value = await getSubjects({
@@ -774,7 +612,6 @@ const createBatchJobs = async () => {
     if (successCount > 0) {
       resetWorkflow()
     }
-
   } catch (error) {
     console.error('Batch job creation error:', error)
     toast.add({
@@ -799,18 +636,19 @@ onMounted(async () => {
 })
 
 // Watch for job type changes
-watch(() => form.value.job_type, (newJobType) => {
-  const jobTypeValue = newJobType?.value || newJobType
-  if (jobTypeValue !== 'vid_faceswap') {
-    resetWorkflow()
+watch(
+  () => form.value.job_type,
+  newJobType => {
+    const jobTypeValue = newJobType?.value || newJobType
+    if (jobTypeValue !== 'vid_faceswap') {
+      resetWorkflow()
+    }
   }
-})
+)
 
 // Page head
 useHead({
   title: 'Submit Job - Media Server Job System',
-  meta: [
-    { name: 'description', content: 'Submit video processing jobs to the media server' }
-  ]
+  meta: [{ name: 'description', content: 'Submit video processing jobs to the media server' }]
 })
 </script>

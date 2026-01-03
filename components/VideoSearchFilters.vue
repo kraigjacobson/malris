@@ -14,6 +14,9 @@
           <UCheckbox v-model="searchStore.videoSearch.excludeAssignedVideos" label="Hide Used" class="text-xs" />
         </div>
 
+        <!-- Star Rating Filter -->
+        <RatingFilter v-model="searchStore.videoSearch.selectedRatings" v-model:show-unrated="searchStore.videoSearch.showUnrated" />
+
         <!-- Duration filters -->
         <div class="grid grid-cols-2 gap-2 items-end">
           <UInput v-model.number="searchStore.videoSearch.durationFilters.min_duration" type="number" placeholder="Min (sec)" min="0" class="w-full" size="sm" />

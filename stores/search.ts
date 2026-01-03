@@ -9,6 +9,8 @@ export const useSearchStore = defineStore('search', () => {
       min_duration: 0,
       max_duration: null as number | null
     },
+    selectedRatings: [] as number[],
+    showUnrated: false,
     sortType: { label: 'Random', value: 'random' },
     sortOrder: { label: 'Asc', value: 'asc' },
     limitOptions: { label: '48', value: 48 }
@@ -57,7 +59,7 @@ export const useSearchStore = defineStore('search', () => {
       if (savedVideoSearch) {
         videoSearch.value = { ...videoSearch.value, ...savedVideoSearch }
       }
-      
+
       const savedSubjectSearch = await localforage.getItem('subjectSearch')
       if (savedSubjectSearch) {
         subjectSearch.value = { ...subjectSearch.value, ...savedSubjectSearch }
@@ -120,6 +122,8 @@ export const useSearchStore = defineStore('search', () => {
         min_duration: 0,
         max_duration: null
       },
+      selectedRatings: [],
+      showUnrated: false,
       sortType: { label: 'Random', value: 'random' },
       sortOrder: { label: 'Asc', value: 'asc' },
       limitOptions: { label: '48', value: 48 }

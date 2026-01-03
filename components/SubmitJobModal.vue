@@ -249,7 +249,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'jobsCreated'])
 
 // Use composables
-const { setSubjectTags, setVideoTags, getSubjectHairTags, getVideoHairTags, clearTags } = useTags()
+const { setSubjectTags, setVideoTags, clearTags } = useTags()
 const { displayImages } = useSettings()
 const searchStore = useSearchStore()
 
@@ -371,9 +371,10 @@ const handleSubjectSelection = selected => {
   if (selected) {
     storeSubjectTags(selected)
 
-    // Auto-fill video search filters with subject's hair tags (replace existing tags)
-    const subjectHairTags = getSubjectHairTags()
-    searchStore.videoSearch.selectedTags = subjectHairTags
+    // Auto-fill video search filters with ALL subject tags (replace existing tags)
+    if (selected.tags && selected.tags.tags && Array.isArray(selected.tags.tags)) {
+      searchStore.videoSearch.selectedTags = [...selected.tags.tags]
+    }
 
     // ALWAYS set video search settings to these defaults when selecting a subject
     // This ensures consistent behavior for job creation workflow
@@ -438,9 +439,10 @@ const handleVideoSelection = video => {
   selectedVideoThumbnailLoaded.value = false
   storeVideoTags(video)
 
-  // Auto-fill subject search filters with video's hair tags (replace existing tags)
-  const videoHairTags = getVideoHairTags()
-  searchStore.subjectSearch.selectedTags = videoHairTags
+  // Auto-fill subject search filters with ALL video tags (replace existing tags)
+  if (video.tags && video.tags.tags && Array.isArray(video.tags.tags)) {
+    searchStore.subjectSearch.selectedTags = [...video.tags.tags]
+  }
 }
 
 const clearSelectedVideo = () => {
@@ -617,6 +619,16 @@ const loadVideos = async (reset = false) => {
     // Add selected tags
     if (searchStore.videoSearch.selectedTags.length > 0) {
       params.append('tags', searchStore.videoSearch.selectedTags.join(','))
+    }
+
+    // Add rating filter - only if something is selected
+    if (searchStore.videoSearch.selectedRatings.length > 0) {
+      params.append('ratings', searchStore.videoSearch.selectedRatings.join(','))
+    }
+
+    // Add unrated filter - only if showUnrated is true
+    if (searchStore.videoSearch.showUnrated) {
+      params.append('unrated_only', 'true')
     }
 
     // Add duration filters

@@ -1,13 +1,13 @@
 <template>
   <div class="star-rating-wrapper">
-    <UPopover v-model:open="isPopoverOpen" :content="{ align: 'center', side: 'bottom', sideOffset: 8 }">
+    <UPopover v-model:open="isPopoverOpen" :content="{ align: 'center', alignOffset: ratingOrientation === 'vertical' ? 20 : 0, side: ratingOrientation === 'vertical' ? 'right' : 'bottom', sideOffset: 8 }" :ui="{ content: 'p-0' }">
       <UButton :icon="currentRating ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="currentRating ? 'yellow' : 'white'" variant="ghost" size="xl" :loading="isUpdating" class="opacity-80 hover:opacity-100 transition-opacity !p-0 min-w-[48px] min-h-[48px] star-icon-shadow flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full" :label="currentRating ? String(currentRating) : undefined" @click.stop @touchstart.stop @touchend.stop @touchmove.stop />
 
       <template #content>
-        <div class="p-4 bg-white dark:bg-gray-800">
-          <div class="flex gap-2">
-            <UButton v-if="currentRating" icon="i-heroicons-x-mark-20-solid" color="error" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(null)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(null)" @touchmove.stop title="Clear rating" />
-            <UButton v-for="star in [1, 2, 3, 4, 5]" :key="`star-${star}`" :icon="star <= (hoverRating || currentRating || 0) ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="star <= (hoverRating || currentRating || 0) ? 'yellow' : 'neutral'" variant="ghost" size="xl" class="min-w-[44px] min-h-[44px] p-2" @click.stop.prevent="handleRatingClick(star)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(star)" @touchmove.stop @mouseenter="!isTouchDevice && (hoverRating = star)" @mouseleave="!isTouchDevice && (hoverRating = 0)" />
+        <div :class="['bg-white dark:bg-gray-800', ratingOrientation === 'vertical' ? 'py-3 px-2' : 'p-4']">
+          <div :class="['flex gap-2', ratingOrientation === 'vertical' ? 'flex-col items-center' : 'flex-row']">
+            <UButton icon="i-heroicons-x-mark-20-solid" color="error" variant="ghost" size="xl" :class="buttonClass" @click.stop.prevent="handleRatingClick(null)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(null)" @touchmove.stop title="Clear rating" />
+            <UButton v-for="star in [1, 2, 3, 4, 5]" :key="`star-${star}`" :icon="star <= (hoverRating || currentRating || 0) ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'" :color="star <= (hoverRating || currentRating || 0) ? 'yellow' : 'neutral'" variant="ghost" size="xl" :class="buttonClass" @click.stop.prevent="handleRatingClick(star)" @touchstart.stop @touchend.stop.prevent="handleTouchRating(star)" @touchmove.stop @mouseenter="!isTouchDevice && (hoverRating = star)" @mouseleave="!isTouchDevice && (hoverRating = 0)" />
           </div>
         </div>
       </template>
@@ -28,6 +28,11 @@ const props = defineProps({
   jobId: {
     type: String,
     default: null
+  },
+  ratingOrientation: {
+    type: String,
+    default: 'vertical',
+    validator: value => ['vertical', 'horizontal'].includes(value)
   }
 })
 
@@ -38,6 +43,14 @@ const hoverRating = ref(0)
 const isUpdating = ref(false)
 const isPopoverOpen = ref(false)
 const isTouchDevice = ref(false)
+
+// Button UI config based on orientation
+const buttonUi = computed(() => {
+  if (props.ratingOrientation === 'vertical') {
+    return { base: 'p-0' }
+  }
+  return {}
+})
 
 // Detect if this is a touch device
 onMounted(() => {
