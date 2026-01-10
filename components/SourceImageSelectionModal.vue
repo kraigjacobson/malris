@@ -65,28 +65,8 @@
                 </template>
               </div>
 
-              <!-- Overlay Action Buttons - Left Side -->
-              <div class="absolute left-4 bottom-4 flex flex-col gap-2 opacity-100 transition-opacity duration-200 pointer-events-auto z-10">
-                <!-- Navigation Buttons (only show if multiple images and on non-mobile) -->
-                <template v-if="!isMobile && sourceImages.length > 1">
-                  <!-- Previous Button -->
-                  <div class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full" @click="goToPreviousImage">
-                    <UIcon name="i-heroicons-chevron-left" class="w-8 h-8 text-white drop-shadow-lg" />
-                  </div>
-                </template>
-
-                <!-- Select Button -->
-                <div v-if="currentImage" class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full" @click="selectCurrentImage" :class="{ 'opacity-50 cursor-not-allowed': isSubmittingSource || isDeletingJob }">
-                  <UIcon name="i-heroicons-check" class="w-8 h-8 text-white drop-shadow-lg" />
-                </div>
-              </div>
-
-              <!-- Delete Job Button - Bottom Right -->
-              <div v-if="currentImage" class="absolute right-4 bottom-4 pointer-events-auto z-10">
-                <div class="w-12 h-12 flex items-center justify-center cursor-pointer transition-all hover:scale-110 overlay-button-bg rounded-full" @click="handleDeleteJob" :class="{ 'opacity-50 cursor-not-allowed': isDeletingJob }">
-                  <UIcon name="i-heroicons-x-mark" class="w-8 h-8 text-white drop-shadow-lg" />
-                </div>
-              </div>
+              <!-- ThumbButtons - Select (slot1), Previous (slot2), Next (slot3), Delete (slot4) -->
+              <ThumbButtons v-if="currentImage" :slot1="selectButtonConfig" :slot2="previousButtonConfig" :slot3="nextButtonConfig" :slot4="deleteJobButtonConfig" @thumb-click-slot-1="selectCurrentImage" @thumb-click-slot-2="goToPreviousImage" @thumb-click-slot-3="goToNextImage" @thumb-click-slot-4="handleDeleteJob" />
 
               <!-- Image Counter -->
               <div v-if="sourceImages.length > 1" class="absolute top-2 left-2">
@@ -355,6 +335,31 @@ const lastTouchDistance = ref(0)
 
 // Composables
 const { isDeletingJob } = useJobActions()
+
+// Button configurations for ThumbButtons
+const selectButtonConfig = computed(() => ({
+  icon: 'i-heroicons-check',
+  color: 'success',
+  title: 'Select Image'
+}))
+
+const previousButtonConfig = computed(() => ({
+  icon: 'i-heroicons-chevron-left',
+  color: 'neutral',
+  title: 'Previous Image'
+}))
+
+const nextButtonConfig = computed(() => ({
+  icon: 'i-heroicons-chevron-right',
+  color: 'neutral',
+  title: 'Next Image'
+}))
+
+const deleteJobButtonConfig = computed(() => ({
+  icon: 'i-heroicons-trash',
+  color: 'error',
+  title: 'Delete Job'
+}))
 
 // Image swipe state for horizontal navigation
 const imageSwipeStart = ref({ x: 0, y: 0 })

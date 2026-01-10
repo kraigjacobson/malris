@@ -13,7 +13,7 @@
       <!-- Grid View -->
       <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
         <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer relative" :class="{ 'ring-2 ring-blue-500': multiSelect && isSelected(media) }" @click="handleMediaClick(media)">
-          <MediaCard :media="media" class="aspect-[3/4]" :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }" @click="handleMediaClick(media)">
+          <MediaCard :media="media" class="aspect-[3/4]" :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }">
             <template #overlays>
               <!-- Selection Indicator for Multi-Select -->
               <div v-if="multiSelect" class="absolute top-2 left-2 z-10">

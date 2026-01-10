@@ -44,14 +44,6 @@ const isUpdating = ref(false)
 const isPopoverOpen = ref(false)
 const isTouchDevice = ref(false)
 
-// Button UI config based on orientation
-const buttonUi = computed(() => {
-  if (props.ratingOrientation === 'vertical') {
-    return { base: 'p-0' }
-  }
-  return {}
-})
-
 // Detect if this is a touch device
 onMounted(() => {
   isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0

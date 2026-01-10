@@ -14,12 +14,8 @@
           <!-- Purpose Selector -->
           <USelect v-model="currentPurpose" :items="purposeOptions" :size="isMobile ? 'sm' : 'xs'" :class="isMobile ? 'w-24' : 'w-20'" :loading="isSavingPurpose" @update:model-value="updatePurpose" />
 
-          <!-- Mode Selector -->
-          <USelect v-model="currentMode" :items="modeOptions" :size="isMobile ? 'sm' : 'xs'" :class="isMobile ? 'w-24' : 'w-20'" :disabled="isSavingEdits || isSavingTags" />
-
-          <!-- Save/Cancel buttons for edit mode -->
-          <UButton v-if="currentMode === 'edit'" variant="solid" color="success" :size="isMobile ? 'md' : 'xs'" :loading="isSavingEdits" @click="confirmSaveEdits"> Save </UButton>
-          <UButton v-if="currentMode === 'edit'" variant="outline" :size="isMobile ? 'md' : 'xs'" @click="confirmCancelEdits"> Cancel </UButton>
+          <!-- Save button for crop/trim modes -->
+          <UButton v-if="currentMode === 'crop' || currentMode === 'trim'" variant="solid" color="success" :size="isMobile ? 'md' : 'xs'" :loading="isSavingEdits" @click="saveVideoEdits"> Save </UButton>
 
           <!-- Duplicate button (only in none mode) -->
           <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-document-duplicate" color="primary" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="isDuplicating" @click="duplicateMedia" square />
@@ -33,119 +29,127 @@
     </template>
 
     <template #body>
-      <div v-if="media" :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
-        <!-- Tag Mode Layout -->
-        <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0">
-          <!-- Media Display -->
-          <div class="space-y-4 flex flex-col">
-            <!-- Fixed height media container -->
-            <div class="relative touch-pan-y" style="height: 70vh; min-height: 400px">
-              <!-- Image display -->
-              <img v-if="media.type === 'image' && settingsStore.displayImages" :key="`tag-image-${media.uuid}`" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="w-full h-full object-contain rounded-lg shadow-md" @error="handleImageError" />
-              <!-- Image placeholder -->
-              <div v-else-if="media.type === 'image'" :key="`tag-image-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+      <div v-if="media" class="flex flex-col h-full">
+        <!-- Mode Tabs -->
+        <UTabs v-model="currentMode" :items="modeTabItems" class="border-b border-gray-200 dark:border-gray-700" />
+
+        <div :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'" class="flex-1 overflow-auto" @touchstart="handleGestureTouchStartWrapper" @touchmove="handleGestureTouchMoveWrapper" @touchend="handleGestureTouchEndWrapper">
+          <!-- Tag Mode Layout -->
+          <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0">
+            <!-- Media Display -->
+            <div class="space-y-4 flex flex-col">
+              <!-- Fixed height media container -->
+              <div class="relative touch-pan-y" style="height: 70vh; min-height: 400px">
+                <!-- Image display -->
+                <img v-if="media.type === 'image' && settingsStore.displayImages" :key="`tag-image-${media.uuid}`" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="w-full h-full object-contain rounded-lg shadow-md" @error="handleImageError" />
+                <!-- Image placeholder -->
+                <div v-else-if="media.type === 'image'" :key="`tag-image-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                  <div class="text-center">
+                    <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
+                  </div>
+                </div>
+                <!-- Video display -->
+                <video v-else-if="media.type === 'video' && settingsStore.displayImages && media.thumbnail_uuid" :key="`tag-video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full h-full object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
+                  <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+                <!-- Video placeholder (when displayImages is false or no thumbnail) -->
+                <div v-else-if="media.type === 'video'" :key="`tag-video-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                  <div class="text-center">
+                    <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
+                  </div>
+                </div>
+
+                <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
+                <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
+                  <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">{{ currentIndex + 1 }} / {{ totalCount }}</div>
+                </div>
+
+                <!-- Overlaid Navigation Buttons (Desktop Only) -->
+                <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
+                  <UButton :disabled="!props.hasPrevious" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" class="shadow-lg w-12 h-12" @click="navigatePrevious" />
+                  <UButton :disabled="!props.hasNext" variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" class="shadow-lg w-12 h-12" @click="navigateNext" />
+                </div>
+              </div>
+
+              <!-- Save & Close button -->
+              <div class="flex justify-between items-center">
+                <UButton v-if="!props.hasNext" variant="solid" color="success" trailing-icon="i-heroicons-check" :loading="isSavingTags" @click="saveAndClose"> Save & Close </UButton>
+              </div>
+            </div>
+
+            <!-- Tag Selection Panel -->
+            <div class="space-y-6">
+              <!-- Quick Tags -->
+              <div>
+                <div class="space-y-2">
+                  <!-- Hair Color Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <UButton v-for="tag in hairColorTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
+                      {{ formatTagDisplay(tag) }}
+                    </UButton>
+                  </div>
+
+                  <!-- Hair Style Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <UButton v-for="tag in hairStyleTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
+                      {{ formatTagDisplay(tag) }}
+                    </UButton>
+                  </div>
+
+                  <!-- Age/Body Type Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <UButton v-for="tag in ageBodyTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
+                      {{ formatTagDisplay(tag) }}
+                    </UButton>
+                  </div>
+
+                  <!-- Action/Other Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <UButton v-for="tag in actionTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
+                      {{ formatTagDisplay(tag) }}
+                    </UButton>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Current Tags Display -->
+              <div>
+                <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Current Tags</h5>
+                <UInputTags v-model="selectedTags" :ui="{ trailing: 'pe-1' }">
+                  <template #trailing>
+                    <UButton v-if="selectedTags.length > 0" color="neutral" variant="link" size="sm" icon="i-lucide-circle-x" aria-label="Clear all tags" @click="clearAllTags" />
+                  </template>
+                </UInputTags>
+              </div>
+            </div>
+          </div>
+
+          <!-- Normal/Edit Mode Layout -->
+          <div v-else class="space-y-4">
+            <!-- Image Display -->
+            <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="w-full relative">
+              <!-- Previous Button (only in none mode) -->
+              <UButton v-if="currentMode === 'none' && currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
+
+              <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" class="w-full object-contain rounded" @error="handleImageError" @load="onImageLoaded" />
+              <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
                 <div class="text-center">
                   <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
                 </div>
               </div>
-              <!-- Video display -->
-              <video v-else-if="media.type === 'video' && settingsStore.displayImages && media.thumbnail_uuid" :key="`tag-video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full h-full object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
-                <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-              <!-- Video placeholder (when displayImages is false or no thumbnail) -->
-              <div v-else-if="media.type === 'video'" :key="`tag-video-placeholder-${media.uuid}`" class="w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                <div class="text-center">
-                  <UIcon name="i-heroicons-play-circle" class="text-6xl text-gray-400 mb-2" />
-                </div>
-              </div>
 
-              <!-- Overlaid Current/Total Counter (Tag Mode Only) -->
-              <div v-if="currentMode === 'tag' && currentIndex !== undefined && totalCount !== undefined" class="absolute top-2 left-2 z-20">
-                <div class="bg-black/70 text-white px-2 py-1 rounded text-sm font-medium backdrop-blur-sm">{{ currentIndex + 1 }} / {{ totalCount }}</div>
-              </div>
+              <!-- Next Button (only in none mode) -->
+              <UButton v-if="currentMode === 'none' && currentIndex < totalCount - 1" variant="solid" color="white" icon="i-heroicons-chevron-right" class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', 1)" />
 
-              <!-- Overlaid Navigation Buttons (Desktop Only) -->
-              <div class="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-2 z-10 hidden md:flex">
-                <UButton :disabled="!props.hasPrevious" variant="solid" color="white" icon="i-heroicons-chevron-left" size="lg" class="shadow-lg w-12 h-12" @click="navigatePrevious" />
-                <UButton :disabled="!props.hasNext" variant="solid" color="white" icon="i-heroicons-chevron-right" size="lg" class="shadow-lg w-12 h-12" @click="navigateNext" />
+              <!-- Cropper overlay for images (only visible in crop mode) -->
+              <div v-if="currentMode === 'crop'" class="absolute inset-0 z-20">
+                <Cropper v-if="cropFrameSource" ref="cropperRef" class="w-full h-full" :src="cropFrameSource" @change="onCropperChange" />
               </div>
             </div>
 
-            <!-- Save & Close button -->
-            <div class="flex justify-between items-center">
-              <UButton v-if="!props.hasNext" variant="solid" color="success" trailing-icon="i-heroicons-check" :loading="isSavingTags" @click="saveAndClose"> Save & Close </UButton>
-            </div>
-          </div>
-
-          <!-- Tag Selection Panel -->
-          <div class="space-y-6">
-            <!-- Quick Tags -->
-            <div>
-              <div class="space-y-2">
-                <!-- Hair Color Row -->
-                <div class="flex flex-wrap gap-2">
-                  <UButton v-for="tag in hairColorTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
-                    {{ formatTagDisplay(tag) }}
-                  </UButton>
-                </div>
-
-                <!-- Hair Style Row -->
-                <div class="flex flex-wrap gap-2">
-                  <UButton v-for="tag in hairStyleTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
-                    {{ formatTagDisplay(tag) }}
-                  </UButton>
-                </div>
-
-                <!-- Age/Body Type Row -->
-                <div class="flex flex-wrap gap-2">
-                  <UButton v-for="tag in ageBodyTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
-                    {{ formatTagDisplay(tag) }}
-                  </UButton>
-                </div>
-
-                <!-- Action/Other Row -->
-                <div class="flex flex-wrap gap-2">
-                  <UButton v-for="tag in actionTags" :key="tag" variant="solid" :color="selectedTags.includes(tag) ? 'primary' : 'neutral'" size="sm" @click="toggleTag(tag)">
-                    {{ formatTagDisplay(tag) }}
-                  </UButton>
-                </div>
-              </div>
-            </div>
-
-            <!-- Current Tags Display -->
-            <div>
-              <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Current Tags</h5>
-              <UInputTags v-model="selectedTags" :ui="{ trailing: 'pe-1' }">
-                <template #trailing>
-                  <UButton v-if="selectedTags.length > 0" color="neutral" variant="link" size="sm" icon="i-lucide-circle-x" aria-label="Clear all tags" @click="clearAllTags" />
-                </template>
-              </UInputTags>
-            </div>
-          </div>
-        </div>
-
-        <!-- Normal/Edit Mode Layout -->
-        <div v-else class="space-y-4">
-          <!-- Image Display -->
-          <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="w-full relative">
-            <!-- Previous Button -->
-            <UButton v-if="currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
-
-            <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" class="w-full object-contain rounded" @error="handleImageError" />
-            <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
-              <div class="text-center">
-                <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
-              </div>
-            </div>
-
-            <!-- Next Button -->
-            <UButton v-if="currentIndex < totalCount - 1" variant="solid" color="white" icon="i-heroicons-chevron-right" class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', 1)" />
-          </div>
-
-          <!-- Video Display -->
-          <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}-${media._cacheBuster || 0}`" class="w-full">
-            <div class="relative">
+            <!-- Video Display -->
+            <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}-${media._cacheBuster || 0}`" class="w-full relative">
               <video v-if="settingsStore.displayImages" :ref="modalVideo" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" controls muted loop class="w-full object-contain rounded" preload="metadata" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture crossorigin="anonymous" @loadedmetadata="onVideoLoaded" @timeupdate="onTimeUpdate">
                 <source :src="`/api/stream/${media.uuid}?v=${media._cacheBuster || 0}`" type="video/mp4" />
                 Your browser does not support the video tag.
@@ -158,174 +162,170 @@
                 </div>
               </div>
 
-              <!-- Star Rating Overlay -->
-              <StarRating v-if="currentMode === 'none'" :media-uuid="media.uuid" :rating="currentRating" @updated="handleRatingUpdate" />
+              <!-- ThumbButtons with Close (bottom), Rating (middle), Delete (top) in view mode -->
+              <ThumbButtons v-if="currentMode === 'none'" :slot1="closeButtonConfig" :slot5="deleteButtonConfig" @thumb-click-slot-1="closeModal" @thumb-click-slot-5="$emit('confirmDelete', media)">
+                <template #slot3>
+                  <StarRating :media-uuid="media.uuid" :rating="currentRating" @updated="handleRatingUpdate" />
+                </template>
+              </ThumbButtons>
 
-              <!-- Cropper overlay (only visible in edit mode) -->
-              <div v-if="currentMode === 'edit'" class="absolute inset-0 z-20 bg-black">
-                <Cropper ref="cropperRef" class="h-full w-full" :src="media.thumbnail || `/api/media/${media.uuid}/image?size=lg`" @change="onCropperChange" />
+              <!-- Cropper overlay (only visible in crop mode) -->
+              <div v-if="currentMode === 'crop'" class="absolute inset-0 z-20">
+                <!-- Hidden video for frame preview -->
+                <video ref="cropPreviewVideo" :src="`/api/stream/${media.uuid}`" class="absolute inset-0 w-full h-full object-contain opacity-0 pointer-events-none" preload="auto" muted @seeked="onCropVideoSeeked" />
+                <Cropper v-if="cropFrameSource" ref="cropperRef" class="w-full h-full" :src="cropFrameSource" @change="onCropperChange" />
               </div>
             </div>
-          </div>
 
-          <!-- Video Editing Controls (only visible in edit mode) -->
-          <div v-if="currentMode === 'edit' && media.type === 'video'" class="space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <!-- Trim Controls -->
-              <UCard>
-                <template #header>
-                  <h4 class="font-semibold text-gray-900 dark:text-white">Trim Video</h4>
-                </template>
+            <!-- Video/Image Editing Controls (only visible in trim mode, crop mode controls are in footer) -->
+            <div v-if="currentMode === 'trim'" class="space-y-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Frame Management -->
+                <UCard v-if="false">
+                  <template #header>
+                    <h4 class="font-semibold text-gray-900 dark:text-white">Frame Operations</h4>
+                  </template>
 
-                <div class="space-y-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Time (seconds)</label>
-                    <div class="flex gap-2">
-                      <UInput v-model.number="editSettings.trimStart" type="number" step="0.1" min="0" :max="videoDuration" placeholder="0.0" class="flex-1" size="sm" />
-                      <UButton size="sm" variant="outline" @click="setCurrentTimeAsStart"> Current </UButton>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current Time</label>
+                      <p class="text-lg font-mono text-gray-900 dark:text-white">{{ formatTime(currentTime) }}</p>
+                      <p class="text-xs text-gray-500">Frame: {{ Math.floor(currentTime * (videoFPS || 30)) }}</p>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimStart || 0) }}</p>
-                  </div>
 
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Time (seconds)</label>
-                    <div class="flex gap-2">
-                      <UInput v-model.number="editSettings.trimEnd" type="number" step="0.1" min="0" :max="videoDuration" :placeholder="videoDuration?.toString() || ''" class="flex-1" size="sm" />
-                      <UButton size="sm" variant="outline" @click="setCurrentTimeAsEnd"> Current </UButton>
+                    <div class="space-y-2">
+                      <UButton size="sm" color="red" variant="outline" block @click="deleteCurrentFrame"> Delete Current Frame </UButton>
+
+                      <UButton size="sm" variant="outline" block @click="deleteFrameRange"> Delete Frame Range </UButton>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">{{ formatTime(editSettings.trimEnd || videoDuration || 0) }}</p>
-                  </div>
 
-                  <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded">New Duration: {{ formatTime((editSettings.trimEnd || videoDuration || 0) - (editSettings.trimStart || 0)) }}</div>
-                </div>
-              </UCard>
-
-              <!-- Frame Management -->
-              <UCard>
-                <template #header>
-                  <h4 class="font-semibold text-gray-900 dark:text-white">Frame Operations</h4>
-                </template>
-
-                <div class="space-y-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current Time</label>
-                    <p class="text-lg font-mono text-gray-900 dark:text-white">{{ formatTime(currentTime) }}</p>
-                    <p class="text-xs text-gray-500">Frame: {{ Math.floor(currentTime * (videoFPS || 30)) }}</p>
-                  </div>
-
-                  <div class="space-y-2">
-                    <UButton size="sm" color="red" variant="outline" block @click="deleteCurrentFrame"> Delete Current Frame </UButton>
-
-                    <UButton size="sm" variant="outline" block @click="deleteFrameRange"> Delete Frame Range </UButton>
-                  </div>
-
-                  <!-- Deleted frames list -->
-                  <div v-if="editSettings.deletedFrames.length > 0" class="mt-4">
-                    <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Deleted Frames ({{ editSettings.deletedFrames.length }})</h5>
-                    <div class="max-h-32 overflow-y-auto space-y-1">
-                      <div v-for="(frame, index) in editSettings.deletedFrames" :key="index" class="flex justify-between items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-2 rounded">
-                        <span>{{ formatTime(frame.time) }}</span>
-                        <UButton size="xs" variant="ghost" icon="i-heroicons-x-mark" @click="restoreFrame(index)" />
+                    <!-- Deleted frames list -->
+                    <div v-if="editSettings.deletedFrames.length > 0" class="mt-4">
+                      <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Deleted Frames ({{ editSettings.deletedFrames.length }})</h5>
+                      <div class="max-h-32 overflow-y-auto space-y-1">
+                        <div v-for="(frame, index) in editSettings.deletedFrames" :key="index" class="flex justify-between items-center text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-2 rounded">
+                          <span>{{ formatTime(frame.time) }}</span>
+                          <UButton size="xs" variant="ghost" icon="i-heroicons-x-mark" @click="restoreFrame(index)" />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </UCard>
+                </UCard>
+              </div>
             </div>
 
-            <!-- Operations Summary -->
-            <div v-if="hasEditOperations" class="mt-6">
-              <UCard>
-                <template #header>
-                  <h4 class="font-semibold text-gray-900 dark:text-white">Edit Summary</h4>
-                </template>
+            <!-- Media Details Accordion -->
+            <UAccordion v-if="currentMode === 'none'" :items="mediaDetailsItems">
+              <template #details>
+                <div class="space-y-3 text-left">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.type }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.purpose }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.status }}</span>
+                    </div>
+                    <div class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(media.created_at) }}</span>
+                    </div>
+                  </div>
 
-                <div class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                  <div v-if="editSettings.trimStart || editSettings.trimEnd"><strong>Trim:</strong> {{ formatTime(editSettings.trimStart || 0) }} - {{ formatTime(editSettings.trimEnd || videoDuration || 0) }}</div>
-                  <div v-if="hasCropChanges"><strong>Crop:</strong> {{ editSettings.crop.width }}×{{ editSettings.crop.height }} at ({{ editSettings.crop.x }}, {{ editSettings.crop.y }})</div>
-                  <div v-if="editSettings.deletedFrames.length > 0"><strong>Deleted Frames:</strong> {{ editSettings.deletedFrames.length }} frames removed</div>
+                  <!-- Video Metadata (only show for videos) -->
+                  <div v-if="media.type === 'video'" class="border-t border-gray-200 dark:border-gray-700 pt-3">
+                    <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Video Information</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
+                      <div v-if="media.width && media.height" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.width }} × {{ media.height }}</span>
+                      </div>
+                      <div v-if="media.duration" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Duration</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDuration(media.duration) }}</span>
+                      </div>
+                      <div v-if="media.file_size" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">File Size</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(media.file_size) }}</span>
+                      </div>
+                      <div v-if="media.completions !== undefined" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completions</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.completions }}</span>
+                      </div>
+                      <div v-if="getVideoFPS(media)" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Frame Rate</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoFPS(media) }} fps</span>
+                      </div>
+                      <div v-if="getVideoCodec(media)" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Codec</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoCodec(media) }}</span>
+                      </div>
+                      <div v-if="getVideoBitrate(media)" class="flex flex-col space-y-1">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Bitrate</span>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoBitrate(media) }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Tags -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
+                    <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-2">
+                      <span v-for="tag in media.tags.tags" :key="tag" class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-sm rounded border border-pink-200 dark:border-pink-800">
+                        {{ tag }}
+                      </span>
+                    </div>
+                    <div v-else class="text-sm text-gray-500 italic">No tags available</div>
+                  </div>
+
+                  <!-- UUID -->
+                  <div class="flex flex-col space-y-1">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
+                    <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ media.uuid }}</span>
+                  </div>
                 </div>
-              </UCard>
-            </div>
+              </template>
+            </UAccordion>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template #footer>
+      <!-- Frame scrubber slider (only in crop mode) -->
+      <div v-if="currentMode === 'crop' && media && media.type === 'video'" class="w-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+        <div class="w-full px-4 py-3 space-y-2">
+          <div class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
+            <span>Frame Preview</span>
+            <span>{{ formatTime(cropPreviewTime) }} / {{ formatTime(videoDuration) }}</span>
+          </div>
+          <USlider v-model="cropPreviewTime" :min="0" :max="videoDuration || 1" :step="0.1" class="w-full" @update:model-value="updateCropPreviewFrame" />
+        </div>
+      </div>
+
+      <!-- Trim ranges (only in trim mode) -->
+      <div v-if="currentMode === 'trim' && media && media.type === 'video'" class="w-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+        <div class="w-full px-4 py-3 space-y-2">
+          <!-- Header with Add Range button -->
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Trim Ranges (Keep)</span>
+            <UButton icon="i-heroicons-plus" size="sm" @click="addTrimRange">Add Range</UButton>
           </div>
 
-          <!-- Media Details Accordion -->
-          <UAccordion v-if="currentMode === 'none'" :items="mediaDetailsItems">
-            <template #details>
-              <div class="space-y-3 text-left">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.type }}</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.purpose }}</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.status }}</span>
-                  </div>
-                  <div class="flex flex-col space-y-1">
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Created</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDate(media.created_at) }}</span>
-                  </div>
-                </div>
+          <!-- Single multi-handle slider -->
+          <div v-if="trimHandles.length > 0" class="space-y-1">
+            <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+              <span v-for="(handle, index) in trimHandles" :key="index" :class="index % 2 === 0 ? 'font-semibold' : ''"> {{ formatTime(handle) }}{{ index < trimHandles.length - 1 ? ' -' : '' }} </span>
+            </div>
+            <USlider v-model="trimHandles" :min="0" :max="videoDuration || 1" :step="0.1" class="w-full" />
+          </div>
 
-                <!-- Video Metadata (only show for videos) -->
-                <div v-if="media.type === 'video'" class="border-t border-gray-200 dark:border-gray-700 pt-3">
-                  <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Video Information</h4>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
-                    <div v-if="media.width && media.height" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Dimensions</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.width }} × {{ media.height }}</span>
-                    </div>
-                    <div v-if="media.duration" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Duration</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDuration(media.duration) }}</span>
-                    </div>
-                    <div v-if="media.file_size" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">File Size</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatFileSize(media.file_size) }}</span>
-                    </div>
-                    <div v-if="media.completions !== undefined" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Completions</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ media.completions }}</span>
-                    </div>
-                    <div v-if="getVideoFPS(media)" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Frame Rate</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoFPS(media) }} fps</span>
-                    </div>
-                    <div v-if="getVideoCodec(media)" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Codec</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoCodec(media) }}</span>
-                    </div>
-                    <div v-if="getVideoBitrate(media)" class="flex flex-col space-y-1">
-                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Bitrate</span>
-                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ getVideoBitrate(media) }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Tags -->
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
-                  <div v-if="media.tags?.tags && media.tags.tags.length > 0" class="flex flex-wrap gap-2">
-                    <span v-for="tag in media.tags.tags" :key="tag" class="px-2 py-1 bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-200 text-sm rounded border border-pink-200 dark:border-pink-800">
-                      {{ tag }}
-                    </span>
-                  </div>
-                  <div v-else class="text-sm text-gray-500 italic">No tags available</div>
-                </div>
-
-                <!-- UUID -->
-                <div class="flex flex-col space-y-1">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">UUID</span>
-                  <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ media.uuid }}</span>
-                </div>
-              </div>
-            </template>
-          </UAccordion>
+          <div v-else class="text-sm text-gray-500 dark:text-gray-400 text-center py-2">No trim ranges defined. Click "Add Range" to create one.</div>
         </div>
       </div>
     </template>
@@ -384,12 +384,14 @@ const settingsStore = useSettingsStore()
 
 // Template refs
 const modalVideo = ref(null)
+const cropPreviewVideo = ref(null)
 
 // Mode state
 const currentMode = ref('none')
-const modeOptions = computed(() => [
-  { label: 'None', value: 'none' },
-  { label: 'Edit', value: 'edit', disabled: props.media?.type !== 'video' },
+const modeTabItems = computed(() => [
+  { label: 'View', value: 'none' },
+  { label: 'Crop', value: 'crop' },
+  { label: 'Trim', value: 'trim', disabled: props.media?.type !== 'video' },
   { label: 'Tag', value: 'tag' }
 ])
 
@@ -425,6 +427,18 @@ const currentRating = ref(null)
 // Duplicate state
 const isDuplicating = ref(false)
 
+// Button configurations for ThumbButtons in view mode
+const deleteButtonConfig = computed(() => ({
+  icon: 'i-heroicons-trash',
+  color: 'error',
+  title: 'Delete Video'
+}))
+
+const closeButtonConfig = computed(() => ({
+  icon: 'i-heroicons-x-mark',
+  title: 'Close'
+}))
+
 // Media navigation gesture handling
 const {
   handleTouchStart: handleGestureTouchStart,
@@ -445,15 +459,39 @@ const {
   debug: true
 })
 
+// Wrapper gesture handlers that disable swipes in crop/trim modes
+const handleGestureTouchStartWrapper = e => {
+  if (currentMode.value === 'crop' || currentMode.value === 'trim') return
+  handleGestureTouchStart(e)
+}
+const handleGestureTouchMoveWrapper = e => {
+  if (currentMode.value === 'crop' || currentMode.value === 'trim') return
+  handleGestureTouchMove(e)
+}
+const handleGestureTouchEndWrapper = e => {
+  if (currentMode.value === 'crop' || currentMode.value === 'trim') return
+  handleGestureTouchEnd(e)
+}
+
 // Predefined quick tags organized by category
 const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair']
 const hairStyleTags = ['braid', 'bangs', 'curly']
 const ageBodyTags = ['teen', 'milf', 'chub', 'glasses']
 const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34', 'scat']
 
-// Custom crop overlay state
+// Cropper state
 const cropperRef = ref(null)
 const isUpdatingFromCropper = ref(false)
+const cropPreviewTime = ref(0)
+const cropFrameSource = ref('')
+const savedCropCoordinates = ref(null)
+const isInitialCropSetup = ref(false)
+let cropCanvas = null
+let isSeekingFrame = false
+let pendingSeekTime = null
+
+// Trim state - flat array of handle values [start1, end1, start2, end2, ...]
+const trimHandles = ref([])
 
 // Edit settings
 const editSettings = ref({
@@ -556,16 +594,10 @@ const updatePurpose = async newPurpose => {
 }
 
 // Methods
-const closeModal = async () => {
-  if (currentMode.value === 'edit' && hasEditOperations.value) {
-    await confirmCancelEdits()
-  } else if (currentMode.value === 'tag' && hasTagChanges.value) {
-    await confirmCancelTags()
-  } else {
-    emit('update:isOpen', false)
-    emit('close')
-    resetMode()
-  }
+const closeModal = () => {
+  emit('update:isOpen', false)
+  emit('close')
+  resetMode()
 }
 
 const resetMode = () => {
@@ -701,42 +733,7 @@ const resetEditSettings = () => {
   }
 }
 
-const confirmSaveEdits = async () => {
-  const { confirm } = useConfirmDialog()
-
-  const result = await confirm({
-    title: 'Save Video Edits',
-    message: 'Are you sure you want to save these edits? This will permanently modify the video file and cannot be undone.',
-    confirmLabel: 'Save Changes',
-    cancelLabel: 'Cancel',
-    variant: 'primary'
-  })
-
-  if (result === 'confirm') {
-    await saveVideoEdits()
-  }
-}
-
-const confirmCancelEdits = async () => {
-  if (!hasEditOperations.value) {
-    exitEditMode()
-    return
-  }
-
-  const { confirm } = useConfirmDialog()
-
-  const result = await confirm({
-    title: 'Cancel Video Edits',
-    message: 'Are you sure you want to cancel? All unsaved changes will be lost.',
-    confirmLabel: 'Discard Changes',
-    cancelLabel: 'Keep Editing',
-    variant: 'error'
-  })
-
-  if (result === 'confirm') {
-    exitEditMode()
-  }
-}
+// Saving edits now occurs immediately without a confirmation dialog; call saveVideoEdits() directly from the Save button.
 
 const saveVideoEdits = async () => {
   if (!props.media || !hasEditOperations.value) return
@@ -799,13 +796,50 @@ const onVideoLoaded = event => {
   videoWidth.value = video.videoWidth
   videoHeight.value = video.videoHeight
 
-  if (currentMode.value === 'edit') {
+  if (currentMode.value === 'crop') {
     editSettings.value.crop = {
       x: 0,
       y: 0,
       width: video.videoWidth,
       height: video.videoHeight
     }
+  }
+}
+
+const onImageLoaded = event => {
+  const img = event.target
+  videoWidth.value = img.naturalWidth
+  videoHeight.value = img.naturalHeight
+
+  if (currentMode.value === 'crop') {
+    editSettings.value.crop = {
+      x: 0,
+      y: 0,
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    }
+
+    // Initialize crop frame source and set initial coordinates
+    isInitialCropSetup.value = false
+    savedCropCoordinates.value = null
+    cropFrameSource.value = img.src
+
+    nextTick(() => {
+      if (cropperRef.value) {
+        const result = cropperRef.value.getResult()
+        if (result && result.image) {
+          const coords = {
+            left: 0,
+            top: 0,
+            width: result.image.width,
+            height: result.image.height
+          }
+          cropperRef.value.setCoordinates(coords)
+          savedCropCoordinates.value = coords
+          isInitialCropSetup.value = true
+        }
+      }
+    })
   }
 }
 
@@ -825,14 +859,6 @@ const formatTime = seconds => {
   } else {
     return `${minutes}:${secs.toString().padStart(2, '0')}`
   }
-}
-
-const setCurrentTimeAsStart = () => {
-  editSettings.value.trimStart = currentTime.value
-}
-
-const setCurrentTimeAsEnd = () => {
-  editSettings.value.trimEnd = currentTime.value
 }
 
 const deleteCurrentFrame = () => {
@@ -881,14 +907,38 @@ const restoreFrame = index => {
   })
 }
 
+// Trim range methods
+const addTrimRange = () => {
+  const duration = videoDuration.value || 100
+  const quarterDuration = duration / 4
+  // Add a new handle pair (start and end) to the flat array
+  // Place it in the middle quarter by default
+  trimHandles.value.push(quarterDuration, quarterDuration * 3)
+}
+
 // Cropper methods
-const onCropperChange = ({ coordinates, image }) => {
-  if (!coordinates || !image || !image.width || !image.height) return
+const onCropperChange = ({ coordinates }) => {
+  if (!coordinates || !videoWidth.value || !videoHeight.value) return
+
+  // Don't save if we're currently seeking a frame (prevents overwriting saved coords during frame changes)
+  if (isSeekingFrame) return
 
   isUpdatingFromCropper.value = true
 
-  const scaleX = videoWidth.value / image.width
-  const scaleY = videoHeight.value / image.height
+  const result = cropperRef.value?.getResult()
+  if (!result || !result.image) {
+    isUpdatingFromCropper.value = false
+    return
+  }
+
+  const img = result.image
+
+  // Save display coordinates for restoration
+  savedCropCoordinates.value = { ...coordinates }
+
+  // Convert from display coordinates to video coordinates
+  const scaleX = videoWidth.value / img.width
+  const scaleY = videoHeight.value / img.height
 
   editSettings.value.crop = {
     x: Math.round(coordinates.left * scaleX),
@@ -897,33 +947,115 @@ const onCropperChange = ({ coordinates, image }) => {
     height: Math.round(coordinates.height * scaleY)
   }
 
-  // Reset flag after a tick to allow watcher to skip
   nextTick(() => {
     isUpdatingFromCropper.value = false
   })
+}
+
+const updateCropPreviewFrame = time => {
+  if (!cropPreviewVideo.value) return
+
+  // If already seeking, queue this request
+  if (isSeekingFrame) {
+    pendingSeekTime = time
+    return
+  }
+
+  isSeekingFrame = true
+  cropPreviewVideo.value.currentTime = time
+}
+
+// Handle the seeked event to capture frame
+const onCropVideoSeeked = () => {
+  if (!cropPreviewVideo.value) return
+
+  try {
+    // Create canvas once and reuse it
+    if (!cropCanvas) {
+      cropCanvas = document.createElement('canvas')
+    }
+
+    cropCanvas.width = cropPreviewVideo.value.videoWidth
+    cropCanvas.height = cropPreviewVideo.value.videoHeight
+    const ctx = cropCanvas.getContext('2d')
+
+    if (ctx) {
+      ctx.drawImage(cropPreviewVideo.value, 0, 0, cropCanvas.width, cropCanvas.height)
+      // Only update the source once the new frame is ready - this prevents black flashing
+      const newFrame = cropCanvas.toDataURL('image/jpeg', 0.85)
+      if (newFrame) {
+        cropFrameSource.value = newFrame
+
+        // Restore crop coordinates after frame updates, or set initial full-size crop
+        nextTick(() => {
+          if (cropperRef.value) {
+            if (savedCropCoordinates.value) {
+              // Restore previously saved coordinates
+              cropperRef.value.setCoordinates(savedCropCoordinates.value)
+            } else if (!isInitialCropSetup.value) {
+              // Set initial crop to cover the whole image
+              const result = cropperRef.value.getResult()
+              if (result && result.image) {
+                const coords = {
+                  left: 0,
+                  top: 0,
+                  width: result.image.width,
+                  height: result.image.height
+                }
+                cropperRef.value.setCoordinates(coords)
+                savedCropCoordinates.value = coords
+                isInitialCropSetup.value = true
+              }
+            }
+          }
+
+          // Mark seeking as complete after coordinates are restored
+          isSeekingFrame = false
+
+          // If there's a pending seek, process it now
+          if (pendingSeekTime !== null) {
+            const nextTime = pendingSeekTime
+            pendingSeekTime = null
+            updateCropPreviewFrame(nextTime)
+          }
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Error capturing crop preview frame:', error)
+    isSeekingFrame = false
+  }
 }
 
 // Watcher for manual input changes to update cropper
 watch(
   () => editSettings.value.crop,
   newCrop => {
+    // Skip if the cropper just updated us or we don't have the cropper ready
     if (isUpdatingFromCropper.value) return
     if (!cropperRef.value) return
+    if (!videoWidth.value || !videoHeight.value) return
 
-    // We need the image dimensions to scale back.
-    // We can get them from the cropper instance if it's loaded.
     const result = cropperRef.value.getResult()
     if (!result || !result.image) return
 
-    const image = result.image
-    const scaleX = image.width / videoWidth.value
-    const scaleY = image.height / videoHeight.value
+    const img = result.image
+
+    // Compute scaling factors from video (model) space -> image (display) space
+    const scaleX = img.width / videoWidth.value
+    const scaleY = img.height / videoHeight.value
+
+    // Convert, using floats and clamp to visible bounds to avoid instability
+    const left = Math.max(0, Math.min(img.width - 1, newCrop.x * scaleX))
+    const top = Math.max(0, Math.min(img.height - 1, newCrop.y * scaleY))
+    const width = Math.max(1, newCrop.width * scaleX)
+    const height = Math.max(1, newCrop.height * scaleY)
 
     cropperRef.value.setCoordinates({
-      left: newCrop.x * scaleX,
-      top: newCrop.y * scaleY,
-      width: newCrop.width * scaleX,
-      height: newCrop.height * scaleY
+      left,
+      top,
+      width,
+      height
     })
   },
   { deep: true }
@@ -1033,27 +1165,6 @@ const saveAndClose = async () => {
   }
 }
 
-const confirmCancelTags = async () => {
-  if (!hasTagChanges.value) {
-    resetTagState()
-    return
-  }
-
-  const { confirm } = useConfirmDialog()
-
-  const result = await confirm({
-    title: 'Cancel Tag Changes',
-    message: 'Are you sure you want to cancel? All unsaved tag changes will be lost.',
-    confirmLabel: 'Discard Changes',
-    cancelLabel: 'Keep Editing',
-    variant: 'error'
-  })
-
-  if (result === 'confirm') {
-    resetTagState()
-  }
-}
-
 const resetTagState = () => {
   selectedTags.value = []
   originalTags.value = []
@@ -1113,7 +1224,7 @@ watch(
 
 // Watch for mode changes
 watch(currentMode, (newMode, oldMode) => {
-  if (oldMode === 'edit') {
+  if (oldMode === 'crop' || oldMode === 'trim') {
     exitEditMode()
   }
   if (oldMode === 'tag') {
@@ -1123,6 +1234,80 @@ watch(currentMode, (newMode, oldMode) => {
   // Fetch total untagged dest videos count when entering tag mode
   if (newMode === 'tag') {
     fetchTotalUntaggedCount()
+  }
+
+  // Initialize crop preview when entering crop mode
+  if (newMode === 'crop') {
+    isInitialCropSetup.value = false
+    savedCropCoordinates.value = null
+    cropFrameSource.value = ''
+
+    if (props.media?.type === 'video') {
+      // Video crop initialization
+      nextTick(() => {
+        cropPreviewTime.value = 0
+        // Initialize the first frame once video is loaded
+        if (cropPreviewVideo.value) {
+          cropPreviewVideo.value.addEventListener(
+            'loadedmetadata',
+            () => {
+              updateCropPreviewFrame(0)
+            },
+            { once: true }
+          )
+        }
+      })
+    } else if (props.media?.type === 'image') {
+      // Image crop initialization - use full-size image, not thumbnail
+      nextTick(() => {
+        const imgSrc = `/api/media/${props.media.uuid}/image?size=lg`
+
+        // Load image to get dimensions
+        const img = new Image()
+        img.onload = () => {
+          videoWidth.value = img.naturalWidth
+          videoHeight.value = img.naturalHeight
+          editSettings.value.crop = {
+            x: 0,
+            y: 0,
+            width: img.naturalWidth,
+            height: img.naturalHeight
+          }
+
+          // Set cropFrameSource after loading to ensure correct aspect ratio
+          cropFrameSource.value = imgSrc
+
+          // Set initial crop coordinates after image loads
+          nextTick(() => {
+            if (cropperRef.value) {
+              const result = cropperRef.value.getResult()
+              if (result && result.image) {
+                const coords = {
+                  left: 0,
+                  top: 0,
+                  width: result.image.width,
+                  height: result.image.height
+                }
+                cropperRef.value.setCoordinates(coords)
+                savedCropCoordinates.value = coords
+                isInitialCropSetup.value = true
+              }
+            }
+          })
+        }
+        img.src = imgSrc
+      })
+    }
+  }
+
+  // Reset crop state when exiting crop mode
+  if (oldMode === 'crop') {
+    cropFrameSource.value = ''
+  }
+
+  // Initialize trim handles when entering trim mode
+  if (newMode === 'trim') {
+    trimHandles.value = []
   }
 })
 

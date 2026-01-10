@@ -1,5 +1,5 @@
 <template>
-  <UApp>
+  <UApp :toaster="toaster">
     <div class="min-h-screen bg-neutral-300 dark:bg-neutral-900">
       <NuxtRouteAnnouncer />
       <AppHeader v-if="user" />
@@ -12,6 +12,8 @@
 </template>
 
 <script setup>
+const toaster = { expand: false }
+
 const user = useSupabaseUser()
 const { initializeSubjects } = useSubjects()
 

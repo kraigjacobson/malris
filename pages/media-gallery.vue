@@ -204,7 +204,7 @@
     <MediaDetailsModal v-model:is-open="isModalOpen" :media="selectedMedia" :current-index="currentMediaIndex" :total-count="allMediaResults.length" :deleting-ids="deletingIds" :has-next="currentMediaIndex < allMediaResults.length - 1" :has-previous="currentMediaIndex > 0" :only-show-untagged="onlyShowUntagged" @navigate="navigateMedia" @confirm-delete="confirmDelete" @close="closeModal" @save-edits="handleMediaSaveEdits" @save="handleTagSave" @media-duplicated="handleMediaDuplicated" />
 
     <!-- Slideshow Modal -->
-    <UModal :open="isSlideshow" @update:open="handleSlideshowClose" :fullscreen="true">
+    <UModal :open="isSlideshow" @update:open="handleSlideshowClose" :fullscreen="true" :dismissible="false">
       <template #content="{ close }">
         <div class="relative h-screen w-full bg-black" @touchstart="handleSlideshowTouchStart" @touchmove="handleSlideshowTouchMove" @touchend="handleSlideshowTouchEnd">
           <!-- Video Container -->
