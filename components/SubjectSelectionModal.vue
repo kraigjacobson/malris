@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :ui="{ width: 'max-w-4xl' }">
+  <UModal v-model:open="isOpen" :dismissible="false" :ui="{ width: 'max-w-4xl' }">
     <template #header>
       <div class="flex items-center justify-between w-full">
         <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">Select Subject</h3>

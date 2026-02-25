@@ -26,11 +26,6 @@ export default defineNuxtPlugin({
         }
       }
 
-      // Log page visibility changes
-      document.addEventListener('visibilitychange', () => {
-        sendLog(`VISIBILITY CHANGE: ${document.hidden ? 'hidden' : 'visible'}`)
-      })
-
       // Log before page unloads - use sendBeacon to ensure it sends
       window.addEventListener('beforeunload', () => {
         sendLog('BEFOREUNLOAD event fired - page is reloading/closing', undefined, true)

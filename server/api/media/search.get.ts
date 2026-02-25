@@ -135,8 +135,6 @@ export default defineEventHandler(async event => {
 
       // Process thumbnails if include_thumbnails or include_images is explicitly true
       if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
-        logger.info('🖼️ Setting thumbnail URLs for UUID search result...')
-
         for (const result of transformedResults) {
           // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
           if (result.type === 'video') {
@@ -642,8 +640,6 @@ export default defineEventHandler(async event => {
 
     // Process thumbnails and images if include_thumbnails or include_images is explicitly true
     if (include_thumbnails === 'true' || include_thumbnails === true || include_images === 'true' || include_images === true) {
-      logger.info('🖼️ Setting thumbnail URLs for media results...')
-
       for (const result of transformedResults) {
         // Handle video thumbnails - prioritize video thumbnail for dest and output videos, subject thumbnail for others
         if (result.type === 'video') {
@@ -688,12 +684,6 @@ export default defineEventHandler(async event => {
       offset: offsetNum,
       total_count: totalCount
     }
-
-    logger.info('🔍 Media search completed:', {
-      total_results: transformedResults.length,
-      total_count: totalCount,
-      videos_with_thumbnails: transformedResults.filter(r => r.type === 'video' && r.has_thumbnail).length
-    })
 
     return response
   } catch (error: any) {

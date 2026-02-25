@@ -257,26 +257,13 @@ definePageMeta({
 
 // Initialize stores and composables
 const settingsStore = useSettingsStore()
-const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedTags, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid, onlyShowUntagged } = useMediaGalleryFilters()
+const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedSubjects, filenameSearch, selectedTags, onlyShowUntagged, onlyShowOrphans, selectedRatings, showUnrated, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid } = useMediaGalleryFilters()
 
 // Template refs
 const modalVideo = ref(null)
 
 // Upload modal functionality
 const isUploadModalOpen = ref(false)
-
-// Subject selection state - default to empty array
-const selectedSubjects = ref([])
-
-// Filename search state
-const filenameSearch = ref('')
-
-// Star rating filter state - default to empty (show all)
-const selectedRatings = ref([])
-const showUnrated = ref(false) // Separate toggle for unrated filter
-
-// Orphan filter state
-const onlyShowOrphans = ref(false)
 
 const mediaResults = ref([])
 const isLoading = ref(false)
@@ -729,14 +716,19 @@ const cancelSearch = () => {
 }
 
 const clearFilters = () => {
-  // Only clear the search results, not the filter settings
+  // Clear the search results
   mediaResults.value = []
   hasSearched.value = false
   currentPage.value = 1
 
-  // Reset subject selection to empty array
+  // Reset all filter values
   selectedSubjects.value = []
   subjectUuid.value = ''
+  filenameSearch.value = ''
+  selectedRatings.value = []
+  showUnrated.value = false
+  onlyShowOrphans.value = false
+  mediaUuid.value = ''
 
   // Reset pagination
   pagination.value = {
@@ -748,13 +740,6 @@ const clearFilters = () => {
 
   // Reset total database count
   totalDbCount.value = 0
-
-  // Reset rating filter
-  selectedRatings.value = []
-  showUnrated.value = false
-
-  // Reset orphan filter
-  onlyShowOrphans.value = false
 }
 
 // Subject selection handler
@@ -1874,38 +1859,6 @@ onUnmounted(() => {
   console.log('🔴 [LIFECYCLE] media-gallery onUnmounted - page destroyed')
   $fetch('/api/debug-log', { method: 'POST', body: { message: 'media-gallery onUnmounted - PAGE DESTROYED' } }).catch(() => {})
 })
-
-// Track visibility changes
-if (import.meta.client) {
-  onMounted(() => {
-    const handleVisibilityChange = () => {
-      console.log('👁️ [VISIBILITY] Page visibility changed:', {
-        hidden: document.hidden,
-        visibilityState: document.visibilityState,
-        timestamp: new Date().toISOString()
-      })
-
-      if (!document.hidden) {
-        console.log('✅ [VISIBILITY] Page became visible - checking state...')
-        console.log('📊 [STATE] Current page state:', {
-          isLoading: isLoading.value,
-          hasSearched: hasSearched.value,
-          mediaResultsCount: mediaResults.value.length,
-          isModalOpen: isModalOpen.value,
-          isSlideshow: isSlideshow.value
-        })
-      } else {
-        console.log('⏸️ [VISIBILITY] Page hidden')
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    onUnmounted(() => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    })
-  })
-}
 
 // Track route changes
 const route = useRoute()

@@ -31,6 +31,9 @@ export const useJobsStore = defineStore('jobs', () => {
   const systemStatus = ref<SystemStatus | null>(null)
   const isProcessing = ref(false)
 
+  // Processing state from jobProcessingService (source of truth)
+  const processingState = ref<{ mode: string; isActive: boolean; isContinuous: boolean } | null>(null)
+
   // Manual processing state
   const isManualProcessing = ref(false)
 
@@ -327,6 +330,71 @@ export const useJobsStore = defineStore('jobs', () => {
           // Don't automatically refresh job list - let user click filters to refresh
         }
         break
+
+      case 'initial_sync':
+        // Initial sync when connecting
+        if (data.systemStatus) {
+          systemStatus.value = data.systemStatus
+          updateLocalStateFromSystemStatus(data.systemStatus)
+        }
+        if (data.processingState) {
+          processingState.value = data.processingState
+          isProcessing.value = data.processingState.isActive
+          console.log(`🔄 [WS] Initial sync - processing state:`, data.processingState)
+        }
+        break
+
+      case 'command_ack':
+        // Command acknowledgment from server
+        console.log(`✅ [WS] Command acknowledged:`, message.data)
+        // Emit custom event that jobs.vue can listen to
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ws-command-ack', { detail: message.data }))
+        }
+        break
+
+      case 'command_error':
+        // Command error from server
+        console.error(`❌ [WS] Command error:`, message.data)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ws-command-error', { detail: message.data }))
+        }
+        break
+
+      case 'state_correction':
+        // State correction from reconciliation service
+        console.warn(`⚠️ [WS] State correction:`, message.data)
+
+        // Update processing state based on correction
+        isProcessing.value = message.data.newState !== 'idle'
+
+        // Emit event for UI notification
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ws-state-correction', { detail: message.data }))
+        }
+        break
+
+      case 'state_sync_response':
+        // Response to manual state sync request
+        console.log(`🔄 [WS] State sync response:`, message.data)
+        if (message.data.systemStatus) {
+          systemStatus.value = message.data.systemStatus
+          updateLocalStateFromSystemStatus(message.data.systemStatus)
+        }
+        if (message.data.processingState) {
+          processingState.value = message.data.processingState
+          isProcessing.value = message.data.processingState.isActive
+          console.log(`🔄 [WS] State sync - processing state:`, message.data.processingState)
+        }
+        break
+
+      case 'processing_state_change':
+        // Real-time processing state change from jobProcessingService
+        console.log(`🔄 [WS] Processing state changed:`, data)
+        processingState.value = data
+        isProcessing.value = data.isActive
+        console.log(`🔄 [WS] Updated processingState - mode: ${data.mode}, isActive: ${data.isActive}`)
+        break
     }
   }
 
@@ -466,7 +534,9 @@ export const useJobsStore = defineStore('jobs', () => {
 
     // WebSocket state
     wsConnected: readonly(wsConnected),
+    wsConnection, // Expose wsConnection for sending commands
     systemStatus: readonly(systemStatus),
+    processingState: readonly(processingState),
 
     // Actions
     fetchJobs,

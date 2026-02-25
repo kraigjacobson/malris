@@ -6,7 +6,7 @@
 import type { SystemStatus, SystemHealth, ComfyUIProcessingStatus, AutoProcessingStatus, WebSocketMessage } from '~/types/systemStatus'
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
-import { count } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 // Register global error handlers FIRST to catch WebSocket errors
 console.log('🛡️ [SYSTEM STATUS] Registering global error handlers...')
@@ -35,6 +35,50 @@ const wsClients = new Set<any>()
 
 // Timeout for resetting active jobs after ComfyUI becomes idle
 let resetActiveJobsTimeout: NodeJS.Timeout | null = null
+
+// Requeue any active DB jobs orphaned by a ComfyUI container restart
+async function requeueOrphanedActiveJobs(): Promise<void> {
+  try {
+    const db = getDb()
+    const activeJobs = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(eq(jobs.status, 'active'))
+
+    if (activeJobs.length === 0) {
+      logger.info('ℹ️ [RESTART RECOVERY] No orphaned active jobs found')
+      return
+    }
+
+    logger.warn(`⚠️ [RESTART RECOVERY] Found ${activeJobs.length} orphaned active job(s) - requeuing`)
+
+    await db
+      .update(jobs)
+      .set({
+        status: 'queued',
+        progress: 0,
+        startedAt: null,
+        errorMessage: null,
+        updatedAt: new Date()
+      })
+      .where(eq(jobs.status, 'active'))
+
+    await updateJobCounts()
+
+    logger.info(`✅ [RESTART RECOVERY] Requeued ${activeJobs.length} job(s) after ComfyUI restart`)
+
+    broadcastToClients({
+      type: 'state_correction' as any,
+      data: {
+        reason: 'ComfyUI container restart detected - orphaned jobs requeued',
+        count: activeJobs.length
+      } as any,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error: any) {
+    logger.error('❌ [RESTART RECOVERY] Failed to requeue orphaned jobs:', error)
+  }
+}
 
 // Current system status - this is our single source of truth
 let currentStatus: SystemStatus = {
@@ -106,7 +150,7 @@ export function addWebSocketClient(ws: any) {
 }
 
 // Broadcast message to all connected clients
-function broadcastToClients(message: WebSocketMessage) {
+export function broadcastToClients(message: WebSocketMessage) {
   const messageStr = JSON.stringify(message)
 
   wsClients.forEach(ws => {
@@ -253,6 +297,7 @@ async function checkRunPodWorkerHealth() {
 // Check ComfyUI health and processing status
 async function checkComfyUIHealth() {
   const startTime = Date.now()
+  const prevComfyUIStatus = currentStatus.comfyui.status
 
   try {
     const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
@@ -318,25 +363,15 @@ async function checkComfyUIHealth() {
       'comfyui_status_change'
     )
 
-    // DISABLED: Don't reset active jobs to queued when ComfyUI is idle
-    // This was causing completed jobs to be reset to queued status
-    // if (processingStatus === 'idle' && currentStatus.jobCounts.active > 0) {
-    //   if (!resetActiveJobsTimeout) {
-    //     logger.info(`🔄 ComfyUI is idle but ${currentStatus.jobCounts.active} jobs are marked as active - will reset to queued in 60 seconds`)
-    //     resetActiveJobsTimeout = setTimeout(async () => {
-    //       logger.info(`⏰ 60 seconds elapsed since ComfyUI became idle - resetting active jobs to queued`)
-    //       await resetActiveJobsToQueued()
-    //       resetActiveJobsTimeout = null
-    //     }, 60000) // 60 seconds
-    //   }
-    // } else {
-    //   // Clear timeout if ComfyUI is no longer idle or no active jobs
-    //   if (resetActiveJobsTimeout) {
-    //     logger.info(`✅ ComfyUI is no longer idle or no active jobs - canceling reset timeout`)
-    //     clearTimeout(resetActiveJobsTimeout)
-    //     resetActiveJobsTimeout = null
-    //   }
-    // }
+    // Detect container restart or fresh startup with orphaned jobs.
+    // Covers two scenarios:
+    //   unhealthy → healthy: container restarted and malris caught the downtime
+    //   unknown → healthy:   malris itself was restarted alongside ComfyUI
+    // runningCount=0 guards against transient blips where the job is still alive in ComfyUI
+    if ((prevComfyUIStatus === 'unhealthy' || prevComfyUIStatus === 'unknown') && isHealthy && runningCount === 0) {
+      logger.warn(`⚠️ [RESTART RECOVERY] ComfyUI transitioned ${prevComfyUIStatus} → healthy with empty queue - checking for orphaned active jobs`)
+      await requeueOrphanedActiveJobs()
+    }
 
     // Clear any existing timeout since we're disabling this functionality
     if (resetActiveJobsTimeout) {
@@ -367,8 +402,6 @@ async function checkComfyUIHealth() {
 
 // Update job counts from database - call this when jobs are modified
 export async function updateJobCounts() {
-  const startTime = performance.now()
-
   try {
     const db = getDb()
 
@@ -384,9 +417,6 @@ export async function updateJobCounts() {
     // Get total count separately
     const totalResult = await db.select({ count: count() }).from(jobs)
     const total = totalResult[0].count
-
-    const queryTime = performance.now() - startTime
-    logger.info(`📊 [JOB COUNTS] Status counts query completed in ${queryTime.toFixed(2)}ms`)
 
     // Build counts object from results
     const counts = {
@@ -429,43 +459,10 @@ export async function updateJobCounts() {
       },
       'job_counts_update'
     )
-
-    const totalTime = performance.now() - startTime
-    logger.info(`📊 [JOB COUNTS] Update completed in ${totalTime.toFixed(2)}ms - total: ${counts.total}, queued: ${counts.queued}, active: ${counts.active}`)
   } catch (error: any) {
-    const totalTime = performance.now() - startTime
-    logger.error(`❌ [JOB COUNTS] Failed to update job counts after ${totalTime.toFixed(2)}ms:`, error)
+    logger.error(`❌ [JOB COUNTS] Failed to update job counts`, error)
   }
 }
-
-// DISABLED: Reset active jobs to queued when ComfyUI is idle but jobs are stuck as active
-// This function is no longer used since we disabled the watchdog functionality
-// async function resetActiveJobsToQueued() {
-//   try {
-//     const db = getDb()
-//
-//     // Update all active jobs to queued status
-//     const resetJobs = await db
-//       .update(jobs)
-//       .set({
-//         status: 'queued',
-//         startedAt: null,
-//         updatedAt: new Date()
-//       })
-//       .where(eq(jobs.status, 'active'))
-//       .returning({ id: jobs.id })
-//
-//     if (resetJobs.length > 0) {
-//       logger.info(`✅ Reset ${resetJobs.length} stuck active jobs to queued status`)
-//
-//       // Update job counts after resetting jobs
-//       await updateJobCounts()
-//     }
-//
-//   } catch (error: any) {
-//     logger.error('❌ Failed to reset active jobs to queued:', error)
-//   }
-// }
 
 // Update auto processing status
 export function updateAutoProcessingStatus(status: AutoProcessingStatus, message: string, intervalActive: boolean = false) {
@@ -480,6 +477,21 @@ export function updateAutoProcessingStatus(status: AutoProcessingStatus, message
     },
     'auto_processing_toggle'
   )
+}
+
+// Broadcast state correction to all clients
+export function broadcastStateCorrection(correction: { oldState: string; newState: string; reason: string; actions: string[] }) {
+  broadcastToClients({
+    type: 'state_correction' as any,
+    data: {
+      oldState: correction.oldState,
+      newState: correction.newState,
+      reason: correction.reason,
+      actions: correction.actions,
+      timestamp: new Date().toISOString()
+    } as any,
+    timestamp: new Date().toISOString()
+  })
 }
 
 // Start all monitoring intervals
@@ -497,6 +509,15 @@ export function startSystemMonitoring() {
   // Set up intervals (no job counts polling - updated reactively)
   runpodHealthInterval = setInterval(checkRunPodWorkerHealth, RUNPOD_CHECK_INTERVAL)
   comfyuiHealthInterval = setInterval(checkComfyUIHealth, COMFYUI_CHECK_INTERVAL)
+
+  // Start reconciliation service
+  import('./stateReconciliation')
+    .then(module => {
+      module.startReconciliationService()
+    })
+    .catch(error => {
+      logger.error('❌ Failed to start reconciliation service:', error)
+    })
 
   logger.info('✅ System monitoring started')
 }

@@ -345,6 +345,48 @@ export default defineEventHandler(async event => {
           }
         }
 
+        // Regenerate thumbnail from the processed video
+        if (media.thumbnailUuid) {
+          const tempThumbnailFile = path.join(tempDir, `thumb_${randomUUID()}.jpg`)
+          try {
+            // If the thumbnail was previously stored as a LOB, unlink it first
+            const thumbRecord = await db.select({ largeObjectOid: mediaRecords.largeObjectOid })
+              .from(mediaRecords).where(eq(mediaRecords.uuid, media.thumbnailUuid)).limit(1)
+            if (thumbRecord[0]?.largeObjectOid) {
+              try {
+                await client.query('SELECT lo_unlink($1)', [thumbRecord[0].largeObjectOid])
+              } catch {}
+            }
+
+            const thumbTime = newDuration > 1 ? 1 : newDuration * 0.5
+            await execAsync(`ffmpeg -i "${outputTempFile}" -ss ${thumbTime} -vframes 1 -vf scale=320:-1 -y "${tempThumbnailFile}"`)
+            const thumbnailBuffer = await fs.readFile(tempThumbnailFile)
+            const thumbChunkSize = getOptimalChunkSize(thumbnailBuffer.length)
+            const thumbEncResult = await encryptChunked(thumbnailBuffer, encryptionKey, thumbChunkSize)
+            const encryptedThumbnail = thumbEncResult.encryptedData
+            const thumbChunkMetadata = thumbEncResult.metadata
+            await db.update(mediaRecords)
+              .set({
+                encryptedData: encryptedThumbnail,
+                fileSize: encryptedThumbnail.length,
+                originalSize: thumbnailBuffer.length,
+                checksum: createHash('sha256').update(encryptedThumbnail).digest('hex'),
+                encryptionMethod: 'aes-gcm-unified',
+                chunkSize: thumbChunkMetadata.chunkSize,
+                encryptionMetadata: JSON.stringify(thumbChunkMetadata),
+                storageType: 'bytea',
+                largeObjectOid: null,
+                updatedAt: new Date()
+              })
+              .where(eq(mediaRecords.uuid, media.thumbnailUuid))
+            logger.info(`Regenerated thumbnail for ${uuid}`)
+          } catch (thumbError) {
+            logger.warn(`Failed to regenerate thumbnail for ${uuid}:`, thumbError)
+          } finally {
+            try { await fs.unlink(tempThumbnailFile) } catch {}
+          }
+        }
+
         // Fetch the updated record
         updatedMediaResult = await db.select().from(mediaRecords).where(eq(mediaRecords.uuid, uuid)).limit(1)
 

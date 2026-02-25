@@ -1,6 +1,48 @@
 import localforage from 'localforage'
 
+/**
+ * Search Store with LocalForage Persistence
+ *
+ * IMPORTANT: When adding or modifying filters, you must:
+ * 1. Add the filter property to the appropriate search object (videoSearch/subjectSearch)
+ * 2. Add the default value to the defaults in reset functions
+ * 3. Update the save function if the filter should be excluded from persistence
+ *
+ * NOTE: selectedTags are intentionally excluded from persistence for both video and subject searches.
+ * All other filter changes are automatically persisted to localForage via deep watchers.
+ */
+
 export const useSearchStore = defineStore('search', () => {
+  // Dropdown item definitions (shared between defaults and component)
+  const sortTypeItems = [
+    { label: 'Random', value: 'random' },
+    { label: 'Created Date', value: 'created_at' },
+    { label: 'Updated Date', value: 'updated_at' },
+    { label: 'Duration', value: 'duration' },
+    { label: 'File Size', value: 'file_size' },
+    { label: 'Filename', value: 'filename' }
+  ]
+
+  const sortOrderItems = [
+    { label: 'Asc', value: 'asc' },
+    { label: 'Desc', value: 'desc' }
+  ]
+
+  const limitOptionsItems = [
+    { label: '24', value: 24 },
+    { label: '48', value: 48 },
+    { label: '96', value: 96 },
+    { label: '192', value: 192 },
+    { label: '480', value: 480 }
+  ]
+
+  // Helper function to find matching item by value
+  const findItemByValue = (items: any[], savedValue: any) => {
+    if (!savedValue) return items[0]
+    const value = typeof savedValue === 'object' ? savedValue.value : savedValue
+    return items.find(item => item.value === value) || items[0]
+  }
+
   // Video search filters state
   const videoSearch = ref({
     selectedTags: [] as string[],
@@ -11,9 +53,9 @@ export const useSearchStore = defineStore('search', () => {
     },
     selectedRatings: [] as number[],
     showUnrated: false,
-    sortType: { label: 'Random', value: 'random' },
-    sortOrder: { label: 'Asc', value: 'asc' },
-    limitOptions: { label: '48', value: 48 }
+    sortType: sortTypeItems[0], // Default to 'Random'
+    sortOrder: sortOrderItems[0], // Default to 'Asc'
+    limitOptions: limitOptionsItems[1] // Default to '48'
   })
 
   // Subject search filters state
@@ -55,14 +97,39 @@ export const useSearchStore = defineStore('search', () => {
   // Initialize from localStorage
   const initializeSearch = async () => {
     try {
-      const savedVideoSearch = await localforage.getItem('videoSearch')
+      const savedVideoSearch = (await localforage.getItem('videoSearch')) as any
       if (savedVideoSearch) {
-        videoSearch.value = { ...videoSearch.value, ...savedVideoSearch }
+        // Restore all saved properties except selectedTags (keep default empty array)
+        // Normalize select box values to match item references
+        videoSearch.value = {
+          ...videoSearch.value,
+          ...savedVideoSearch,
+          selectedTags: [],
+          sortType: findItemByValue(sortTypeItems, savedVideoSearch.sortType),
+          sortOrder: findItemByValue(sortOrderItems, savedVideoSearch.sortOrder),
+          limitOptions: findItemByValue(limitOptionsItems, savedVideoSearch.limitOptions),
+          // Ensure nested objects are properly restored
+          durationFilters: {
+            ...videoSearch.value.durationFilters,
+            ...(savedVideoSearch.durationFilters || {})
+          }
+        }
       }
 
-      const savedSubjectSearch = await localforage.getItem('subjectSearch')
+      const savedSubjectSearch = (await localforage.getItem('subjectSearch')) as any
       if (savedSubjectSearch) {
-        subjectSearch.value = { ...subjectSearch.value, ...savedSubjectSearch }
+        // Restore all saved properties except selectedTags (keep default empty array)
+        // Deep merge to preserve object structures
+        subjectSearch.value = {
+          ...subjectSearch.value,
+          ...savedSubjectSearch,
+          selectedTags: [],
+          // Ensure nested objects are properly restored
+          nameFilters: {
+            ...subjectSearch.value.nameFilters,
+            ...(savedSubjectSearch.nameFilters || {})
+          }
+        }
       }
 
       const savedMediaGallerySearch = await localforage.getItem('mediaGallerySearch')
@@ -79,22 +146,24 @@ export const useSearchStore = defineStore('search', () => {
     }
   }
 
-  // Save video search to localStorage
+  // Save video search to localStorage (excluding selectedTags)
   const saveVideoSearch = async () => {
     try {
-      // Create a serializable copy of the data
-      const serializableData = JSON.parse(JSON.stringify(videoSearch.value))
+      // Create a serializable copy of the data, excluding selectedTags
+      const { selectedTags, ...dataToSave } = videoSearch.value
+      const serializableData = JSON.parse(JSON.stringify(dataToSave))
       await localforage.setItem('videoSearch', serializableData)
     } catch (error) {
       console.error('Failed to save video search settings:', error)
     }
   }
 
-  // Save subject search to localStorage
+  // Save subject search to localStorage (excluding selectedTags)
   const saveSubjectSearch = async () => {
     try {
-      // Create a serializable copy of the data
-      const serializableData = JSON.parse(JSON.stringify(subjectSearch.value))
+      // Create a serializable copy of the data, excluding selectedTags
+      const { selectedTags, ...dataToSave } = subjectSearch.value
+      const serializableData = JSON.parse(JSON.stringify(dataToSave))
       await localforage.setItem('subjectSearch', serializableData)
     } catch (error) {
       console.error('Failed to save subject search settings:', error)
@@ -124,9 +193,9 @@ export const useSearchStore = defineStore('search', () => {
       },
       selectedRatings: [],
       showUnrated: false,
-      sortType: { label: 'Random', value: 'random' },
-      sortOrder: { label: 'Asc', value: 'asc' },
-      limitOptions: { label: '48', value: 48 }
+      sortType: sortTypeItems[0], // Random
+      sortOrder: sortOrderItems[0], // Asc
+      limitOptions: limitOptionsItems[1] // 48
     }
     await saveVideoSearch()
   }
@@ -185,6 +254,10 @@ export const useSearchStore = defineStore('search', () => {
     initializeSearch,
     resetVideoFilters,
     resetSubjectFilters,
-    resetMediaGalleryFilters
+    resetMediaGalleryFilters,
+    // Export dropdown items for use in components
+    sortTypeItems,
+    sortOrderItems,
+    limitOptionsItems
   }
 })

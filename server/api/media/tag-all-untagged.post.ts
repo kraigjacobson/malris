@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
-import { eq, and, isNull, isNotNull, or } from 'drizzle-orm'
+import { eq, and, isNull, isNotNull, or, count } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 
 // Global state for tagging queue management (simplified for batch processing)
@@ -12,38 +12,29 @@ export default defineEventHandler(async (event) => {
     
     const db = getDb()
     const body = await readBody(event).catch(() => ({}))
+
+    // Get batch size from request body, default to 5, min 1, max 100
+    const batchSize = Math.min(Math.max(body.batchSize || 5, 1), 100)
+    const dryRun = body.dryRun === true
+    logger.info(`📦 Processing batch size: ${batchSize}${dryRun ? ' (DRY RUN)' : ''}`)
     
-    // Get batch size from request body, default to 5, min 1, max 20 (to avoid payload size limits)
-    const batchSize = Math.min(Math.max(body.batchSize || 5, 1), 20)
-    logger.info(`📦 Processing batch size: ${batchSize}`)
-    
-    // First check total count of untagged media (dest videos + source images)
-    const totalUntaggedCount = await db
-      .select({ count: mediaRecords.uuid })
+    // First check total count of untagged dest videos with thumbnails
+    const totalUntaggedResult = await db
+      .select({ count: count() })
       .from(mediaRecords)
       .where(
         and(
-          or(
-            // Dest videos with thumbnails
-            and(
-              eq(mediaRecords.type, 'video'),
-              eq(mediaRecords.purpose, 'dest'),
-              isNotNull(mediaRecords.thumbnailUuid)
-            ),
-            // Source images (subject images)
-            and(
-              eq(mediaRecords.type, 'image'),
-              eq(mediaRecords.purpose, 'source')
-            )
-          ),
+          eq(mediaRecords.type, 'video'),
+          eq(mediaRecords.purpose, 'dest'),
+          isNotNull(mediaRecords.thumbnailUuid),
           or(
             isNull(mediaRecords.tags),
             eq(mediaRecords.tags, '{}')
           )
         )
       )
-    
-    const totalUntagged = totalUntaggedCount.length
+
+    const totalUntagged = totalUntaggedResult[0]?.count ?? 0
     logger.info(`📊 Total untagged media: ${totalUntagged}`)
     
     if (totalUntagged === 0) {
@@ -57,7 +48,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     
-    // Get next batch of untagged media for processing (dest videos + source images)
+    // Get next batch of untagged dest videos with thumbnails
     const untaggedVideos = await db
       .select({
         uuid: mediaRecords.uuid,
@@ -69,19 +60,9 @@ export default defineEventHandler(async (event) => {
       .from(mediaRecords)
       .where(
         and(
-          or(
-            // Dest videos with thumbnails
-            and(
-              eq(mediaRecords.type, 'video'),
-              eq(mediaRecords.purpose, 'dest'),
-              isNotNull(mediaRecords.thumbnailUuid)
-            ),
-            // Source images (subject images)
-            and(
-              eq(mediaRecords.type, 'image'),
-              eq(mediaRecords.purpose, 'source')
-            )
-          ),
+          eq(mediaRecords.type, 'video'),
+          eq(mediaRecords.purpose, 'dest'),
+          isNotNull(mediaRecords.thumbnailUuid),
           or(
             isNull(mediaRecords.tags),
             eq(mediaRecords.tags, '{}')
@@ -112,7 +93,7 @@ export default defineEventHandler(async (event) => {
     
     // Send batch to ComfyUI for processing
     if (mediaWithImages.length > 0) {
-      const success = await sendBatchToComfyUIForTagging(mediaWithImages, db)
+      const success = await sendBatchToComfyUIForTagging(mediaWithImages, db, dryRun)
       if (!success) {
         throw createError({
           statusCode: 500,
@@ -199,7 +180,7 @@ async function collectThumbnailsForBatch(mediaItems: any[], _encryptionKey: stri
 /**
  * Send batch of thumbnails to ComfyUI for tagging using directory-based batch workflow
  */
-async function sendBatchToComfyUIForTagging(videosWithThumbnails: Array<{uuid: string, filename: string, thumbnailBase64: string}>, db: any): Promise<boolean> {
+async function sendBatchToComfyUIForTagging(videosWithThumbnails: Array<{uuid: string, filename: string, thumbnailBase64: string}>, db: any, dryRun: boolean = false): Promise<boolean> {
   try {
     logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] ===== SENDING BATCH TO COMFYUI =====`)
     logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] Batch size: ${videosWithThumbnails.length} videos`)
@@ -226,7 +207,7 @@ async function sendBatchToComfyUIForTagging(videosWithThumbnails: Array<{uuid: s
     
     await db.insert(jobs).values({
       id: batchJobId,
-      jobType: 'batch_tagging', // Use specific job type for batch tagging
+      jobType: 'tagging', // Unified tagging job type (supports single and batch)
       status: 'active',
       subjectUuid: subjectUuid, // Use first available subject
       sourceMediaUuid: null, // No specific source media for batch
@@ -237,32 +218,24 @@ async function sendBatchToComfyUIForTagging(videosWithThumbnails: Array<{uuid: s
     
     logger.info(`✅ Created temporary job record for batch tagging: ${batchJobId}`)
     
-    // Prepare the request data for ComfyUI batch tagging workflow
+    // Prepare the request data for ComfyUI tagging workflow
+    // Use batch_images JSON format: { uuid: base64, ... }
+    const batchImages: Record<string, string> = {}
+    for (const video of videosWithThumbnails) {
+      batchImages[video.uuid] = video.thumbnailBase64
+    }
+
     const formData = new FormData()
     formData.append('job_type', 'tagging')
     formData.append('workflow_type', 'tagging')
     formData.append('job_id', batchJobId)
+    formData.append('batch_images', JSON.stringify(batchImages))
     formData.append('threshold', '0.35')
     formData.append('character_threshold', '0.85')
     formData.append('exclude_tags', '')
-    
-    // Add all thumbnail images as base64 data with their media UUIDs
-    videosWithThumbnails.forEach((video, index) => {
-      formData.append(`image_${index}`, video.thumbnailBase64)
-      formData.append(`media_uuid_${index}`, video.uuid)
-      formData.append(`filename_${index}`, video.filename)
-    })
-    
-    formData.append('batch_size', videosWithThumbnails.length.toString())
-    formData.append('is_batch_tagging', 'true')
-    
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] FormData fields:`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - job_type: tagging`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - workflow_type: tagging`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - job_id: ${batchJobId}`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - batch_size: ${videosWithThumbnails.length}`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - threshold: 0.35`)
-    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] - character_threshold: 0.85`)
+    formData.append('dry_run', dryRun ? 'true' : 'false')
+
+    logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] Sending ${videosWithThumbnails.length} images via batch_images JSON`)
     
     // Send request to ComfyUI
     logger.info(`🔥 [COMFYUI-BATCH-SUBMIT] Making POST request to: ${comfyUIUrl}/process`)

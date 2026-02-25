@@ -3,40 +3,42 @@ import { mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { onTaggingComplete } from '~/server/api/media/tag-all-untagged.post'
 import { logger } from '~/server/utils/logger'
+import { filterAndNormalizeTags } from '~/server/utils/tagConfig'
 
 export default defineEventHandler(async (event) => {
   try {
     const uuid = getRouterParam(event, 'uuid')
     const body = await readBody(event)
-    
+
     logger.info(`🔥 [TAGGING-RESULTS] ===== INCOMING REQUEST =====`)
     logger.info(`🔥 [TAGGING-RESULTS] Media UUID: ${uuid}`)
-    logger.info(`🔥 [TAGGING-RESULTS] Request method: ${event.node.req.method}`)
-    logger.info(`🔥 [TAGGING-RESULTS] Request URL: ${event.node.req.url}`)
-    logger.info(`🔥 [TAGGING-RESULTS] Request headers:`, JSON.stringify(event.node.req.headers, null, 2))
-    logger.info(`🔥 [TAGGING-RESULTS] Request body:`, JSON.stringify(body, null, 2))
-    logger.info(`🔥 [TAGGING-RESULTS] Tags: ${body.tag_results}`)
-    
+    logger.info(`🔥 [TAGGING-RESULTS] Raw tags from WD14: ${body.tag_results}`)
+
     if (!uuid) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Media UUID is required'
       })
     }
-    
+
     if (!body.tag_results) {
       throw createError({
         statusCode: 400,
         statusMessage: 'tag_results is required'
       })
     }
-    
+
     const db = getDb()
-    
-    // Parse the tags and create a proper tags object
-    const tagsList = body.tag_results.split(', ').map((tag: string) => tag.trim())
+
+    // Filter and normalize tags using our allowed tags configuration
+    // This converts WD14/Danbooru tags to our simplified vocabulary and removes unrecognized tags
+    const filteredTags = filterAndNormalizeTags(body.tag_results)
+
+    logger.info(`🔥 [TAGGING-RESULTS] Filtered tags (${filteredTags.length}): ${filteredTags.join(', ')}`)
+
     const tagsObject = {
-      tags: tagsList,
+      tags: filteredTags,
+      rawTags: body.tag_results, // Keep original for debugging/reference
       model: 'wd14-tagger',
       confidence: 0.35,
       timestamp: new Date().toISOString(),
@@ -59,20 +61,16 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Media record not found'
       })
     }
-    
-    logger.info(`🔥 [TAGGING-RESULTS] Database update result:`, JSON.stringify(result, null, 2))
-    logger.info(`🔥 [TAGGING-RESULTS] ✅ Successfully updated tags for media UUID: ${uuid}`)
-    logger.info(`🔥 [TAGGING-RESULTS] Final tags object:`, JSON.stringify(tagsObject, null, 2))
-    
+
+    logger.info(`🔥 [TAGGING-RESULTS] ✅ Updated ${uuid} with ${filteredTags.length} tags: [${filteredTags.join(', ')}]`)
+
     const response = {
       success: true,
       message: 'Tags updated successfully',
       uuid: uuid,
-      tags: tagsObject
+      tags: tagsObject,
+      filteredCount: filteredTags.length
     }
-    
-    logger.info(`🔥 [TAGGING-RESULTS] Sending response:`, JSON.stringify(response, null, 2))
-    logger.info(`🔥 [TAGGING-RESULTS] ===== REQUEST COMPLETED =====`)
     
     // Notify the queue system that tagging is complete so it can process the next video
     onTaggingComplete()

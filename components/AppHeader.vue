@@ -72,6 +72,45 @@
                         {{ jobsStore.systemStatus.comfyuiProcessing.status.toUpperCase() }}
                       </span>
                     </div>
+
+                    <!-- ComfyUI Running Jobs Count -->
+                    <div class="flex items-center gap-2">
+                      <UIcon
+                        name="i-heroicons-cpu-chip"
+                        :class="jobsStore.systemStatus.comfyuiProcessing.runningJobs > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'"
+                        class="w-4 h-4"
+                      />
+                      <span class="font-medium">ComfyUI Jobs:</span>
+                      <span :class="jobsStore.systemStatus.comfyuiProcessing.runningJobs > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'">
+                        {{ jobsStore.systemStatus.comfyuiProcessing.runningJobs || 0 }} running
+                      </span>
+                    </div>
+
+                    <!-- Processing Mode (from jobProcessingService) -->
+                    <div v-if="jobsStore.processingState" class="flex items-center gap-2">
+                      <UIcon
+                        :name="getProcessingModeIcon(jobsStore.processingState.mode)"
+                        :class="getProcessingModeColor(jobsStore.processingState.mode)"
+                        class="w-4 h-4"
+                      />
+                      <span class="font-medium">Processing Mode:</span>
+                      <span :class="getProcessingModeColor(jobsStore.processingState.mode)">
+                        {{ jobsStore.processingState.mode.toUpperCase() }}
+                      </span>
+                    </div>
+
+                    <!-- Active Jobs Count -->
+                    <div class="flex items-center gap-2">
+                      <UIcon
+                        name="i-heroicons-document-check"
+                        :class="jobsStore.systemStatus.jobCounts.active > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'"
+                        class="w-4 h-4"
+                      />
+                      <span class="font-medium">Active Jobs:</span>
+                      <span :class="jobsStore.systemStatus.jobCounts.active > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'">
+                        {{ jobsStore.systemStatus.jobCounts.active || 0 }}
+                      </span>
+                    </div>
                   </div>
                   <div v-else class="text-xs text-gray-500 dark:text-gray-400">
                     System status not available
@@ -187,6 +226,24 @@ const getProcessingStatusColor = (status: string) => {
     case 'idle': return 'text-gray-600 dark:text-gray-400'
     case 'processing': return 'text-blue-600 dark:text-blue-400'
     case 'queued': return 'text-yellow-600 dark:text-yellow-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+const getProcessingModeIcon = (mode: string) => {
+  switch (mode) {
+    case 'idle': return 'i-heroicons-pause-circle'
+    case 'single': return 'i-heroicons-play'
+    case 'continuous': return 'i-heroicons-arrow-path'
+    default: return 'i-heroicons-question-mark-circle'
+  }
+}
+
+const getProcessingModeColor = (mode: string) => {
+  switch (mode) {
+    case 'idle': return 'text-gray-600 dark:text-gray-400'
+    case 'single': return 'text-blue-600 dark:text-blue-400'
+    case 'continuous': return 'text-purple-600 dark:text-purple-400'
     default: return 'text-gray-600 dark:text-gray-400'
   }
 }

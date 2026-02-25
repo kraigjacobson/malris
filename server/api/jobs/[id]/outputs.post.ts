@@ -46,81 +46,115 @@ export default defineEventHandler(async event => {
 
     const job = existingJob[0]
 
-    // Parse form data to get files and metadata
-    const formData = await readMultipartFormData(event)
-
-    if (!formData || formData.length === 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'No files received'
-      })
-    }
-
     // Extract metadata from form data
     let purpose = 'output'
     let errorMessage = null
     let sourceMediaUuid = null
     let jobType = null // Add job_type variable
     let workflowType = null // Add workflow_type variable
+    let tagResults = null // For tagging job results
+    let mediaUuid = null // The media UUID to update with tags
     const sourceMediaUuids = new Map<string, string>() // Map filename to source UUID
     const videoMetadata = new Map<string, any>() // Map file index to video metadata
 
-    const metadataFields = formData.filter(field => !field.filename)
-    logger.info(`🔍 JESSICA'S DEBUG: Processing ${metadataFields.length} metadata fields`)
-    logger.info(`🔍 JESSICA'S DEBUG: All form field names: ${formData.map(f => f.name).join(', ')}`)
+    // Check content type - tagging jobs send JSON, file-based jobs send multipart
+    const contentType = getHeader(event, 'content-type') || ''
+    logger.info(`📥 Content-Type: ${contentType}`)
 
-    for (const field of metadataFields) {
-      const fieldName = field.name
-      const fieldValue = field.data.toString()
-      logger.info(`🔍 JESSICA'S DEBUG: Processing field ${fieldName} = ${fieldValue}`)
+    let formData: Awaited<ReturnType<typeof readMultipartFormData>> | null = null
 
-      if (fieldName === 'purpose') {
-        purpose = fieldValue
-      } else if (fieldName === 'error_message') {
-        errorMessage = fieldValue
-      } else if (fieldName === 'job_type') {
-        jobType = fieldValue
-        logger.info(`🔄 JOB TYPE: Received explicit job_type=${jobType}`)
-      } else if (fieldName === 'workflow_type') {
-        workflowType = fieldValue
-        logger.info(`🔄 WORKFLOW TYPE: Received explicit workflow_type=${workflowType}`)
-      } else if (fieldName === 'source_media_uuid') {
-        sourceMediaUuid = fieldValue
-        logger.info(`🔗 SOURCE UUID: Received source media UUID for output linking: ${sourceMediaUuid}`)
-      } else if (fieldName && fieldName.startsWith('source_media_uuid_')) {
-        // Extract individual source UUIDs for each file (e.g., source_media_uuid_0, source_media_uuid_1, etc.)
-        const fileIndex = fieldName.replace('source_media_uuid_', '')
-        sourceMediaUuids.set(fileIndex, fieldValue)
-        logger.info(`🔗 INDIVIDUAL SOURCE UUID: File ${fileIndex} -> ${fieldValue}`)
-      } else if (fieldName && fieldName.startsWith('video_')) {
-        // Extract video metadata fields (video_fps_0, video_codec_0, video_bitrate_0, etc.)
-        const parts = fieldName.split('_')
-        if (parts.length >= 3) {
-          const metadataType = parts[1] // fps, codec, bitrate, width, height, duration
-          const fileIndex = parts[2] // 0, 1, 2, etc.
+    if (contentType.includes('application/json')) {
+      // Handle JSON body for tagging jobs
+      const body = await readBody(event)
+      logger.info(`🏷️ JSON body received: ${JSON.stringify(body)}`)
 
-          if (!videoMetadata.has(fileIndex)) {
-            videoMetadata.set(fileIndex, {})
+      jobType = body.job_type
+      purpose = body.purpose || 'output'
+      tagResults = body.tag_results // Dict mapping media_uuid -> tags
+      mediaUuid = body.media_uuid
+      errorMessage = body.error_message
+
+      logger.info(`🏷️ Parsed from JSON: jobType=${jobType}, tagResults present=${!!tagResults}, mediaUuid=${mediaUuid}`)
+    } else {
+      // Parse multipart form data for file-based jobs
+      formData = await readMultipartFormData(event)
+
+      if (!formData || formData.length === 0) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'No form data received'
+        })
+      }
+
+      // Debug: Log all fields with their properties
+      logger.info(`🔍 FORM DEBUG: Total fields received: ${formData.length}`)
+      for (const field of formData) {
+        logger.info(`🔍 FORM DEBUG: Field '${field.name}' - filename='${field.filename}', type='${field.type}', dataLen=${field.data?.length || 0}`)
+      }
+
+      const metadataFields = formData.filter(field => !field.filename)
+      logger.info(`🔍 JESSICA'S DEBUG: Processing ${metadataFields.length} metadata fields`)
+      logger.info(`🔍 JESSICA'S DEBUG: All form field names: ${formData.map(f => f.name).join(', ')}`)
+
+      for (const field of metadataFields) {
+        const fieldName = field.name
+        const fieldValue = field.data.toString()
+        logger.info(`🔍 JESSICA'S DEBUG: Processing field ${fieldName} = ${fieldValue}`)
+
+        if (fieldName === 'purpose') {
+          purpose = fieldValue
+        } else if (fieldName === 'error_message') {
+          errorMessage = fieldValue
+        } else if (fieldName === 'job_type') {
+          jobType = fieldValue
+          logger.info(`🔄 JOB TYPE: Received explicit job_type=${jobType}`)
+        } else if (fieldName === 'workflow_type') {
+          workflowType = fieldValue
+          logger.info(`🔄 WORKFLOW TYPE: Received explicit workflow_type=${workflowType}`)
+        } else if (fieldName === 'tag_results') {
+          tagResults = fieldValue
+          logger.info(`🏷️ TAG RESULTS: Received tag_results=${tagResults}`)
+        } else if (fieldName === 'media_uuid') {
+          mediaUuid = fieldValue
+          logger.info(`🏷️ MEDIA UUID: Received media_uuid=${mediaUuid}`)
+        } else if (fieldName === 'source_media_uuid') {
+          sourceMediaUuid = fieldValue
+          logger.info(`🔗 SOURCE UUID: Received source media UUID for output linking: ${sourceMediaUuid}`)
+        } else if (fieldName && fieldName.startsWith('source_media_uuid_')) {
+          // Extract individual source UUIDs for each file (e.g., source_media_uuid_0, source_media_uuid_1, etc.)
+          const fileIndex = fieldName.replace('source_media_uuid_', '')
+          sourceMediaUuids.set(fileIndex, fieldValue)
+          logger.info(`🔗 INDIVIDUAL SOURCE UUID: File ${fileIndex} -> ${fieldValue}`)
+        } else if (fieldName && fieldName.startsWith('video_')) {
+          // Extract video metadata fields (video_fps_0, video_codec_0, video_bitrate_0, etc.)
+          const parts = fieldName.split('_')
+          if (parts.length >= 3) {
+            const metadataType = parts[1] // fps, codec, bitrate, width, height, duration
+            const fileIndex = parts[2] // 0, 1, 2, etc.
+
+            if (!videoMetadata.has(fileIndex)) {
+              videoMetadata.set(fileIndex, {})
+            }
+
+            const metadata = videoMetadata.get(fileIndex)
+
+            // Parse numeric values appropriately
+            if (metadataType === 'fps' || metadataType === 'duration') {
+              metadata[metadataType] = parseFloat(fieldValue)
+            } else if (metadataType === 'bitrate' || metadataType === 'width' || metadataType === 'height') {
+              metadata[metadataType] = parseInt(fieldValue)
+            } else {
+              metadata[metadataType] = fieldValue // codec as string
+            }
+
+            logger.info(`🎬 VIDEO METADATA: File ${fileIndex} ${metadataType} = ${fieldValue}`)
           }
-
-          const metadata = videoMetadata.get(fileIndex)
-
-          // Parse numeric values appropriately
-          if (metadataType === 'fps' || metadataType === 'duration') {
-            metadata[metadataType] = parseFloat(fieldValue)
-          } else if (metadataType === 'bitrate' || metadataType === 'width' || metadataType === 'height') {
-            metadata[metadataType] = parseInt(fieldValue)
-          } else {
-            metadata[metadataType] = fieldValue // codec as string
-          }
-
-          logger.info(`🎬 VIDEO METADATA: File ${fileIndex} ${metadataType} = ${fieldValue}`)
         }
       }
-    }
 
-    logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuid = ${sourceMediaUuid}`)
-    logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuids map = ${JSON.stringify(Object.fromEntries(sourceMediaUuids))}`)
+      logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuid = ${sourceMediaUuid}`)
+      logger.info(`🔍 JESSICA'S DEBUG: Final sourceMediaUuids map = ${JSON.stringify(Object.fromEntries(sourceMediaUuids))}`)
+    } // End of else block for multipart form data
 
     // REQUIRED: Throw error if job_type is not provided
     if (!jobType) {
@@ -130,12 +164,6 @@ export default defineEventHandler(async event => {
         statusCode: 400,
         statusMessage: error
       })
-    }
-
-    // Check if this is a batch tagging job that should be deleted after completion
-    const isBatchTaggingJob = jobType === 'batch_tagging'
-    if (isBatchTaggingJob) {
-      logger.info(`🏷️ BATCH TAGGING: Detected batch tagging job ${jobId} - will delete after processing`)
     }
 
     logger.info(`🔗 SOURCE UUID MAPPING: Found ${sourceMediaUuids.size} individual source UUIDs`)
@@ -187,21 +215,6 @@ export default defineEventHandler(async event => {
         logger.error('Failed to update job counts after job failure:', error)
       }
 
-      // Handle batch tagging job deletion after failure
-      if (isBatchTaggingJob) {
-        try {
-          logger.info(`🏷️ BATCH TAGGING: Deleting failed batch tagging job ${jobId}`)
-          await db.delete(jobs).where(eq(jobs.id, jobId))
-          logger.info(`🗑️ BATCH TAGGING: Deleted failed temporary job ${jobId}`)
-
-          // Update job counts again after deletion
-          const { updateJobCounts: updateJobCountsAfterDeletion } = await import('~/server/services/systemStatusManager')
-          await updateJobCountsAfterDeletion()
-        } catch (batchError) {
-          logger.error(`❌ BATCH TAGGING: Failed to delete failed batch tagging job ${jobId}:`, batchError)
-        }
-      }
-
       // Job triggering is now handled exclusively by the continuous processing interval
       // This prevents race conditions and ensures proper job sequencing
       logger.info('🔄 Job failed - continuous processing will handle next job automatically')
@@ -213,17 +226,72 @@ export default defineEventHandler(async event => {
       }
     }
 
+    // Handle tagging job type - tag_results is always a dict: {uuid: tags, ...}
+    if (jobType === 'tagging' && tagResults) {
+      const { filterAndNormalizeTags } = await import('~/server/utils/tagConfig')
+
+      // tagResults is already in dict format: { uuid: rawTags }
+      const tagsToProcess: Record<string, string> = tagResults
+
+      logger.info(`🏷️ TAGGING: Processing ${Object.keys(tagsToProcess).length} media items`)
+
+      const results: Array<{ uuid: string; filteredCount: number }> = []
+
+      for (const [targetUuid, rawTags] of Object.entries(tagsToProcess)) {
+        const filteredTags = filterAndNormalizeTags(rawTags)
+        const tagsObject = {
+          tags: filteredTags,
+          rawTags,
+          model: 'wd14-tagger',
+          confidence: 0.35,
+          timestamp: new Date().toISOString(),
+          source: 'comfyui-auto-tagging'
+        }
+
+        const updated = await db
+          .update(mediaRecords)
+          .set({ tags: tagsObject, updatedAt: new Date() })
+          .where(eq(mediaRecords.uuid, targetUuid))
+          .returning({ uuid: mediaRecords.uuid })
+
+        if (updated.length > 0) {
+          results.push({ uuid: targetUuid, filteredCount: filteredTags.length })
+          logger.info(`✅ TAGGING: ${targetUuid} -> ${filteredTags.length} tags`)
+        } else {
+          logger.warn(`⚠️ TAGGING: ${targetUuid} not found`)
+        }
+      }
+
+      // Delete temporary tagging job
+      await db.delete(jobs).where(eq(jobs.id, jobId))
+      logger.info(`🗑️ TAGGING: Deleted job ${jobId}`)
+
+      try {
+        const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+        await updateJobCounts()
+      } catch (error) {
+        logger.error('Failed to update job counts:', error)
+      }
+
+      return {
+        success: true,
+        message: `Tagged ${results.length} media items`,
+        job_id: jobId,
+        results
+      }
+    }
+
     // SINGLE REQUEST PROCESSING: Process ALL files at once
-    const files = formData.filter(field => field.filename)
+    const files = formData?.filter(field => field.filename) || []
 
     logger.info(`📦 SINGLE REQUEST: Received ${files.length} files in single request for job ${jobId}`)
     logger.info(`📦 FILES DEBUG: ${files.map(f => `${f.filename} (${f.data?.length || 0} bytes)`).join(', ')}`)
-    logger.info(`📦 FORM DATA DEBUG: Total form fields: ${formData.length}`)
+    logger.info(`📦 FORM DATA DEBUG: Total form fields: ${formData?.length || 0}`)
     logger.info(
       `📦 FORM DATA DEBUG: Non-file fields: ${formData
-        .filter(f => !f.filename)
+        ?.filter(f => !f.filename)
         .map(f => `${f.name}=${f.data?.toString()}`)
-        .join(', ')}`
+        .join(', ') || 'none'}`
     )
     logger.info(`📦 JOB DEBUG: sourceMediaUuid=${job?.sourceMediaUuid}, explicit job_type=${jobType}`)
 
@@ -738,38 +806,6 @@ export default defineEventHandler(async event => {
       await updateJobCounts()
     } catch (error) {
       logger.error('Failed to update job counts after job completion:', error)
-    }
-
-    // Handle batch tagging job deletion after successful completion
-    if (isBatchTaggingJob && jobStatus === 'completed') {
-      try {
-        logger.info(`🏷️ BATCH TAGGING: Processing tagging results for job ${jobId}`)
-
-        // For batch tagging, the images contain the tagging results
-        // We need to update the original media records with the tags
-        const taggedImages = savedMedia.filter(media => media.type === 'image')
-
-        if (taggedImages.length > 0) {
-          logger.info(`🏷️ BATCH TAGGING: Found ${taggedImages.length} tagged images to process`)
-
-          // TODO: Extract tags from the tagged images and update original media records
-          // This would involve reading the image metadata or filename to get the tags
-          // and then updating the corresponding source media records
-
-          logger.info(`🏷️ BATCH TAGGING: Tagging results processed successfully`)
-        }
-
-        // Delete the temporary batch tagging job
-        await db.delete(jobs).where(eq(jobs.id, jobId))
-        logger.info(`🗑️ BATCH TAGGING: Deleted temporary job ${jobId} after successful completion`)
-
-        // Update job counts again after deletion
-        const { updateJobCounts: updateJobCountsAfterDeletion } = await import('~/server/services/systemStatusManager')
-        await updateJobCountsAfterDeletion()
-      } catch (batchError) {
-        logger.error(`❌ BATCH TAGGING: Failed to process batch tagging completion for job ${jobId}:`, batchError)
-        // Don't fail the entire request if batch processing fails
-      }
     }
 
     // Job triggering is now handled exclusively by the continuous processing interval

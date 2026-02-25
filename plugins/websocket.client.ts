@@ -40,26 +40,6 @@ export default defineNuxtPlugin({
         }, 50)
       }
 
-      // Enhanced PWA visibility handling
-      // const handleVisibilityChange = () => {
-      //   if (document.hidden) {
-      //     console.log('🌙 App going to background (PWA mode)')
-      //     // Don't disconnect - let the browser handle it naturally
-      //   } else {
-      //     console.log('☀️ App returning to foreground (PWA mode)')
-      //     // Delay reconnection to avoid triggering reloads during visibility change
-      //     // Use a longer delay and check online status to prevent race conditions
-      //     setTimeout(() => {
-      //       if (!jobsStore.wsConnected && navigator.onLine) {
-      //         console.log('🔌 PWA foreground reconnection...')
-      //         jobsStore.connectWebSocket()
-      //       }
-      //     }, 3000)
-      //   }
-      // }
-
-      // document.addEventListener('visibilitychange', handleVisibilityChange)
-
       // PWA-specific page lifecycle events
       const handlePageShow = () => {
         console.log('📱 PWA page show event')

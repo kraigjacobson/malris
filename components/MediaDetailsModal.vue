@@ -1,6 +1,6 @@
 <template>
   <!-- Media Detail Modal -->
-  <UModal :open="isOpen" @update:open="$emit('update:isOpen', $event)" :fullscreen="isMobile">
+  <UModal :open="isOpen" :dismissible="false" :fullscreen="isMobile" @update:open="$emit('update:isOpen', $event)">
     <template #header>
       <div v-if="media" class="flex justify-between items-center w-full gap-3">
         <div class="flex items-center gap-2 sm:gap-3">
@@ -33,7 +33,7 @@
         <!-- Mode Tabs -->
         <UTabs v-model="currentMode" :items="modeTabItems" class="border-b border-gray-200 dark:border-gray-700" />
 
-        <div :class="currentMode === 'tag' ? '' : 'p-3 sm:p-6'" class="flex-1 overflow-auto" @touchstart="handleGestureTouchStartWrapper" @touchmove="handleGestureTouchMoveWrapper" @touchend="handleGestureTouchEndWrapper">
+        <div :class="[currentMode === 'crop' ? '' : currentMode === 'tag' ? '' : 'p-3 sm:p-6', currentMode === 'crop' ? 'overflow-hidden' : 'overflow-auto']" class="flex-1" @touchstart="handleGestureTouchStartWrapper" @touchmove="handleGestureTouchMoveWrapper" @touchend="handleGestureTouchEndWrapper">
           <!-- Tag Mode Layout -->
           <div v-if="currentMode === 'tag'" class="grid grid-cols-1 lg:grid-cols-2 gap-6 p-0">
             <!-- Media Display -->
@@ -49,7 +49,7 @@
                   </div>
                 </div>
                 <!-- Video display -->
-                <video v-else-if="media.type === 'video' && settingsStore.displayImages && media.thumbnail_uuid" :key="`tag-video-${media.uuid}`" :poster="media.thumbnail || `/api/media/${media.thumbnail_uuid}/image?size=md`" class="w-full h-full object-contain rounded-lg shadow-md" controls preload="metadata" autoplay>
+                <video v-else-if="media.type === 'video' && settingsStore.displayImages && media.thumbnail_uuid" :key="`tag-video-${media.uuid}-${media.updated_at ? new Date(media.updated_at).getTime() : 0}`" :poster="media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=md&v=${media.updated_at ? new Date(media.updated_at).getTime() : 0}` : (media.thumbnail || undefined)" class="w-full h-full object-contain rounded-lg shadow-md" controls preload="metadata" autoplay muted>
                   <source :src="`/api/stream/${media.uuid}`" type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
@@ -113,6 +113,14 @@
                 </div>
               </div>
 
+              <!-- AI Tagging Button (for dest videos) -->
+              <div v-if="media?.purpose === 'dest' && media?.type === 'video'" class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                <UButton :loading="isAiTagging" :disabled="isAiTagging" color="info" variant="soft" size="sm" icon="i-heroicons-sparkles" @click="triggerAiTagging">
+                  {{ isAiTagging ? 'Sending to AI...' : 'Tag with AI' }}
+                </UButton>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Extracts a frame and sends to WD14 Tagger</p>
+              </div>
+
               <!-- Current Tags Display -->
               <div>
                 <h5 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Current Tags</h5>
@@ -126,13 +134,13 @@
           </div>
 
           <!-- Normal/Edit Mode Layout -->
-          <div v-else class="space-y-4">
+          <div v-else :class="currentMode === 'crop' ? 'h-full' : 'space-y-4'">
             <!-- Image Display -->
-            <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" class="w-full relative">
+            <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" :class="currentMode === 'crop' ? 'w-full h-full relative flex items-center justify-center' : 'w-full relative'">
               <!-- Previous Button (only in none mode) -->
               <UButton v-if="currentMode === 'none' && currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
 
-              <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" class="w-full object-contain rounded" @error="handleImageError" @load="onImageLoaded" />
+              <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" :class="currentMode === 'crop' ? 'max-w-full max-h-full object-contain rounded' : 'w-full object-contain rounded'" @error="handleImageError" @load="onImageLoaded" />
               <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
                 <div class="text-center">
                   <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
@@ -144,13 +152,13 @@
 
               <!-- Cropper overlay for images (only visible in crop mode) -->
               <div v-if="currentMode === 'crop'" class="absolute inset-0 z-20">
-                <Cropper v-if="cropFrameSource" ref="cropperRef" class="w-full h-full" :src="cropFrameSource" @change="onCropperChange" />
+                <Cropper v-if="cropFrameSource" ref="cropperRef" :class="['w-full h-full', cropperVisible ? '' : 'opacity-0 pointer-events-none']" :src="cropFrameSource" :default-size="cropperDefaultSize" :default-position="cropperDefaultPosition" @ready="onCropperReady" @change="onCropperChange" />
               </div>
             </div>
 
             <!-- Video Display -->
-            <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}-${media._cacheBuster || 0}`" class="w-full relative">
-              <video v-if="settingsStore.displayImages" :ref="modalVideo" :poster="media.thumbnail ? media.thumbnail : media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm` : undefined" controls muted loop class="w-full object-contain rounded" preload="metadata" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture crossorigin="anonymous" @loadedmetadata="onVideoLoaded" @timeupdate="onTimeUpdate">
+            <div v-else-if="media.type === 'video'" :key="`video-display-${media.uuid}-${media._cacheBuster || (media.updated_at ? new Date(media.updated_at).getTime() : 0)}`" :class="currentMode === 'crop' ? 'w-full h-full relative flex items-center justify-center' : 'w-full relative'">
+              <video v-if="settingsStore.displayImages" :ref="modalVideo" :poster="media.thumbnail_uuid ? `/api/media/${media.thumbnail_uuid}/image?size=sm&v=${media._cacheBuster || (media.updated_at ? new Date(media.updated_at).getTime() : 0)}` : (media.thumbnail || undefined)" controls muted loop :class="currentMode === 'crop' ? 'max-w-full max-h-full object-contain rounded' : 'w-full object-contain rounded'" preload="metadata" playsinline webkit-playsinline :data-video-id="media.uuid" disablePictureInPicture crossorigin="anonymous" @loadedmetadata="onVideoLoaded" @timeupdate="onTimeUpdate">
                 <source :src="`/api/stream/${media.uuid}?v=${media._cacheBuster || 0}`" type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
@@ -163,7 +171,7 @@
               </div>
 
               <!-- ThumbButtons with Close (bottom), Rating (middle), Delete (top) in view mode -->
-              <ThumbButtons v-if="currentMode === 'none'" :slot1="closeButtonConfig" :slot5="deleteButtonConfig" @thumb-click-slot-1="closeModal" @thumb-click-slot-5="$emit('confirmDelete', media)">
+              <ThumbButtons v-if="currentMode === 'none'" :slot2="closeButtonConfig" :slot4="deleteButtonConfig" @thumb-click-slot-2="closeModal" @thumb-click-slot-4="$emit('confirmDelete', media)">
                 <template #slot3>
                   <StarRating :media-uuid="media.uuid" :rating="currentRating" @updated="handleRatingUpdate" />
                 </template>
@@ -172,8 +180,8 @@
               <!-- Cropper overlay (only visible in crop mode) -->
               <div v-if="currentMode === 'crop'" class="absolute inset-0 z-20">
                 <!-- Hidden video for frame preview -->
-                <video ref="cropPreviewVideo" :src="`/api/stream/${media.uuid}`" class="absolute inset-0 w-full h-full object-contain opacity-0 pointer-events-none" preload="auto" muted @seeked="onCropVideoSeeked" />
-                <Cropper v-if="cropFrameSource" ref="cropperRef" class="w-full h-full" :src="cropFrameSource" @change="onCropperChange" />
+                <video :key="`crop-preview-${media.uuid}-${media._cacheBuster || 0}`" ref="cropPreviewVideo" :src="`/api/stream/${media.uuid}?v=${media._cacheBuster || 0}`" class="absolute inset-0 w-full h-full object-contain opacity-0 pointer-events-none" preload="auto" muted @loadedmetadata="onCropPreviewLoaded" @seeked="onCropVideoSeeked" />
+                <Cropper v-if="cropFrameSource" ref="cropperRef" :class="['w-full h-full', cropperVisible ? '' : 'opacity-0 pointer-events-none']" :src="cropFrameSource" :default-size="cropperDefaultSize" :default-position="cropperDefaultPosition" @ready="onCropperReady" @change="onCropperChange" />
               </div>
             </div>
 
@@ -336,6 +344,7 @@
 import { useSettingsStore } from '~/stores/settings'
 import { Cropper } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
+import { hairColorTags, hairStyleTags, ageBodyTags, actionTags } from '~/utils/allowedTags'
 
 // Device detection
 const { isMobile } = useDevice()
@@ -420,6 +429,7 @@ const isSavingTags = ref(false)
 const selectedTags = ref([])
 const originalTags = ref([])
 const totalUntaggedInDatabase = ref(0)
+const isAiTagging = ref(false)
 
 // Rating state
 const currentRating = ref(null)
@@ -473,12 +483,6 @@ const handleGestureTouchEndWrapper = e => {
   handleGestureTouchEnd(e)
 }
 
-// Predefined quick tags organized by category
-const hairColorTags = ['ginger', 'blonde', 'brunette', 'colored_hair']
-const hairStyleTags = ['braid', 'bangs', 'curly']
-const ageBodyTags = ['teen', 'milf', 'chub', 'glasses']
-const actionTags = ['rough', 'ass', 'bj', 'multi', 'rule34', 'scat']
-
 // Cropper state
 const cropperRef = ref(null)
 const isUpdatingFromCropper = ref(false)
@@ -486,6 +490,7 @@ const cropPreviewTime = ref(0)
 const cropFrameSource = ref('')
 const savedCropCoordinates = ref(null)
 const isInitialCropSetup = ref(false)
+const cropperVisible = ref(false)
 let cropCanvas = null
 let isSeekingFrame = false
 let pendingSeekTime = null
@@ -719,6 +724,39 @@ const exitEditMode = () => {
   resetEditSettings()
 }
 
+const reinitializeCropMode = async () => {
+  if (currentMode.value !== 'crop') return
+
+  isInitialCropSetup.value = false
+  savedCropCoordinates.value = null
+  cropFrameSource.value = ''
+  cropperVisible.value = false
+  isSeekingFrame = false
+  pendingSeekTime = null
+
+  await nextTick()
+
+  if (props.media?.type === 'video') {
+    cropPreviewTime.value = 0
+    if (cropPreviewVideo.value) {
+      cropPreviewVideo.value.addEventListener('loadedmetadata', () => {
+        updateCropPreviewFrame(0)
+      }, { once: true })
+    }
+  } else if (props.media?.type === 'image') {
+    const cacheBuster = props.media._cacheBuster || Date.now()
+    const imgSrc = `/api/media/${props.media.uuid}/image?size=lg&v=${cacheBuster}`
+    const img = new Image()
+    img.onload = () => {
+      videoWidth.value = img.naturalWidth
+      videoHeight.value = img.naturalHeight
+      editSettings.value.crop = { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight }
+      cropFrameSource.value = imgSrc
+    }
+    img.src = imgSrc
+  }
+}
+
 const resetEditSettings = () => {
   editSettings.value = {
     trimStart: null,
@@ -776,6 +814,7 @@ const saveVideoEdits = async () => {
 
       emit('saveEdits', response.updatedMedia)
       exitEditMode()
+      await reinitializeCropMode()
     }
   } catch (error) {
     console.error('Failed to save video edits:', error)
@@ -819,27 +858,10 @@ const onImageLoaded = event => {
       height: img.naturalHeight
     }
 
-    // Initialize crop frame source and set initial coordinates
+    // Set crop frame source; coordinate initialization handled in onCropperReady
     isInitialCropSetup.value = false
     savedCropCoordinates.value = null
     cropFrameSource.value = img.src
-
-    nextTick(() => {
-      if (cropperRef.value) {
-        const result = cropperRef.value.getResult()
-        if (result && result.image) {
-          const coords = {
-            left: 0,
-            top: 0,
-            width: result.image.width,
-            height: result.image.height
-          }
-          cropperRef.value.setCoordinates(coords)
-          savedCropCoordinates.value = coords
-          isInitialCropSetup.value = true
-        }
-      }
-    })
   }
 }
 
@@ -916,7 +938,44 @@ const addTrimRange = () => {
   trimHandles.value.push(quarterDuration, quarterDuration * 3)
 }
 
+// Cropper default-size/position — used during initialization so stencil is placed
+// correctly before first render, avoiding any visible animation.
+const cropperDefaultSize = ({ imageSize }) => {
+  if (savedCropCoordinates.value) {
+    return { width: savedCropCoordinates.value.width, height: savedCropCoordinates.value.height }
+  }
+  return { width: imageSize.width, height: imageSize.height }
+}
+
+const cropperDefaultPosition = () => {
+  if (savedCropCoordinates.value) {
+    return { left: savedCropCoordinates.value.left, top: savedCropCoordinates.value.top }
+  }
+  return { left: 0, top: 0 }
+}
+
+// Called when crop preview video metadata loads (via template @loadedmetadata)
+const onCropPreviewLoaded = () => {
+  if (currentMode.value === 'crop') {
+    updateCropPreviewFrame(0)
+  }
+}
+
 // Cropper methods
+const onCropperReady = () => {
+  isInitialCropSetup.value = true
+  // Reveal the cropper — stencil is already in the correct position via default-size/position
+  cropperVisible.value = true
+
+  // Complete any pending video seek operation
+  isSeekingFrame = false
+  if (pendingSeekTime !== null) {
+    const nextTime = pendingSeekTime
+    pendingSeekTime = null
+    updateCropPreviewFrame(nextTime)
+  }
+}
+
 const onCropperChange = ({ coordinates }) => {
   if (!coordinates || !videoWidth.value || !videoHeight.value) return
 
@@ -985,40 +1044,7 @@ const onCropVideoSeeked = () => {
       const newFrame = cropCanvas.toDataURL('image/jpeg', 0.85)
       if (newFrame) {
         cropFrameSource.value = newFrame
-
-        // Restore crop coordinates after frame updates, or set initial full-size crop
-        nextTick(() => {
-          if (cropperRef.value) {
-            if (savedCropCoordinates.value) {
-              // Restore previously saved coordinates
-              cropperRef.value.setCoordinates(savedCropCoordinates.value)
-            } else if (!isInitialCropSetup.value) {
-              // Set initial crop to cover the whole image
-              const result = cropperRef.value.getResult()
-              if (result && result.image) {
-                const coords = {
-                  left: 0,
-                  top: 0,
-                  width: result.image.width,
-                  height: result.image.height
-                }
-                cropperRef.value.setCoordinates(coords)
-                savedCropCoordinates.value = coords
-                isInitialCropSetup.value = true
-              }
-            }
-          }
-
-          // Mark seeking as complete after coordinates are restored
-          isSeekingFrame = false
-
-          // If there's a pending seek, process it now
-          if (pendingSeekTime !== null) {
-            const nextTime = pendingSeekTime
-            pendingSeekTime = null
-            updateCropPreviewFrame(nextTime)
-          }
-        })
+        // Coordinate restoration and seek completion handled in onCropperReady
       }
     }
   } catch (error) {
@@ -1078,6 +1104,45 @@ const toggleTag = tag => {
 
 const clearAllTags = () => {
   selectedTags.value = []
+}
+
+const triggerAiTagging = async () => {
+  if (!props.media?.uuid) return
+
+  const toast = useToast()
+  isAiTagging.value = true
+
+  try {
+    const response = await $fetch(`/api/media/${props.media.uuid}/queue-tagging`, {
+      method: 'POST'
+    })
+
+    if (response.success) {
+      toast.add({
+        title: 'AI Tagging Queued',
+        description: response.message,
+        icon: 'i-heroicons-sparkles',
+        color: 'success'
+      })
+    } else {
+      toast.add({
+        title: 'Tagging Failed',
+        description: response.message,
+        icon: 'i-heroicons-exclamation-triangle',
+        color: 'warning'
+      })
+    }
+  } catch (error) {
+    toast.add({
+      title: 'Tagging Failed',
+      description: error?.data?.message || error?.message || 'Failed to queue tagging job',
+      icon: 'i-heroicons-exclamation-triangle',
+      color: 'error'
+    })
+    console.error('Error queueing AI tagging:', error)
+  } finally {
+    isAiTagging.value = false
+  }
 }
 
 const navigatePrevious = async () => {
@@ -1241,20 +1306,16 @@ watch(currentMode, (newMode, oldMode) => {
     isInitialCropSetup.value = false
     savedCropCoordinates.value = null
     cropFrameSource.value = ''
+    cropperVisible.value = false
 
     if (props.media?.type === 'video') {
       // Video crop initialization
+      // Primary path: @loadedmetadata on the crop preview video element handles this.
+      // Fallback: if the element already has metadata when the watcher runs, trigger directly.
       nextTick(() => {
         cropPreviewTime.value = 0
-        // Initialize the first frame once video is loaded
-        if (cropPreviewVideo.value) {
-          cropPreviewVideo.value.addEventListener(
-            'loadedmetadata',
-            () => {
-              updateCropPreviewFrame(0)
-            },
-            { once: true }
-          )
+        if (cropPreviewVideo.value?.readyState >= 1) {
+          updateCropPreviewFrame(0)
         }
       })
     } else if (props.media?.type === 'image') {
@@ -1275,25 +1336,8 @@ watch(currentMode, (newMode, oldMode) => {
           }
 
           // Set cropFrameSource after loading to ensure correct aspect ratio
+          // Coordinate initialization handled in onCropperReady
           cropFrameSource.value = imgSrc
-
-          // Set initial crop coordinates after image loads
-          nextTick(() => {
-            if (cropperRef.value) {
-              const result = cropperRef.value.getResult()
-              if (result && result.image) {
-                const coords = {
-                  left: 0,
-                  top: 0,
-                  width: result.image.width,
-                  height: result.image.height
-                }
-                cropperRef.value.setCoordinates(coords)
-                savedCropCoordinates.value = coords
-                isInitialCropSetup.value = true
-              }
-            }
-          })
         }
         img.src = imgSrc
       })
@@ -1303,6 +1347,8 @@ watch(currentMode, (newMode, oldMode) => {
   // Reset crop state when exiting crop mode
   if (oldMode === 'crop') {
     cropFrameSource.value = ''
+    isSeekingFrame = false
+    pendingSeekTime = null
   }
 
   // Initialize trim handles when entering trim mode

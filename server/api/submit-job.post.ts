@@ -1,4 +1,5 @@
 import { logger } from '~/server/utils/logger'
+import { resolveSourceMediaUuid } from '~/server/utils/jobUtils'
 export default defineEventHandler(async (event) => {
   try {
     // Get the request body
@@ -49,24 +50,28 @@ export default defineEventHandler(async (event) => {
     // Import the job creation logic directly
     const { getDb } = await import('~/server/utils/database')
     const { jobs } = await import('~/server/utils/schema')
-    
+
     const db = getDb()
-    
+
+    // If subject has only 1 source image, skip the source workflow and use it directly
+    const resolvedSourceMediaUuid = await resolveSourceMediaUuid(db, jobData.subject_uuid)
+
     // Generate a unique job ID
     const jobId = crypto.randomUUID()
-    
+
     // Create the job record in the database
     const newJob = {
       id: jobId,
       jobType: jobData.job_type,
       subjectUuid: jobData.subject_uuid,
       destMediaUuid: jobData.dest_media_uuid,
+      sourceMediaUuid: resolvedSourceMediaUuid,
       parameters: jobData.parameters,
       status: 'queued' as const,
       createdAt: new Date(),
       updatedAt: new Date()
     }
-    
+
     await db.insert(jobs).values(newJob)
     
     logger.info('Job created successfully:', newJob)

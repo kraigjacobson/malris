@@ -25,9 +25,9 @@
 
         <!-- Sort and Limit options -->
         <div class="grid gap-2 items-end" style="grid-template-columns: 2fr 1fr 1fr">
-          <USelect v-model="searchStore.videoSearch.sortType" :items="sortTypeItems" class="w-full" size="sm" placeholder="Sort By" @update:model-value="handleSortTypeChange" />
-          <USelect v-model="searchStore.videoSearch.sortOrder" :items="sortOrderItems" class="w-full" size="sm" placeholder="Order" @update:model-value="handleSortOrderChange" />
-          <USelect v-model="searchStore.videoSearch.limitOptions" :items="limitOptionsItems" class="w-full" size="sm" placeholder="Limit" @update:model-value="handleLimitChange" />
+          <USelect v-model="searchStore.videoSearch.sortType" :items="searchStore.sortTypeItems" class="w-full" size="sm" placeholder="Sort By" @update:model-value="handleSortTypeChange" />
+          <USelect v-model="searchStore.videoSearch.sortOrder" :items="searchStore.sortOrderItems" class="w-full" size="sm" placeholder="Order" @update:model-value="handleSortOrderChange" />
+          <USelect v-model="searchStore.videoSearch.limitOptions" :items="searchStore.limitOptionsItems" class="w-full" size="sm" placeholder="Limit" @update:model-value="handleLimitChange" />
         </div>
       </div>
     </template>
@@ -73,29 +73,4 @@ const collapse = () => {
 defineExpose({
   collapse
 })
-
-// Sort type options (separate from order)
-const sortTypeItems = [
-  { label: 'Random', value: 'random' },
-  { label: 'Created Date', value: 'created_at' },
-  { label: 'Updated Date', value: 'updated_at' },
-  { label: 'Duration', value: 'duration' },
-  { label: 'File Size', value: 'file_size' },
-  { label: 'Filename', value: 'filename' }
-]
-
-// Sort order options
-const sortOrderItems = [
-  { label: 'Asc', value: 'asc' },
-  { label: 'Desc', value: 'desc' }
-]
-
-// Limit options
-const limitOptionsItems = [
-  { label: '24', value: 24 },
-  { label: '48', value: 48 },
-  { label: '96', value: 96 },
-  { label: '192', value: 192 },
-  { label: '480', value: 480 }
-]
 </script>

@@ -1,4 +1,5 @@
 import { logger } from '~/server/utils/logger'
+import { resolveSourceMediaUuid } from '~/server/utils/jobUtils'
 export default defineEventHandler(async (event) => {
   const jobId = getRouterParam(event, 'id')
   
@@ -22,7 +23,8 @@ export default defineEventHandler(async (event) => {
     // First check if job exists and can be re-queued
     const existingJob = await db.select({
       id: jobs.id,
-      status: jobs.status
+      status: jobs.status,
+      subjectUuid: jobs.subjectUuid
     }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
     
     if (existingJob.length === 0) {
@@ -60,12 +62,15 @@ export default defineEventHandler(async (event) => {
       logger.info(`ℹ️ No output media records found for job ${jobId}`)
     }
 
+    // If subject has only 1 source image, skip the source workflow and use it directly
+    const resolvedSourceMediaUuid = await resolveSourceMediaUuid(db, job.subjectUuid)
+
     // Update job status to queued and clear error/source fields
     const requeuedJob = await db.update(jobs)
       .set({
         status: 'queued',
         errorMessage: null,
-        sourceMediaUuid: null,
+        sourceMediaUuid: resolvedSourceMediaUuid,
         progress: 0,
         startedAt: null,
         completedAt: null,

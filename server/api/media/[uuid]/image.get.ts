@@ -128,7 +128,7 @@ export default defineEventHandler(async (event) => {
     // Set response headers for inline display
     setHeader(event, 'content-type', contentType)
     setHeader(event, 'content-disposition', 'inline')
-    setHeader(event, 'cache-control', 'public, max-age=3600')
+    setHeader(event, 'cache-control', 'no-store')
     setHeader(event, 'access-control-allow-origin', '*')
     setHeader(event, 'access-control-allow-methods', 'GET')
     

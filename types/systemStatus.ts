@@ -86,17 +86,20 @@ export interface SystemStatus {
 }
 
 // WebSocket message types
-export type SystemStatusEvent = 
+export type SystemStatusEvent =
   | 'status_update'        // Full status update
   | 'runpod_status_change' // RunPod worker status changed
   | 'comfyui_status_change' // ComfyUI status changed
   | 'processing_status_change' // Processing status changed
   | 'auto_processing_toggle'   // Auto processing enabled/disabled
   | 'job_counts_update'    // Job counts changed
+  | 'processing_state_change'  // Processing mode changed (single/continuous)
+  | 'initial_sync'         // Initial WebSocket sync with full state
+  | 'state_correction'     // State reconciliation correction
 
 export interface WebSocketMessage {
   type: SystemStatusEvent
-  data: SystemStatus | Partial<SystemStatus>
+  data: any  // Allow any data structure for flexibility
   timestamp: string
 }
 

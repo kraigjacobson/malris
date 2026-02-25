@@ -172,6 +172,21 @@
 </template>
 
 <script setup>
+/**
+ * Submit Job Page
+ *
+ * FILTER PERSISTENCE NOTE:
+ * Video and Subject search filters are persisted to localForage via the search store.
+ * When adding new filters:
+ * 1. Add the filter property to videoSearch or subjectSearch in stores/search.ts
+ * 2. Add default value to the appropriate reset function (resetVideoFilters/resetSubjectFilters)
+ * 3. If the filter should NOT be persisted, add it to the exclusion list in the save function
+ *
+ * EXCLUDED FROM PERSISTENCE:
+ * - selectedTags (both video and subject) - These are intentionally cleared on page load
+ *
+ * All other filter changes are automatically persisted to localForage via deep watchers.
+ */
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 import { useSearchStore } from '~/stores/search'

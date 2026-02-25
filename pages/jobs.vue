@@ -705,10 +705,17 @@ const totalPages = computed(() => Math.ceil(totalJobs.value / itemsPerPage.value
 
 // Check if any processing is currently active
 const isAnyProcessingActive = computed(() => {
+  // CRITICAL FIX: Check if ComfyUI has running jobs - this is the source of truth
+  // If ComfyUI is processing, we should show the stop button
+  const comfyuiRunningJobs = jobsStore.systemStatus?.comfyuiProcessing?.runningJobs || 0
+
   // Show stop button if:
-  // 1. Our local mode indicates we're processing (single or continuous)
-  // 2. OR ComfyUI is actually processing something
-  return processingMode.value !== 'idle' || jobsStore.systemStatus?.comfyuiProcessing?.status === 'processing'
+  // 1. ComfyUI has running jobs (source of truth)
+  // 2. OR our local mode indicates we're processing (optimistic UI during button press)
+  const localModeIsProcessing = processingMode.value !== 'idle'
+
+  // ComfyUI job count is the source of truth, but use local mode for immediate feedback
+  return comfyuiRunningJobs > 0 || localModeIsProcessing
 })
 
 // Get all jobs that need input for modal navigation
@@ -857,33 +864,111 @@ const refreshJobsWithCurrentState = async () => {
   })
 }
 
-// New processing methods for the updated UI
+// WebSocket command acknowledgment tracker
+const pendingAcks = ref(new Map())
+
+// Helper function to wait for WebSocket acknowledgment
+const waitForAck = (command, timeout = 5000) => {
+  return new Promise(resolve => {
+    const timeoutId = setTimeout(() => {
+      pendingAcks.value.delete(command)
+      resolve(false)
+    }, timeout)
+
+    pendingAcks.value.set(command, { resolve, timeoutId })
+  })
+}
+
+// Handle WebSocket acknowledgments
+const handleWebSocketAck = ackData => {
+  // Add null safety check
+  if (!ackData) {
+    console.error('❌ handleWebSocketAck received null/undefined ackData')
+    return
+  }
+
+  if (!ackData.command) {
+    console.error('❌ handleWebSocketAck received ackData without command property:', ackData)
+    return
+  }
+
+  const pending = pendingAcks.value.get(ackData.command)
+  if (pending) {
+    clearTimeout(pending.timeoutId)
+    pending.resolve(ackData.success)
+    pendingAcks.value.delete(ackData.command)
+  } else {
+    console.warn('⚠️ Received acknowledgment for command with no pending request:', ackData.command)
+  }
+}
+
+// New processing methods for the updated UI - using WebSocket commands
 const startSingleProcessing = async () => {
   try {
     isStartingSingle.value = true
-    processingMode.value = 'single'
+    processingMode.value = 'single' // Optimistic update
 
-    const response = await useApiFetch('jobs/processing/single', {
-      method: 'POST'
-    })
+    // Send command via WebSocket if connected
+    if (jobsStore.wsConnection && jobsStore.wsConnected) {
+      jobsStore.wsConnection.send(
+        JSON.stringify({
+          type: 'start_single',
+          source_type: selectedSourceTypeFilter.value
+        })
+      )
 
-    if (response.success) {
-      const toast = useToast()
-      toast.add({
-        title: 'Single Job Processing Started',
-        description: response.message || 'Processing one job',
-        color: 'success',
-        duration: 3000
-      })
+      // Wait for acknowledgment with timeout
+      const ackReceived = await waitForAck('start_single', 5000)
+
+      if (ackReceived) {
+        const toast = useToast()
+        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'any' : selectedSourceTypeFilter.value
+        toast.add({
+          title: 'Single Job Processing Started',
+          description: `Processing one ${typeLabel} job`,
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        // Timeout - revert optimistic update
+        processingMode.value = 'idle'
+        const toast = useToast()
+        toast.add({
+          title: 'Command Timeout',
+          description: 'No response from server',
+          color: 'warning',
+          duration: 3000
+        })
+      }
     } else {
-      const toast = useToast()
-      toast.add({
-        title: 'No Jobs to Process',
-        description: response.message || 'No jobs available for processing',
-        color: 'warning',
-        duration: 2000
+      // Fallback to HTTP if WebSocket not connected
+      console.warn('⚠️ WebSocket not connected, falling back to HTTP')
+      const response = await useApiFetch('jobs/processing/single', {
+        method: 'POST',
+        body: {
+          source_type: selectedSourceTypeFilter.value
+        }
       })
-      processingMode.value = 'idle'
+
+      if (response.success) {
+        const toast = useToast()
+        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'any' : selectedSourceTypeFilter.value
+        toast.add({
+          title: 'Single Job Processing Started',
+          description: response.message || `Processing one ${typeLabel} job`,
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        processingMode.value = 'idle'
+        const toast = useToast()
+        toast.add({
+          title: 'No Jobs to Process',
+          description: response.message || 'No jobs available for processing',
+          color: 'warning',
+          duration: 2000
+        })
+      }
     }
   } catch (error) {
     console.error('Failed to start single processing:', error)
@@ -904,29 +989,69 @@ const startSingleProcessing = async () => {
 const startContinuousProcessing = async () => {
   try {
     isStartingContinuous.value = true
-    processingMode.value = 'continuous'
+    processingMode.value = 'continuous' // Optimistic update
 
-    const response = await useApiFetch('jobs/processing/continuous', {
-      method: 'POST'
-    })
+    // Send command via WebSocket if connected
+    if (jobsStore.wsConnection && jobsStore.wsConnected) {
+      jobsStore.wsConnection.send(
+        JSON.stringify({
+          type: 'start_continuous',
+          source_type: selectedSourceTypeFilter.value
+        })
+      )
 
-    if (response.success) {
-      const toast = useToast()
-      toast.add({
-        title: 'Continuous Processing Started',
-        description: response.message || 'Processing all jobs continuously',
-        color: 'success',
-        duration: 3000
-      })
+      // Wait for acknowledgment with timeout
+      const ackReceived = await waitForAck('start_continuous', 5000)
+
+      if (ackReceived) {
+        const toast = useToast()
+        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
+        toast.add({
+          title: 'Continuous Processing Started',
+          description: `Processing ${typeLabel} jobs continuously`,
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        // Timeout - revert optimistic update
+        processingMode.value = 'idle'
+        const toast = useToast()
+        toast.add({
+          title: 'Command Timeout',
+          description: 'No response from server',
+          color: 'warning',
+          duration: 3000
+        })
+      }
     } else {
-      const toast = useToast()
-      toast.add({
-        title: 'No Jobs to Process',
-        description: response.message || 'No jobs available for processing',
-        color: 'warning',
-        duration: 2000
+      // Fallback to HTTP if WebSocket not connected
+      console.warn('⚠️ WebSocket not connected, falling back to HTTP')
+      const response = await useApiFetch('jobs/processing/continuous', {
+        method: 'POST',
+        body: {
+          source_type: selectedSourceTypeFilter.value
+        }
       })
-      processingMode.value = 'idle'
+
+      if (response.success) {
+        const toast = useToast()
+        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
+        toast.add({
+          title: 'Continuous Processing Started',
+          description: response.message || `Processing ${typeLabel} jobs continuously`,
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        processingMode.value = 'idle'
+        const toast = useToast()
+        toast.add({
+          title: 'No Jobs to Process',
+          description: response.message || 'No jobs available for processing',
+          color: 'warning',
+          duration: 2000
+        })
+      }
     }
   } catch (error) {
     console.error('Failed to start continuous processing:', error)
@@ -947,20 +1072,53 @@ const startContinuousProcessing = async () => {
 const stopAllProcessing = async () => {
   try {
     isStopping.value = true
+    processingMode.value = 'idle' // Optimistic update
 
-    const response = await useApiFetch('jobs/processing/interrupt', {
-      method: 'POST'
-    })
+    // Send command via WebSocket if connected
+    if (jobsStore.wsConnection && jobsStore.wsConnected) {
+      jobsStore.wsConnection.send(
+        JSON.stringify({
+          type: 'stop_processing'
+        })
+      )
 
-    if (response.success) {
-      processingMode.value = 'idle'
-      const toast = useToast()
-      toast.add({
-        title: 'Processing Stopped',
-        description: 'All job processing has been stopped and ComfyUI is restarting...',
-        color: 'success',
-        duration: 3000
+      // Wait for acknowledgment with timeout
+      const ackReceived = await waitForAck('stop_processing', 5000)
+
+      if (ackReceived) {
+        const toast = useToast()
+        toast.add({
+          title: 'Processing Stopped',
+          description: 'All job processing has been stopped and ComfyUI is restarting...',
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        // Timeout - show warning but keep the idle state
+        const toast = useToast()
+        toast.add({
+          title: 'Stop Command Sent',
+          description: 'Processing should stop shortly',
+          color: 'warning',
+          duration: 3000
+        })
+      }
+    } else {
+      // Fallback to HTTP if WebSocket not connected
+      console.warn('⚠️ WebSocket not connected, falling back to HTTP')
+      const response = await useApiFetch('jobs/processing/interrupt', {
+        method: 'POST'
       })
+
+      if (response.success) {
+        const toast = useToast()
+        toast.add({
+          title: 'Processing Stopped',
+          description: 'All job processing has been stopped and ComfyUI is restarting...',
+          color: 'success',
+          duration: 3000
+        })
+      }
     }
   } catch (error) {
     console.error('Failed to stop processing:', error)
@@ -1193,18 +1351,6 @@ const openImageFullscreen = image => {
 // Job cancellation method
 const cancelJob = async job => {
   try {
-    const { confirm } = useConfirmDialog()
-
-    const confirmed = await confirm({
-      title: 'Cancel Job',
-      message: `Are you sure you want to cancel job ${job.id}? This action cannot be undone.`,
-      confirmLabel: 'Cancel Job',
-      cancelLabel: 'Keep Job',
-      variant: 'error'
-    })
-
-    if (confirmed !== 'confirm') return
-
     await useApiFetch(`jobs/${job.id}/cancel`, {
       method: 'POST'
     })
@@ -1221,7 +1367,7 @@ const cancelJob = async job => {
       errorMessage = error.message
     }
 
-    // Use confirm dialog for error messages too
+    // Use confirm dialog for error messages only
     const { confirm } = useConfirmDialog()
     await confirm({
       title: 'Error',
@@ -1276,18 +1422,6 @@ const retryJob = async job => {
 // Job re-queue method
 const requeueJob = async job => {
   try {
-    const { confirm } = useConfirmDialog()
-
-    const confirmed = await confirm({
-      title: 'Re-queue Failed Job',
-      message: `Are you sure you want to re-queue job ${job.id}? This will delete any output media and reset the job to queued status.`,
-      confirmLabel: 'Re-queue Job',
-      cancelLabel: 'Cancel',
-      variant: 'primary'
-    })
-
-    if (confirmed !== 'confirm') return
-
     await useApiFetch(`jobs/${job.id}/requeue`, {
       method: 'POST'
     })
@@ -1313,7 +1447,7 @@ const requeueJob = async job => {
       errorMessage = error.message
     }
 
-    // Use confirm dialog for error messages
+    // Use confirm dialog for error messages only
     const { confirm } = useConfirmDialog()
     await confirm({
       title: 'Error',
@@ -1510,17 +1644,6 @@ const bulkQueue = async () => {
     })
     return
   }
-
-  const { confirm } = useConfirmDialog()
-  const confirmed = await confirm({
-    title: 'Queue Selected Jobs',
-    message: `Are you sure you want to queue ${jobsToQueue.length} job(s)?`,
-    confirmLabel: 'Queue Jobs',
-    cancelLabel: 'Cancel',
-    variant: 'primary'
-  })
-
-  if (confirmed !== 'confirm') return
 
   try {
     // Queue jobs by retrying them
@@ -1743,8 +1866,6 @@ const bulkDelete = async () => {
   }
 }
 
-// Page visibility changes are now handled globally by the websocket plugin
-
 // Reset video states when modal is closed
 watch(showJobModal, isOpen => {
   if (!isOpen) {
@@ -1769,10 +1890,40 @@ watch(
   }
 )
 
+// WebSocket event listeners for command acknowledgments
+const handleCommandAck = event => {
+  handleWebSocketAck(event.detail)
+}
+
+const handleCommandError = event => {
+  handleWebSocketAck({ ...event.detail, success: false })
+}
+
+const handleStateCorrection = event => {
+  const toast = useToast()
+  toast.add({
+    title: 'State Corrected',
+    description: event.detail.reason || 'Processing state was corrected by server',
+    color: 'warning',
+    duration: 5000
+  })
+
+  // Update local state based on correction
+  // Any state correction when oldState was processing means we're now idle
+  if (event.detail.oldState?.includes('idle_with_active_jobs') || event.detail.newState === 'jobs_returned_to_queue' || event.detail.newState === 'idle') {
+    processingMode.value = 'idle'
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   // Reset processing mode on page load
   processingMode.value = 'idle'
+
+  // Add WebSocket event listeners
+  window.addEventListener('ws-command-ack', handleCommandAck)
+  window.addEventListener('ws-command-error', handleCommandError)
+  window.addEventListener('ws-state-correction', handleStateCorrection)
 
   // Fetch initial data (queue status, system status, etc.)
   await jobsStore.fetchInitialData()
@@ -1785,10 +1936,14 @@ onMounted(async () => {
   currentFilter.value = defaultFilter
   await fetchJobsDirectly(1, itemsPerPage.value, defaultFilter, '', 'all')
 
-  // Page visibility changes are now handled globally by the websocket plugin
 })
 
 onUnmounted(() => {
+  // Remove WebSocket event listeners
+  window.removeEventListener('ws-command-ack', handleCommandAck)
+  window.removeEventListener('ws-command-error', handleCommandError)
+  window.removeEventListener('ws-state-correction', handleStateCorrection)
+
   // WebSocket cleanup is now handled globally by the websocket plugin
   // Just clear any page-specific state here if needed
 })

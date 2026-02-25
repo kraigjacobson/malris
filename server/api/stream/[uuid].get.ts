@@ -152,7 +152,6 @@ export default defineEventHandler(async event => {
     setHeader(event, 'Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
     setHeader(event, 'Access-Control-Allow-Headers', 'Range')
 
-    logger.info(`🚀 Stream response complete for ${uuid}`)
     return streamResult.buffer
   } catch (error) {
     logger.error('Stream error:', error)

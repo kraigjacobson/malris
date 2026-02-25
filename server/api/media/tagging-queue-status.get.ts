@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { mediaRecords } from '~/server/utils/schema'
-import { eq, and, isNull, or } from 'drizzle-orm'
+import { eq, and, isNull, isNotNull, or, count } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 
 // Import queue state from tag-all-untagged
@@ -10,25 +10,23 @@ export default defineEventHandler(async (_event) => {
   try {
     const db = getDb()
     
-    // Get total untagged media count (both videos and images)
-    const totalUntaggedCount = await db
-      .select({ count: mediaRecords.uuid })
+    // Get total untagged dest videos with thumbnails
+    const totalUntaggedResult = await db
+      .select({ count: count() })
       .from(mediaRecords)
       .where(
         and(
-          or(
-            eq(mediaRecords.type, 'video'),
-            eq(mediaRecords.type, 'image')
-          ),
+          eq(mediaRecords.type, 'video'),
           eq(mediaRecords.purpose, 'dest'),
+          isNotNull(mediaRecords.thumbnailUuid),
           or(
             isNull(mediaRecords.tags),
             eq(mediaRecords.tags, '{}')
           )
         )
       )
-    
-    const totalUntagged = totalUntaggedCount.length
+
+    const totalUntagged = totalUntaggedResult[0]?.count ?? 0
     
     // Get current queue status
     const queueStatus = getQueueStatus()

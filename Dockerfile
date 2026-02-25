@@ -38,9 +38,11 @@ RUN apt-get update && apt-get install -y curl ffmpeg && rm -rf /var/lib/apt/list
 COPY --from=builder /app/.output /app/.output
 
 ENV NUXT_HOST=0.0.0.0
-ENV NUXT_PORT=3000
+ENV PORT=3003
+ENV NITRO_PORT=3003
+ENV NUXT_PORT=3003
 ENV DOCKER_CONTAINER=true
 
-EXPOSE 3000
+EXPOSE 3003
 
 CMD ["node", ".output/server/index.mjs"]

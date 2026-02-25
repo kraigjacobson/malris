@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
+  <UModal v-model:open="isOpen" :dismissible="false" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
     <template #header>
       <div class="flex items-center justify-between w-full">
         <h3 class="text-lg font-semibold">Submit Job</h3>
@@ -375,12 +375,6 @@ const handleSubjectSelection = selected => {
     if (selected.tags && selected.tags.tags && Array.isArray(selected.tags.tags)) {
       searchStore.videoSearch.selectedTags = [...selected.tags.tags]
     }
-
-    // ALWAYS set video search settings to these defaults when selecting a subject
-    // This ensures consistent behavior for job creation workflow
-    searchStore.videoSearch.sortType = { label: 'Created Date', value: 'created_at' }
-    searchStore.videoSearch.sortOrder = { label: 'Desc', value: 'desc' }
-    searchStore.videoSearch.limitOptions = { label: '24', value: 24 }
 
     console.log('🎯 Video search settings configured:', {
       sortType: searchStore.videoSearch.sortType,

@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :fullscreen="isMobile">
+  <UModal v-model:open="isOpen" :dismissible="false" :fullscreen="isMobile">
     <template #header>
       <div class="flex items-center justify-between w-full">
         <h3 class="text-lg font-semibold">Select Source Image</h3>
@@ -1624,15 +1624,6 @@ watch(
     if (newJob && props.modelValue) {
       console.log('⏱️ [SourceImageModal] Job changed, loading images for job:', newJob.id)
 
-      // Debug: Log job data to see what video references are available
-      console.log('🔍 [DEBUG] Job data:', {
-        id: newJob.id,
-        dest_media_uuid: newJob.dest_media_uuid,
-        output_uuid: newJob.output_uuid,
-        source_media_uuid: newJob.source_media_uuid,
-        allFields: Object.keys(newJob)
-      })
-
       // Reset zoom state when switching to a different job
       if (oldJob && oldJob.id !== newJob.id) {
         resetZoom()
@@ -1708,17 +1699,6 @@ watch(
       // If we have a new image and we're not currently loading, update immediately
       lastLoadedImage.value = newImage
     }
-
-    // Debug: Log all available fields on the current image
-    console.log('🔍 [DEBUG] Current image data:', {
-      uuid: newImage?.uuid,
-      filename: newImage?.filename,
-      purpose: newImage?.purpose,
-      dest_media_uuid_ref: newImage?.dest_media_uuid_ref,
-      video_uuid: newImage?.video_uuid,
-      job_id: newImage?.job_id,
-      allFields: newImage ? Object.keys(newImage) : 'no image'
-    })
 
     // Load destination video from job's dest_media_uuid (this is where the video UUID is stored)
     if (props.job?.dest_media_uuid) {

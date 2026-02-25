@@ -1,6 +1,6 @@
 <template>
   <!-- Fixed thumb button container - positioned at left-2, bottom: 15% -->
-  <div class="fixed left-2 flex flex-col-reverse gap-3 z-50 pointer-events-auto" style="bottom: 15%">
+  <div class="fixed left-2 flex flex-col-reverse gap-3 z-50 pointer-events-auto" style="bottom: 25%">
     <!-- Slot 1 (lowest position - easiest to reach) -->
     <div class="min-w-[48px] min-h-[48px]">
       <UButton v-if="slot1" :icon="slot1.icon" :color="slot1.color || 'neutral'" :variant="slot1.variant || 'ghost'" :size="slot1.size || 'xl'" :title="slot1.title" class="opacity-80 hover:opacity-100 transition-opacity min-w-[48px] min-h-[48px] !p-0 flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full" square @click="$emit('thumb-click-slot-1')" @touchstart="$emit('thumb-click-slot-1')" @touchend.prevent />

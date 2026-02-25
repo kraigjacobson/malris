@@ -11,8 +11,6 @@ export default defineEventHandler(async event => {
     const query = getQuery(event)
     const { status, job_type, subject_uuid, source_media_uuid, dest_media_uuid, output_uuid, source_type, min_progress, max_progress, created_after, created_before, started_after, started_before, completed_after, completed_before, updated_after, updated_before, has_error, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, include_thumbnails = false } = query
 
-    logger.info(`🔍 [JOBS API DEBUG] Search request started - status: "${status}", subject: "${subject_uuid}", source_type: "${source_type}", limit: ${limit}, offset: ${offset}`)
-
     const db = getDb()
 
     // Validate sort parameters
@@ -30,8 +28,6 @@ export default defineEventHandler(async event => {
         statusMessage: "sort_order must be 'asc' or 'desc'"
       })
     }
-
-    const conditionsStartTime = performance.now()
 
     // Build where conditions
     const conditions = []
@@ -121,33 +117,6 @@ export default defineEventHandler(async event => {
       }
     }
 
-    // Rating filter - conditional based on job status
-    // For 'completed' jobs, filter by output_uuid rating
-    // For 'queued' jobs (and others), filter by dest_media_uuid rating
-    if (unrated_only === 'true' || unrated_only === true) {
-      if (status === 'completed') {
-        logger.info('🔍 [JOBS API] Filtering for unrated output media (completed jobs)')
-      } else if (status === 'queued') {
-        logger.info('🔍 [JOBS API] Filtering for unrated dest media (queued jobs)')
-      } else {
-        logger.info('🔍 [JOBS API] Filtering for unrated dest media (all statuses)')
-      }
-    } else if (ratings) {
-      const ratingList = (ratings as string)
-        .split(',')
-        .map(r => parseInt(r.trim()))
-        .filter(r => r >= 1 && r <= 5)
-      if (ratingList.length > 0) {
-        if (status === 'completed') {
-          logger.info(`🔍 [JOBS API] Filtering for output media ratings: ${ratingList.join(', ')} (completed jobs)`)
-        } else if (status === 'queued') {
-          logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')} (queued jobs)`)
-        } else {
-          logger.info(`🔍 [JOBS API] Filtering for dest media ratings: ${ratingList.join(', ')} (all statuses)`)
-        }
-      }
-    }
-
     // Build the query with proper ordering
     const limitNum = Math.min(parseInt(limit as string) || 100, 1000) // Cap at 1000
     const offsetNum = parseInt(offset as string) || 0
@@ -182,9 +151,6 @@ export default defineEventHandler(async event => {
         orderByClause = sortDirection(jobs.createdAt)
         break
     }
-
-    const conditionsTime = performance.now() - conditionsStartTime
-    logger.info(`🔍 [JOBS API DEBUG] Query conditions built in ${conditionsTime.toFixed(2)}ms - ${conditions.length} conditions`)
 
     // Add rating conditions to WHERE clause - conditional based on status
     if (unrated_only === 'true' || unrated_only === true) {
@@ -235,7 +201,6 @@ export default defineEventHandler(async event => {
     }
 
     // Execute the main query with joins
-    const mainQueryStartTime = performance.now()
     const results = await db
       .select({
         id: jobs.id,
@@ -264,22 +229,15 @@ export default defineEventHandler(async event => {
       .limit(limitNum)
       .offset(offsetNum)
 
-    const mainQueryTime = performance.now() - mainQueryStartTime
-    logger.info(`🔍 [JOBS API DEBUG] Main query completed in ${mainQueryTime.toFixed(2)}ms - returned ${results.length} jobs`)
-
     // Get total count for pagination info
-    const countQueryStartTime = performance.now()
     const totalCountResult = await db
       .select({ count: count() })
       .from(jobs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
 
     const filteredCount = totalCountResult[0].count
-    const countQueryTime = performance.now() - countQueryStartTime
-    logger.info(`🔍 [JOBS API] Count query completed in ${countQueryTime.toFixed(2)}ms - filtered count: ${filteredCount}`)
 
     // Get additional media info efficiently with bulk queries instead of N+1
-    const enhancementStartTime = performance.now()
 
     // Collect all unique media UUIDs from jobs (filter out nulls)
     const sourceUuids = results.filter(job => job.source_media_uuid).map(job => job.source_media_uuid!)
@@ -341,10 +299,8 @@ export default defineEventHandler(async event => {
     if (unrated_only === 'true' || unrated_only === true) {
       if (status === 'completed') {
         filteredResults = enhancedResults.filter(job => !job.output_media || !job.output_media.rating)
-        logger.info(`🔍 [JOBS API] Filtered for unrated output media: ${filteredResults.length}/${enhancedResults.length} jobs`)
       } else {
         filteredResults = enhancedResults.filter(job => !job.dest_media || !job.dest_media.rating)
-        logger.info(`🔍 [JOBS API] Filtered for unrated dest media: ${filteredResults.length}/${enhancedResults.length} jobs`)
       }
     } else if (ratings) {
       const ratingList = (ratings as string)
@@ -354,26 +310,18 @@ export default defineEventHandler(async event => {
       if (ratingList.length > 0) {
         if (status === 'completed') {
           filteredResults = enhancedResults.filter(job => job.output_media && ratingList.includes(job.output_media.rating))
-          logger.info(`🔍 [JOBS API] Filtered for output media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
         } else {
           filteredResults = enhancedResults.filter(job => job.dest_media && ratingList.includes(job.dest_media.rating))
-          logger.info(`🔍 [JOBS API] Filtered for dest media ratings ${ratingList.join(',')}: ${filteredResults.length}/${enhancedResults.length} jobs`)
         }
       }
     }
-
-    const enhancementTime = performance.now() - enhancementStartTime
-    logger.info(`🔍 [JOBS API] Media enhancement completed in ${enhancementTime.toFixed(2)}ms - bulk query for ${allMediaUuids.length} media records`)
 
     // Get total jobs count for additional metadata (only if needed for pagination)
     let totalJobsCount = filteredCount // Default to filtered count
     if (offsetNum === 0) {
       // Only get total count on first page
-      const totalCountStartTime = performance.now()
       const totalJobsResult = await db.select({ count: count() }).from(jobs)
       totalJobsCount = totalJobsResult[0].count
-      const totalCountTime = performance.now() - totalCountStartTime
-      logger.info(`🔍 [JOBS API] Total count query completed in ${totalCountTime.toFixed(2)}ms - total jobs: ${totalJobsCount}`)
     }
 
     const response: any = {
@@ -389,11 +337,6 @@ export default defineEventHandler(async event => {
       response.thumbnails_included = true
       // Thumbnail processing would go here - requires decryption logic
     }
-
-    const totalTime = performance.now() - startTime
-    const responseTimestamp = new Date().toISOString()
-    logger.info(`🔍 [JOBS API] Search request completed at: ${responseTimestamp}`)
-    logger.info(`🔍 [JOBS API] Search request completed in ${totalTime.toFixed(2)}ms - returned ${enhancedResults.length} enhanced jobs`)
 
     return response
   } catch (error: any) {

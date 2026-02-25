@@ -85,6 +85,38 @@
           </div>
         </div>
 
+        <!-- Single Video Tagging Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+          <div class="flex items-center mb-4">
+            <UIcon name="i-heroicons-play-circle" class="w-8 h-8 text-green-500 mr-3" />
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Single Video Tagging (Test)</h2>
+          </div>
+
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
+            Queue a single dest video for AI tagging. Extracts a frame 10% into the video and sends to WD14 Tagger.
+            Tags are filtered to our allowed list.
+          </p>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Video UUID</label>
+            <UInput v-model="singleTaggingUuid" placeholder="Enter dest video UUID" class="w-full font-mono text-sm" />
+          </div>
+
+          <div class="flex justify-end">
+            <UButton :loading="isSingleTagging" :disabled="isSingleTagging || !singleTaggingUuid" color="success" size="lg" @click="queueSingleVideoTagging">
+              <UIcon name="i-heroicons-tag" class="mr-2" />
+              {{ isSingleTagging ? 'Queueing...' : 'Queue for Tagging' }}
+            </UButton>
+          </div>
+
+          <div v-if="lastSingleTaggingResult" class="mt-4 p-3 rounded-md" :class="lastSingleTaggingResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+            <p class="text-sm">{{ lastSingleTaggingResult.message }}</p>
+            <div v-if="lastSingleTaggingResult.jobId" class="mt-2 text-xs opacity-75 font-mono">
+              Job ID: {{ lastSingleTaggingResult.jobId }}
+            </div>
+          </div>
+        </div>
+
         <!-- Thumbnail Regeneration Card -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
           <div class="flex items-center mb-4">
@@ -172,6 +204,11 @@ const queueStatus = ref<{
   isProcessing: boolean
   currentBatch: { processed: number; total: number; errors: number }
 } | null>(null)
+
+// Single video tagging state
+const singleTaggingUuid = ref('')
+const isSingleTagging = ref(false)
+const lastSingleTaggingResult = ref<{ success: boolean; message: string; jobId?: string } | null>(null)
 
 // Thumbnail regeneration state
 const isRegeneratingThumbnails = ref(false)
@@ -386,6 +423,71 @@ const tagAllUntaggedVideos = async () => {
     console.error('Error tagging videos:', error)
   } finally {
     isTagging.value = false
+  }
+}
+
+// Function to queue single video for tagging (test)
+const queueSingleVideoTagging = async () => {
+  if (!singleTaggingUuid.value.trim()) return
+
+  try {
+    isSingleTagging.value = true
+    lastSingleTaggingResult.value = null
+
+    const toast = useToast()
+
+    toast.add({
+      title: 'Queueing Tagging Job',
+      description: `Extracting frame and sending to AI tagger...`,
+      icon: 'i-heroicons-tag'
+    })
+
+    const response = await $fetch<{
+      success: boolean
+      message: string
+      jobId?: string
+    }>(`/api/media/${singleTaggingUuid.value.trim()}/queue-tagging`, {
+      method: 'POST'
+    })
+
+    lastSingleTaggingResult.value = {
+      success: response.success,
+      message: response.message,
+      jobId: response.jobId
+    }
+
+    if (response.success) {
+      toast.add({
+        title: 'Tagging Job Queued',
+        description: response.message,
+        icon: 'i-heroicons-check-circle',
+        color: 'success'
+      })
+    } else {
+      toast.add({
+        title: 'Tagging Failed',
+        description: response.message,
+        icon: 'i-heroicons-exclamation-triangle',
+        color: 'warning'
+      })
+    }
+  } catch (error: any) {
+    const toast = useToast()
+
+    lastSingleTaggingResult.value = {
+      success: false,
+      message: error?.data?.message || error?.message || 'Failed to queue tagging job'
+    }
+
+    toast.add({
+      title: 'Tagging Failed',
+      description: error?.data?.message || error?.message || 'Failed to queue tagging job',
+      icon: 'i-heroicons-exclamation-triangle',
+      color: 'error'
+    })
+    console.error('Error queueing tagging job:', error)
+  } finally {
+    isSingleTagging.value = false
   }
 }
 

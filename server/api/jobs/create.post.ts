@@ -1,4 +1,5 @@
 import { logger } from '~/server/utils/logger'
+import { resolveSourceMediaUuid } from '~/server/utils/jobUtils'
 /**
  * Create a new job and add it to the queue
  * Replaces the FastAPI /jobs POST route
@@ -106,12 +107,17 @@ export default defineEventHandler(async (event) => {
       params.frames_per_batch = frames_per_batch
     }
     
+    // If subject has only 1 source image, skip the source workflow and use it directly
+    logger.info(`DEBUG create: calling resolveSourceMediaUuid for subject ${subject_uuid}`)
+    const resolvedSourceMediaUuid = await resolveSourceMediaUuid(db, subject_uuid, source_media_uuid)
+    logger.info(`DEBUG create: resolvedSourceMediaUuid = ${resolvedSourceMediaUuid}`)
+
     // Create job using Drizzle ORM
     const newJob = await db.insert(jobs).values({
       jobType: job_type,
       subjectUuid: subject_uuid,
       destMediaUuid: dest_media_uuid,
-      sourceMediaUuid: source_media_uuid || null,
+      sourceMediaUuid: resolvedSourceMediaUuid,
       parameters: Object.keys(params).length > 0 ? params : null,
       status: 'queued',
       progress: 0
