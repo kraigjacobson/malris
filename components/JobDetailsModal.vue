@@ -10,32 +10,37 @@
     </template>
 
     <template #body>
-      <div v-if="job" class="relative h-[600px]">
-        <!-- Left side overlay buttons using ThumbButtons component -->
-        <ThumbButtons :slot2="closeButtonConfig" :slot4="deleteButtonConfig" @thumb-click-slot-2="closeModal" @thumb-click-slot-4="$emit('delete-job')">
-          <!-- Slot 3: Star Rating -->
-          <template v-if="currentVideoUuid" #slot3>
-            <StarRating :media-uuid="currentVideoUuid" :rating="currentVideoRating" @updated="handleCurrentVideoRatingUpdate" />
-          </template>
-        </ThumbButtons>
+      <div v-if="job" class="relative h-[600px] flex flex-col">
+        <!-- Tabs at top -->
+        <UTabs v-model="currentTab" :items="tabItems" class="flex-shrink-0" />
 
-        <!-- Scrollable content area -->
-        <div class="space-y-4 h-full overflow-y-auto custom-scrollbar" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
-          <!-- Main Video Display Section-->
-          <div v-if="displayImages && (job.output_uuid || job.dest_media_uuid)" class="text-center">
-            <!-- Main Video Container with Arrow Overlays -->
+        <div class="relative flex-1 overflow-hidden mt-3">
+          <!-- Left side overlay buttons - only on media tab -->
+          <ThumbButtons v-if="currentTab === 'media' && !isCropping" :slot2="closeButtonConfig" :slot4="deleteButtonConfig" @thumb-click-slot-2="closeModal" @thumb-click-slot-4="$emit('delete-job')">
+            <!-- Slot 3: Star Rating -->
+            <template v-if="currentVideoUuid" #slot3>
+              <StarRating :media-uuid="currentVideoUuid" :rating="currentVideoRating" @updated="handleCurrentVideoRatingUpdate" />
+            </template>
+          </ThumbButtons>
+
+          <!-- Scrollable content area -->
+          <div class="space-y-4 h-full overflow-y-auto custom-scrollbar" @touchstart="handleGestureTouchStart" @touchmove="handleGestureTouchMove" @touchend="handleGestureTouchEnd">
+            <!-- ===== MEDIA TAB ===== -->
+            <template v-if="currentTab === 'media'">
+          <!-- Crop panel takes over the media area when cropping -->
+          <div v-if="isCropping && mainSlot?.cropUuid" class="h-full">
+            <ImageCropper :uuid="mainSlot.cropUuid" :filename="mainSlot.label" @cancel="isCropping = false" @cropped="onCropped" />
+          </div>
+
+          <template v-else>
+          <!-- Main Media Display Section -->
+          <div v-if="displayImages && mainSlot" class="text-center">
+            <!-- Main Media Container with Arrow Overlays -->
             <div class="relative w-full group">
-              <!-- Video Container with Full Width -->
-              <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800 aspect-auto">
-                <!-- Show output video if it exists, job is completed, and toggle is on -->
-                <template v-if="job.output_uuid && job.status === 'completed'">
-                  <MediaCard v-show="showingOutputVideo" :key="`output-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :show-rating="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleOutputRatingUpdate" class="!rounded-none" />
-                </template>
-
-                <!-- Show dest video for queued jobs OR when toggle is off OR no output exists -->
-                <template v-if="job.dest_media_uuid">
-                  <MediaCard v-show="job.status === 'queued' || !job.output_uuid || !showingOutputVideo" :key="`dest-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :show-rating="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" @click="() => {}" @rating-updated="handleDestRatingUpdate" class="!rounded-none" />
-                </template>
+              <!-- Media Container with Full Width -->
+              <div ref="videoContainer" class="relative overflow-hidden rounded-lg shadow-lg w-full bg-gray-100 dark:bg-gray-800 h-[500px] max-h-[70vh] fit-video">
+                <!-- Single main display bound to the active slot (output/dest/source/subject) -->
+                <MediaCard :key="`main-${mainSlot.key}-${mainSlot.uuid}-${mainSlot.cacheBuster || 0}`" :media="{ uuid: mainSlot.uuid, type: mainSlot.type, thumbnail_uuid: mainSlot.thumbnail_uuid, thumbnail: mainSlot.thumbnail, filename: mainSlot.label, rating: mainSlot.rating, job_id: mainSlot.job_id, cacheBuster: mainSlot.cacheBuster }" :show-duration="false" :show-delete="false" :show-rating="false" :autoplay="true" :show-controls="true" aspect-ratio="auto" image-size="full" @click="() => {}" @rating-updated="handleCurrentVideoRatingUpdate" class="!rounded-none" />
               </div>
 
               <!-- Navigation Buttons - Only on non-mobile -->
@@ -58,9 +63,14 @@
                 <div class="bg-black bg-opacity-70 text-white text-sm font-medium px-2 py-1 rounded">{{ currentJobInfo.current }}/{{ currentJobInfo.total }}</div>
               </div>
 
+              <!-- Crop button — only when the active media is a croppable image -->
+              <div v-if="mainSlot.cropUuid" class="absolute bottom-2 right-2 z-40">
+                <UButton color="primary" variant="solid" size="sm" icon="i-heroicons-scissors" @click="isCropping = true" class="opacity-80 hover:opacity-100 transition-opacity" title="Crop image" />
+              </div>
+
               <!-- Video Type Toggle Button -->
               <div class="absolute top-2 right-2">
-                <UButton v-if="job.output_uuid && job.dest_media_uuid" :color="showingOutputVideo ? 'primary' : 'gray'" variant="solid" size="sm" :icon="showingOutputVideo ? 'i-heroicons-film' : 'i-heroicons-video-camera'" @click="toggleVideoType" class="opacity-80 hover:opacity-100 transition-opacity" :title="showingOutputVideo ? 'Show Destination Video' : 'Show Output Video'" />
+                <UButton v-if="hasOutputAndDest" :color="showingOutputVideo ? 'primary' : 'gray'" variant="solid" size="sm" :icon="showingOutputVideo ? 'i-heroicons-film' : 'i-heroicons-video-camera'" @click="toggleVideoType" class="opacity-80 hover:opacity-100 transition-opacity" :title="showingOutputVideo ? `Show ${destMediaLabel}` : `Show ${outputMediaLabel}`" />
               </div>
             </div>
           </div>
@@ -70,35 +80,35 @@
             <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
             <div class="flex gap-2 sm:gap-4">
               <!-- Subject Thumbnail -->
-              <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0">
+              <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'subject' }">
                 <div class="mb-1 sm:mb-2 text-center">
                   <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
                 </div>
-                <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
+                <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="selectSlot('subject')" />
               </div>
 
               <!-- Source Image Thumbnail -->
-              <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0">
+              <div v-if="job.source_media_thumbnail_uuid" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'source' }">
                 <div class="mb-1 sm:mb-2 text-center">
                   <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Source Image</span>
                 </div>
-                <MediaCard :key="`source-${job.source_media_thumbnail_uuid}`" :media="{ uuid: job.source_media_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.source_media_thumbnail_uuid}/image`, filename: 'Source image thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="() => {}" />
+                <MediaCard :key="`source-${job.source_media_thumbnail_uuid}`" :media="{ uuid: job.source_media_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.source_media_thumbnail_uuid}/image`, filename: 'Source image thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="selectSlot('source')" />
               </div>
 
-              <!-- Destination Media Thumbnail (don't show for queued jobs since it's the main video) -->
-              <div v-if="(job.dest_media_thumbnail_uuid || job.dest_media_uuid) && job.status !== 'queued'" class="flex-1 min-w-0">
+              <!-- Destination Media Thumbnail (don't show for queued jobs since it's the main media) -->
+              <div v-if="(job.dest_media_thumbnail_uuid || job.dest_media_uuid) && job.status !== 'queued'" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'dest' }">
                 <div class="mb-1 sm:mb-2 text-center">
-                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Destination Video</span>
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{{ destMediaLabel }}</span>
                 </div>
-                <MediaCard :key="`dest-thumb-${job.dest_media_uuid}`" :media="{ uuid: job.dest_media_uuid, type: 'video', thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: 'Destination video', rating: destRating }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleDestRatingUpdate" />
+                <MediaCard :key="`dest-thumb-${job.dest_media_uuid}-${cacheBusters[job.dest_media_uuid] || 0}`" :media="{ uuid: job.dest_media_uuid, type: destMediaType, thumbnail_uuid: job.dest_media_thumbnail_uuid, filename: destMediaLabel, rating: destRating, cacheBuster: cacheBusters[job.dest_media_uuid] }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="selectSlot('dest')" @rating-updated="handleDestRatingUpdate" />
               </div>
 
-              <!-- Output Video Thumbnail (don't show for queued jobs) -->
-              <div v-if="job.output_uuid && job.status !== 'queued'" class="flex-1 min-w-0">
+              <!-- Output Thumbnail (don't show for queued jobs) -->
+              <div v-if="job.output_uuid && job.status !== 'queued'" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'output' }">
                 <div class="mb-1 sm:mb-2 text-center">
-                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Output Video</span>
+                  <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{{ outputMediaLabel }}</span>
                 </div>
-                <MediaCard :key="`output-thumb-${job.output_uuid}`" :media="{ uuid: job.output_uuid, type: 'video', thumbnail_uuid: job.output_thumbnail_uuid, filename: 'Output video', rating: outputRating, job_id: job.id }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="() => {}" @rating-updated="handleOutputRatingUpdate" />
+                <MediaCard :key="`output-thumb-${job.output_uuid}-${cacheBusters[job.output_uuid] || 0}`" :media="{ uuid: job.output_uuid, type: outputMediaType, thumbnail_uuid: job.output_thumbnail_uuid, filename: outputMediaLabel, rating: outputRating, job_id: job.id, cacheBuster: cacheBusters[job.output_uuid] }" :show-duration="false" :show-delete="false" :autoplay="true" aspect-ratio="3/4" @click="selectSlot('output')" @rating-updated="handleOutputRatingUpdate" />
               </div>
             </div>
 
@@ -110,11 +120,14 @@
               </div>
             </div>
           </div>
+          </template>
+          <!-- end crop v-else -->
 
-          <!-- Job Details Accordion -->
-          <div class="mt-4">
-            <UAccordion :items="jobDetailsAccordionItems" :default-open="defaultAccordionOpen">
-              <template #job-details>
+            </template>
+            <!-- ===== END MEDIA TAB ===== -->
+
+            <!-- ===== DETAILS TAB ===== -->
+            <template v-if="currentTab === 'details'">
                 <div class="space-y-3 text-left">
                   <!-- Basic Info Grid -->
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -171,17 +184,44 @@
                       <span class="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">{{ job.output_uuid }}</span>
                     </div>
                   </div>
-                </div>
-              </template>
-            </UAccordion>
-          </div>
 
-          <div v-if="job.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-            <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
-            <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ job.error_message }}</p>
+                  <!-- I2V/T2V Parameters -->
+                  <div v-if="(job.job_type === 'i2v' || job.job_type === 't2v') && job.parameters" class="space-y-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <div v-if="job.parameters.prompt" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</span>
+                      <span class="text-xs text-gray-600 dark:text-gray-400">{{ job.parameters.prompt }}</span>
+                    </div>
+                    <div v-if="job.parameters.negative_prompt" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompt</span>
+                      <span class="text-xs text-gray-600 dark:text-gray-400">{{ job.parameters.negative_prompt }}</span>
+                    </div>
+                    <div v-if="job.parameters.length" class="flex gap-2">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Length:</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.parameters.length }} frames (~{{ (job.parameters.length / 16).toFixed(1) }}s)</span>
+                    </div>
+                    <div v-for="slot in 3" :key="slot">
+                      <div v-if="job.parameters[`lora_${slot}_high`] || job.parameters[`lora_${slot}_low`]" class="flex flex-col space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded">
+                        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">LoRA {{ slot }}</span>
+                        <div v-if="job.parameters[`lora_${slot}_high`]" class="text-xs text-gray-600 dark:text-gray-400">
+                          <span class="font-medium">High:</span> {{ job.parameters[`lora_${slot}_high`] }} @ {{ job.parameters[`lora_${slot}_high_strength`] ?? 1 }}
+                        </div>
+                        <div v-if="job.parameters[`lora_${slot}_low`]" class="text-xs text-gray-600 dark:text-gray-400">
+                          <span class="font-medium">Low:</span> {{ job.parameters[`lora_${slot}_low`] }} @ {{ job.parameters[`lora_${slot}_low_strength`] ?? 1 }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="job.error_message" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                  <span class="font-medium text-red-700 dark:text-red-300">Error:</span>
+                  <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ job.error_message }}</p>
+                </div>
+            </template>
+            <!-- ===== END DETAILS TAB ===== -->
           </div>
+          <!-- End scrollable content area -->
         </div>
-        <!-- End scrollable content area -->
       </div>
       <!-- End outer container -->
     </template>
@@ -246,7 +286,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'cancel-job', 'retry-job', 'delete-job', 'open-image-fullscreen', 'job-changed'])
+const emit = defineEmits(['update:modelValue', 'cancel-job', 'retry-job', 'delete-job', 'open-image-fullscreen', 'job-changed', 'rating-changed'])
 
 const { displayImages } = useSettings()
 
@@ -271,30 +311,100 @@ const {
 })
 
 const showingOutputVideo = ref(true) // Default to showing output video
+
+// Explicit thumbnail selection for the main display (null = default output/dest).
+const selectedSlotKey = ref(null)
+// Whether the crop panel is taking over the media area.
+const isCropping = ref(false)
+// uuid -> version, bumped after a crop so the main display refetches fresh bytes.
+const cacheBusters = ref({})
+
+// fs (Faceswap I2I) jobs have IMAGE dest + IMAGE output instead of videos.
+// All the dest/output MediaCard renders in this modal pull from these so the
+// markup stays DRY and the toggle button label adapts.
+const isImageJob = computed(() => props.job?.job_type === 'fs')
+const destMediaType = computed(() => isImageJob.value ? 'image' : 'video')
+const outputMediaType = computed(() => isImageJob.value ? 'image' : 'video')
+const destMediaLabel = computed(() => isImageJob.value ? 'Destination Image' : 'Destination Video')
+const outputMediaLabel = computed(() => isImageJob.value ? 'Output Image' : 'Output Video')
+
 const videoContainer = ref(null)
 
 // Rating state
 const outputRating = ref(null)
 const destRating = ref(null)
 
-// Computed properties for current video (used by mobile overlay rating button)
-const currentVideoUuid = computed(() => {
-  if (!props.job) return null
-  // Return the UUID of whichever video is currently being displayed
-  if (props.job.status === 'completed' && props.job.output_uuid && showingOutputVideo.value) {
-    return props.job.output_uuid
+// Which video the rating thumb button targets. Two cases:
+//   - Face-swap jobs (have both dest and output): respect the user's toggle
+//     (showingOutputVideo). For non-completed face-swaps the output isn't
+//     rendered yet, so we always rate the dest the user is looking at.
+//   - Single-video jobs (t2v/i2v with no dest): rate whichever media exists,
+//     so completed ones always rate the output.
+// All media slots that can occupy the main display, keyed by role. Each carries
+// a cropUuid (the real media UUID to crop, or null when only a derived thumbnail
+// is available — e.g. the subject).
+const slotByKey = computed(() => {
+  const j = props.job
+  if (!j) return {}
+  const map = {}
+  if (j.output_uuid && j.status === 'completed') {
+    map.output = {
+      key: 'output', uuid: j.output_uuid, type: outputMediaType.value,
+      thumbnail_uuid: j.output_thumbnail_uuid, label: outputMediaLabel.value,
+      rating: outputRating.value, job_id: j.id,
+      cropUuid: outputMediaType.value === 'image' ? j.output_uuid : null
+    }
   }
-  return props.job.dest_media_uuid
+  if (j.dest_media_uuid) {
+    map.dest = {
+      key: 'dest', uuid: j.dest_media_uuid, type: destMediaType.value,
+      thumbnail_uuid: j.dest_media_thumbnail_uuid, label: destMediaLabel.value,
+      rating: destRating.value,
+      cropUuid: destMediaType.value === 'image' ? j.dest_media_uuid : null
+    }
+  }
+  if (j.source_media_uuid) {
+    map.source = {
+      key: 'source', uuid: j.source_media_uuid, type: 'image',
+      thumbnail_uuid: j.source_media_thumbnail_uuid, label: 'Source Image',
+      rating: null, cropUuid: j.source_media_uuid
+    }
+  }
+  if (j.subject_thumbnail_uuid) {
+    map.subject = {
+      key: 'subject', uuid: j.subject_thumbnail_uuid, type: 'image',
+      thumbnail: `/api/media/${j.subject_thumbnail_uuid}/image`, label: 'Subject',
+      rating: null, cropUuid: null
+    }
+  }
+  return map
 })
 
-const currentVideoRating = computed(() => {
-  if (!props.job) return null
-  // Return the rating of whichever video is currently being displayed
-  if (props.job.status === 'completed' && props.job.output_uuid && showingOutputVideo.value) {
-    return outputRating.value
-  }
-  return destRating.value
+// Default main slot when the user hasn't explicitly picked a thumbnail.
+const defaultSlotKey = computed(() => {
+  const j = props.job
+  if (!j) return null
+  if (j.output_uuid && j.status === 'completed' && showingOutputVideo.value) return 'output'
+  if (j.dest_media_uuid) return 'dest'
+  if (j.output_uuid && j.status === 'completed') return 'output'
+  if (j.source_media_uuid) return 'source'
+  return null
 })
+
+// The media currently shown in the main display.
+const mainSlot = computed(() => {
+  const map = slotByKey.value
+  const key = (selectedSlotKey.value && map[selectedSlotKey.value]) ? selectedSlotKey.value : defaultSlotKey.value
+  const slot = key ? map[key] : null
+  if (!slot) return null
+  return { ...slot, cacheBuster: cacheBusters.value[slot.uuid] || null }
+})
+
+const hasOutputAndDest = computed(() => !!(props.job?.output_uuid && props.job?.dest_media_uuid))
+
+// StarRating thumb targets whatever's in the main display.
+const currentVideoUuid = computed(() => mainSlot.value?.uuid || null)
+const currentVideoRating = computed(() => mainSlot.value?.rating ?? null)
 
 // Job navigation state
 const currentJobIndex = ref(0)
@@ -315,20 +425,12 @@ const currentJobInfo = computed(() => {
   }
 })
 
-// Job details accordion items with conditional default open
-const jobDetailsAccordionItems = computed(() => {
-  return [
-    {
-      label: 'Job Details',
-      slot: 'job-details'
-    }
-  ]
-})
-
-// Default accordion open state - open when images are disabled
-const defaultAccordionOpen = computed(() => {
-  return !displayImages.value ? [0] : []
-})
+// Tabs
+const currentTab = ref(displayImages.value ? 'media' : 'details')
+const tabItems = computed(() => [
+  { label: 'Media', value: 'media' },
+  { label: 'Details', value: 'details' }
+])
 
 // Status color helper
 const getStatusColor = status => {
@@ -385,6 +487,22 @@ const goToNextJob = () => {
 
 const toggleVideoType = () => {
   showingOutputVideo.value = !showingOutputVideo.value
+  selectedSlotKey.value = showingOutputVideo.value ? 'output' : 'dest'
+}
+
+// Click a thumbnail to load it into the main display.
+const selectSlot = key => {
+  if (!slotByKey.value[key]) return
+  selectedSlotKey.value = key
+  isCropping.value = false
+  if (key === 'output') showingOutputVideo.value = true
+  else if (key === 'dest') showingOutputVideo.value = false
+}
+
+// After a successful crop, force the main display to refetch fresh bytes.
+const onCropped = ({ uuid }) => {
+  if (uuid) cacheBusters.value = { ...cacheBusters.value, [uuid]: Date.now() }
+  isCropping.value = false
 }
 
 const closeModal = () => {
@@ -429,25 +547,30 @@ onUnmounted(() => {
 watch(isOpen, newValue => {
   if (!newValue) {
     showingOutputVideo.value = true
+    selectedSlotKey.value = null
+    isCropping.value = false
   }
 })
 
-// Rating update handlers
+// Rating update handlers. Each also notifies the parent (jobs list) with the
+// rated media's UUID so the list can update the matching job's star rating
+// reactively — no manual refresh needed.
 const handleOutputRatingUpdate = rating => {
   outputRating.value = rating
+  if (props.job?.output_uuid) emit('rating-changed', { mediaUuid: props.job.output_uuid, rating })
 }
 
 const handleDestRatingUpdate = rating => {
   destRating.value = rating
+  if (props.job?.dest_media_uuid) emit('rating-changed', { mediaUuid: props.job.dest_media_uuid, rating })
 }
 
 const handleCurrentVideoRatingUpdate = rating => {
-  // Update the rating for whichever video is currently being displayed
-  if (props.job?.status === 'completed' && props.job?.output_uuid && showingOutputVideo.value) {
-    outputRating.value = rating
-  } else {
-    destRating.value = rating
-  }
+  // Route the rating to whichever slot is in the main display.
+  const key = mainSlot.value?.key
+  if (key === 'output') outputRating.value = rating
+  else if (key === 'dest') destRating.value = rating
+  if (currentVideoUuid.value) emit('rating-changed', { mediaUuid: currentVideoUuid.value, rating })
 }
 
 // Fetch rating for output video
@@ -488,6 +611,8 @@ watch(
   async newJob => {
     // Always default to showing output video (dest will show if no output exists)
     showingOutputVideo.value = true
+    selectedSlotKey.value = null
+    isCropping.value = false
 
     // Fetch rating for output video
     if (newJob?.output_uuid) {
@@ -527,5 +652,11 @@ watch(
 .custom-scrollbar::-webkit-scrollbar {
   display: none;
   /* Safari and Chrome */
+}
+
+.fit-video :deep(video),
+.fit-video :deep(img) {
+  object-fit: contain !important;
+  object-position: center !important;
 }
 </style>

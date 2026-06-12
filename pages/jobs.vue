@@ -3,47 +3,126 @@
     <!-- Queue Status Card -->
     <UCard class="mb-3 sm:mb-6">
       <template #header>
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
-          <div class="flex items-center gap-1 sm:gap-2">
-            <!-- Submit Job Button -->
-            <UButton type="button" size="lg" variant="solid" color="primary" @click="showSubmitJobModal = true">
-              <UIcon name="i-heroicons-plus" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-              <span class="hidden sm:inline">Submit Job</span>
-            </UButton>
+        <div class="flex flex-col gap-2 sm:gap-0">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
+            <div class="flex items-center gap-1 sm:gap-2">
+              <!-- Preset Filter for continuous processing (left of pick order toggle) -->
+              <div class="hidden sm:block w-44" title="Limit continuous processing to a single preset">
+                <PresetFilter
+                  v-model="presetFilterValue"
+                  job-type="i2v"
+                  placeholder="All presets"
+                />
+              </div>
 
-            <!-- Force Restart Button (⚡) - Always visible -->
-            <UButton type="button" size="lg" variant="ghost" color="error" :loading="isStopping" @click.prevent="stopAllProcessing()" title="Force Restart ComfyUI">
-              <UIcon name="i-heroicons-power" class="w-3 h-3 sm:w-4 sm:h-4" />
-            </UButton>
+              <!-- Pick Order Toggle (chronological vs random preset-reuse) -->
+              <div
+                class="hidden sm:flex items-center gap-1.5 px-2"
+                :title="pickOrderTooltip"
+              >
+                <span
+                  class="text-xs"
+                  :class="pickOrder === 'chronological' ? 'text-primary font-medium' : 'text-gray-400'"
+                >Chrono</span>
+                <USwitch
+                  :model-value="pickOrder === 'random'"
+                  :disabled="pickOrderSaving"
+                  @update:model-value="onPickOrderToggle($event)"
+                />
+                <span
+                  class="text-xs"
+                  :class="pickOrder === 'random' ? 'text-primary font-medium' : 'text-gray-400'"
+                >Random</span>
+              </div>
 
-            <!-- Processing Control Buttons -->
-            <template v-if="!isAnyProcessingActive">
-              <!-- Single Job Processing Button (▶️) -->
-              <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingSingle" @click.prevent="startSingleProcessing()">
-                <UIcon name="i-heroicons-play" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                <span class="hidden sm:inline">Process One</span>
+              <!-- Submit Job Button -->
+              <UButton type="button" size="lg" variant="solid" color="primary" @click="showSubmitJobModal = true">
+                <UIcon name="i-heroicons-plus" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                <span class="hidden sm:inline">Submit Job</span>
               </UButton>
 
-              <!-- Continuous Processing Button (🔄) -->
-              <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingContinuous" @click.prevent="startContinuousProcessing()">
-                <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                <span class="hidden sm:inline">Process All</span>
-              </UButton>
-            </template>
-
-            <!-- Stop Button (⏹️) - shown when any processing is active -->
-            <template v-else>
-              <UButton type="button" size="lg" variant="outline" color="error" :loading="isStopping" @click.prevent="stopAllProcessing()">
-                <UIcon name="i-heroicons-stop" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                <span class="hidden sm:inline">Stop Processing</span>
+              <!-- Force Restart Button (⚡) - Always visible. Hard-restarts the worker containers (evicts loaded models). -->
+              <UButton type="button" size="lg" variant="ghost" color="error" :loading="isRestarting" @click.prevent="forceRestartWorkers()" title="Force Restart ComfyUI (reloads models)">
+                <UIcon name="i-heroicons-power" class="w-3 h-3 sm:w-4 sm:h-4" />
               </UButton>
 
-              <!-- Processing Mode Indicator -->
-              <UBadge :color="processingMode === 'single' ? 'primary' : 'neutral'" variant="soft" size="lg" class="hidden sm:inline-flex">
-                {{ processingMode === 'single' ? 'One' : 'All' }}
-              </UBadge>
-            </template>
+              <!-- Processing Control Buttons -->
+              <template v-if="!isAnyProcessingActive">
+                <!-- Split button: Process N (▶️) + caret to pick the count -->
+                <div class="flex">
+                  <UButton
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    color="primary"
+                    :loading="isStartingSingle"
+                    class="rounded-r-none"
+                    @click.prevent="startProcessNJobs()"
+                  >
+                    <UIcon name="i-heroicons-play" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                    <span class="hidden sm:inline">Process {{ selectedJobCount === 1 ? 'One' : selectedJobCount }}</span>
+                  </UButton>
+                  <UDropdownMenu :items="jobCountDropdownItems" :ui="{ content: 'w-28 max-h-72 overflow-y-auto' }">
+                    <UButton
+                      type="button"
+                      size="lg"
+                      variant="outline"
+                      color="primary"
+                      class="rounded-l-none border-l-0 px-1.5 sm:px-2"
+                      aria-label="Select number of jobs to process"
+                    >
+                      <UIcon name="i-heroicons-chevron-down" class="w-3 h-3 sm:w-4 sm:h-4" />
+                    </UButton>
+                  </UDropdownMenu>
+                </div>
+
+                <!-- Continuous Processing Button (🔄) -->
+                <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingContinuous" @click.prevent="startContinuousProcessing()">
+                  <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                  <span class="hidden sm:inline">Process All</span>
+                </UButton>
+              </template>
+
+              <!-- Stop Button (⏹️) - shown when any processing is active -->
+              <template v-else>
+                <UButton type="button" size="lg" variant="outline" color="error" :loading="isStopping" @click.prevent="stopAllProcessing()">
+                  <UIcon name="i-heroicons-stop" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                  <span class="hidden sm:inline">Stop Processing</span>
+                </UButton>
+
+                <!-- Processing Mode Indicator -->
+                <UBadge :color="processingModeBadgeColor" variant="soft" size="lg" class="hidden sm:inline-flex">
+                  {{ processingModeBadgeLabel }}
+                </UBadge>
+              </template>
+            </div>
+          </div>
+
+          <!-- Mobile-only second row: Preset filter + Pick order toggle -->
+          <div class="flex sm:hidden items-center gap-2">
+            <div class="flex-1 min-w-0" title="Limit continuous processing to a single preset">
+              <PresetFilter
+                v-model="presetFilterValue"
+                job-type="i2v"
+                placeholder="All presets"
+              />
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0" :title="pickOrderTooltip">
+              <span
+                class="text-xs"
+                :class="pickOrder === 'chronological' ? 'text-primary font-medium' : 'text-gray-400'"
+              >Chrono</span>
+              <USwitch
+                :model-value="pickOrder === 'random'"
+                :disabled="pickOrderSaving"
+                @update:model-value="onPickOrderToggle($event)"
+              />
+              <span
+                class="text-xs"
+                :class="pickOrder === 'random' ? 'text-primary font-medium' : 'text-gray-400'"
+              >Random</span>
+            </div>
           </div>
         </div>
       </template>
@@ -255,7 +334,7 @@
 
     <!-- Subject Filter -->
     <UCard class="mb-3 sm:mb-6">
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div>
           <UInputMenu v-model="selectedSubjectFilter" v-model:search-term="subjectSearchQuery" :items="subjectFilterItems" placeholder="Search for a subject to filter jobs..." class="w-full" by="value" option-attribute="label" searchable @update:model-value="handleSubjectFilterSelection" />
         </div>
@@ -264,12 +343,19 @@
           <USelect v-model="selectedSourceTypeFilter" :items="sourceTypeOptions" placeholder="Filter by job type..." class="w-full" @update:model-value="handleSourceTypeFilterSelection" />
         </div>
 
+        <div>
+          <PresetFilter v-model="selectedPresetFilter" job-type="i2v" placeholder="Filter by i2v preset..." />
+        </div>
+
         <div class="flex items-end gap-2">
           <UButton type="button" variant="outline" size="xs" :disabled="!selectedSubjectFilter" @click="clearSubjectFilter">
             <span class="inline">Clear Subject</span>
           </UButton>
           <UButton type="button" variant="outline" size="xs" :disabled="selectedSourceTypeFilter === 'all'" @click="clearSourceTypeFilter">
             <span class="inline">Clear Type</span>
+          </UButton>
+          <UButton type="button" variant="outline" size="xs" :disabled="!selectedPresetFilter" @click="selectedPresetFilter = null">
+            <span class="inline">Clear Preset</span>
           </UButton>
         </div>
       </div>
@@ -281,7 +367,7 @@
     </UCard>
 
     <!-- Jobs List -->
-    <UCard :ui="{ body: 'p-0' }">
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -308,6 +394,7 @@
 
             <!-- Bulk Actions -->
             <div v-if="hasSelectedJobs" class="flex items-center gap-2">
+              <UButton size="xs" color="primary" variant="outline" icon="i-heroicons-arrow-up" @click="bulkPushToFront"> Push to Front </UButton>
               <UButton size="xs" color="primary" variant="outline" @click="bulkQueue"> Queue Selected </UButton>
               <UButton size="xs" color="error" variant="outline" @click="bulkCancel"> Cancel Selected </UButton>
               <UButton size="xs" color="error" variant="outline" @click="bulkDelete"> Delete Selected </UButton>
@@ -340,16 +427,27 @@
                 <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">
                   {{ getStatusDisplayText(job.status) }}
                 </UBadge>
+                <!-- Priority badge: shows position in the in-memory priority queue (1 = next) -->
+                <UBadge v-if="priorityQueueSet.has(job.id)" color="warning" variant="soft" size="xs" icon="i-heroicons-arrow-up-20-solid" :title="`Priority #${priorityIndex(job.id) + 1} — picker will run this before the normal queue`">
+                  PRI {{ priorityIndex(job.id) + 1 }}
+                </UBadge>
                 <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
                   {{ job.subject?.name || 'Unknown Subject' }}
                 </span>
                 <!-- Desktop: Show full text -->
                 <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
-                  {{ job.source_media_uuid ? 'vid' : 'source' }}
+                  {{ job.job_type === 'i2v' ? 'i2v' : job.job_type === 't2v' ? 't2v' : job.job_type === 'fs' ? 'fs' : (job.source_media_uuid ? 'vid' : 'source') }}
                 </span>
                 <!-- Mobile: Show single letter badges -->
-                <UBadge v-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
+                <UBadge v-if="job.job_type === 'i2v'" color="purple" variant="soft" size="xs" class="sm:hidden"> I </UBadge>
+                <UBadge v-else-if="job.job_type === 't2v'" color="purple" variant="soft" size="xs" class="sm:hidden"> T </UBadge>
+                <UBadge v-else-if="job.job_type === 'fs'" color="amber" variant="soft" size="xs" class="sm:hidden"> F </UBadge>
+                <UBadge v-else-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
                 <UBadge v-else color="green" variant="soft" size="xs" class="sm:hidden"> S </UBadge>
+                <!-- Preset name (if the job was submitted with one) -->
+                <UBadge v-if="job.parameters?._preset_name" color="info" variant="subtle" size="xs" icon="i-heroicons-bookmark" class="max-w-[120px] sm:max-w-[200px] truncate">
+                  {{ job.parameters._preset_name }}
+                </UBadge>
                 <!-- Show progress bar when available (mobile and desktop) -->
                 <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
                   <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
@@ -443,13 +541,13 @@
     </UCard>
 
     <!-- Job Details Modal -->
-    <JobDetailsModal v-model="showJobModal" :job="selectedJob" :job-output-images="jobOutputImages" :jobs-list="jobs" @cancel-job="cancelJobFromModal" @retry-job="retryJobFromModal" @delete-job="deleteJobFromModal" @open-image-fullscreen="openImageFullscreen" @job-changed="handleJobDetailsChanged" />
+    <JobDetailsModal v-model="showJobModal" :job="selectedJob" :job-output-images="jobOutputImages" :jobs-list="jobs" @cancel-job="cancelJobFromModal" @retry-job="retryJobFromModal" @delete-job="deleteJobFromModal" @open-image-fullscreen="openImageFullscreen" @job-changed="handleJobDetailsChanged" @rating-changed="handleRatingChanged" />
 
     <!-- Source Image Selection Modal -->
     <SourceImageSelectionModal v-model="showImageModal" :job="selectedJobForImage" :need-input-jobs="needInputJobs" @image-selected="handleImageSelected" @job-changed="handleJobChanged" @job-deleted="handleJobDeleted" />
 
     <!-- Submit Job Modal -->
-    <SubmitJobModal v-model="showSubmitJobModal" @jobs-created="handleJobsCreated" />
+    <SubmitJobModal ref="submitJobModalRef" v-model="showSubmitJobModal" @jobs-created="handleJobsCreated" />
   </div>
 </template>
 
@@ -473,6 +571,17 @@ const loadingFilter = ref('') // Track which filter is currently loading
 // Still use store for queue status only
 const jobsStore = useJobsStore()
 
+// Auto-refresh job list when queue counts change (via WebSocket)
+watch(() => jobsStore.queueStatus?.queue, (newVal, oldVal) => {
+  if (!newVal || !oldVal) return
+  // Only refresh if counts actually changed
+  if (newVal.total !== oldVal.total || newVal.active !== oldVal.active ||
+      newVal.queued !== oldVal.queued || newVal.completed !== oldVal.completed ||
+      newVal.failed !== oldVal.failed) {
+    refreshJobsWithCurrentState()
+  }
+}, { deep: true })
+
 // Local modal state
 const showJobModal = ref(false)
 const selectedJob = ref(null)
@@ -486,10 +595,11 @@ const selectedJobForImage = ref(null)
 
 // Submit job modal state
 const showSubmitJobModal = ref(false)
+const submitJobModalRef = ref(null)
 
 // Pagination
 const pageNumber = ref(1)
-const itemsPerPage = ref(24)
+const itemsPerPage = ref(96)
 const manualPageInput = ref(null)
 
 // Limit options for dropdown
@@ -514,18 +624,104 @@ const selectedJobs = ref(new Set())
 const isStartingSingle = ref(false)
 const isStartingContinuous = ref(false)
 const isStopping = ref(false)
+const isRestarting = ref(false)
 const processingMode = ref('idle')
+
+// Pick order toggle — 'chronological' (legacy, most recent queued) vs 'random'
+// (random with preset carryover so we don't reload LoRAs between jobs).
+const pickOrderSaving = ref(false)
+const pickOrder = computed(() => jobsStore.processingState?.pickOrder ?? 'random')
+const pickOrderTooltip = computed(() =>
+  pickOrder.value === 'random'
+    ? 'Random: reuses the last preset if queued jobs share it, else picks at random'
+    : 'Chronological: runs the most recently updated queued job'
+)
+async function onPickOrderToggle(isRandom) {
+  const next = isRandom ? 'random' : 'chronological'
+  if (next === pickOrder.value) return
+  if (!jobsStore.wsConnection || !jobsStore.wsConnected) {
+    useToast().add({
+      title: 'Not connected',
+      description: 'WebSocket is disconnected — cannot change pick order',
+      color: 'warning',
+      duration: 3000,
+    })
+    return
+  }
+  pickOrderSaving.value = true
+  try {
+    jobsStore.wsConnection.send(JSON.stringify({ type: 'set_pick_order', pick_order: next }))
+  } finally {
+    setTimeout(() => { pickOrderSaving.value = false }, 300)
+  }
+}
+
+// Preset filter — pins continuous processing to a single preset (or "all").
+// Backed by the same WebSocket-driven state as pickOrder.
+const presetFilterValue = computed({
+  get: () => jobsStore.processingState?.presetFilter ?? null,
+  set: (next) => {
+    if (!jobsStore.wsConnection || !jobsStore.wsConnected) {
+      useToast().add({
+        title: 'Not connected',
+        description: 'WebSocket is disconnected — cannot change preset filter',
+        color: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+    jobsStore.wsConnection.send(JSON.stringify({ type: 'set_preset_filter', preset_filter: next ?? 'all' }))
+  }
+})
+
+// How many jobs the split "Process N" button will run before auto-stopping (1..15, default 1)
+const selectedJobCount = ref(1)
+
+// Badge shown while processing — "One"/"All" normally, or "M/N" when a job limit is active
+const processingModeBadgeLabel = computed(() => {
+  const state = jobsStore.processingState
+  if (state?.isActive && state.jobLimit) {
+    return `${state.jobsProcessedCount ?? 0}/${state.jobLimit}`
+  }
+  return processingMode.value === 'single' ? 'One' : 'All'
+})
+const processingModeBadgeColor = computed(() => {
+  const state = jobsStore.processingState
+  if (state?.isActive && state.jobLimit) return 'primary'
+  return processingMode.value === 'single' ? 'primary' : 'neutral'
+})
+const jobCountDropdownItems = computed(() => [
+  Array.from({ length: 15 }, (_, i) => {
+    const n = i + 1
+    return {
+      label: `Process ${n}`,
+      icon: n === selectedJobCount.value ? 'i-heroicons-check' : undefined,
+      onSelect: () => {
+        selectedJobCount.value = n
+      }
+    }
+  })
+])
 
 // Subject filtering using composable
 const { selectedSubject: selectedSubjectFilter, searchQuery: subjectSearchQuery, subjectItems: subjectFilterItems, handleSubjectSelection, clearSubject } = useSubjects()
 
-// Source type filtering
+// Source type filtering — scopes BOTH the visible job list and what the
+// continuous picker considers eligible. 'vid'/'source' are legacy sub-modes
+// of vid_faceswap; the broader entries below filter by jobType directly.
 const selectedSourceTypeFilter = ref('all')
 const sourceTypeOptions = [
   { value: 'all', label: 'All Jobs' },
-  { value: 'vid', label: 'Video Jobs' },
-  { value: 'source', label: 'Source Jobs' }
+  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' },
+  { value: 'fs', label: 'Faceswap I2I' },
+  { value: 'i2v', label: 'Wan I2V' },
+  { value: 'tagging', label: 'Tagging' },
+  { value: 'vid', label: '— Legacy: video sub-jobs' },
+  { value: 'source', label: '— Legacy: source sub-jobs' }
 ]
+
+// Preset filter (id of the i2v preset stashed on jobs.parameters._preset_id)
+const selectedPresetFilter = ref(null)
 
 // Star rating filter state - default to empty (show only unrated)
 const selectedRatings = ref([])
@@ -562,6 +758,11 @@ const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid 
     // Add unrated filter - only if showUnrated is true
     if (showUnrated.value) {
       query.unrated_only = 'true'
+    }
+
+    // Add preset filter
+    if (selectedPresetFilter.value) {
+      query.preset_id = selectedPresetFilter.value
     }
 
     const response = await useApiFetch('jobs/search', { query })
@@ -705,17 +906,14 @@ const totalPages = computed(() => Math.ceil(totalJobs.value / itemsPerPage.value
 
 // Check if any processing is currently active
 const isAnyProcessingActive = computed(() => {
-  // CRITICAL FIX: Check if ComfyUI has running jobs - this is the source of truth
-  // If ComfyUI is processing, we should show the stop button
   const comfyuiRunningJobs = jobsStore.systemStatus?.comfyuiProcessing?.runningJobs || 0
-
-  // Show stop button if:
-  // 1. ComfyUI has running jobs (source of truth)
-  // 2. OR our local mode indicates we're processing (optimistic UI during button press)
   const localModeIsProcessing = processingMode.value !== 'idle'
 
-  // ComfyUI job count is the source of truth, but use local mode for immediate feedback
-  return comfyuiRunningJobs > 0 || localModeIsProcessing
+  // Shared state from WebSocket (syncs across devices/tabs)
+  const sharedProcessingActive = jobsStore.processingState?.isActive === true
+  const anyActiveJob = (jobsStore.queueStatus?.queue?.active || 0) > 0
+
+  return comfyuiRunningJobs > 0 || localModeIsProcessing || sharedProcessingActive || anyActiveJob
 })
 
 // Get all jobs that need input for modal navigation
@@ -845,6 +1043,8 @@ const refreshJobsWithCurrentState = async () => {
 
         // Only fetch jobs for refresh - queue status is updated via WebSocket
         await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
+        // Refresh the priority queue too so PRI badges stay in sync after picks/cancels
+        fetchPriorityQueue()
 
         const totalTime = performance.now() - startTime
         console.log(`🔄 [REFRESH DEBUG] refreshJobsWithCurrentState completed in ${totalTime.toFixed(2)}ms`)
@@ -903,6 +1103,16 @@ const handleWebSocketAck = ackData => {
 }
 
 // New processing methods for the updated UI - using WebSocket commands
+// Entry point for the split "Process N" button — routes to single mode for N=1
+// (preserves the existing 10-second idle wait) or to continuous-with-limit for N>1.
+const startProcessNJobs = async () => {
+  if (selectedJobCount.value <= 1) {
+    await startSingleProcessing()
+  } else {
+    await startContinuousProcessing({ jobLimit: selectedJobCount.value })
+  }
+}
+
 const startSingleProcessing = async () => {
   try {
     isStartingSingle.value = true
@@ -986,9 +1196,16 @@ const startSingleProcessing = async () => {
   }
 }
 
-const startContinuousProcessing = async () => {
+const startContinuousProcessing = async (options = {}) => {
+  const jobLimit = options.jobLimit && options.jobLimit > 0 ? options.jobLimit : null
+  const useSingleSpinner = jobLimit !== null
   try {
-    isStartingContinuous.value = true
+    // Split button reuses the "single" spinner so users see loading on the button they clicked
+    if (useSingleSpinner) {
+      isStartingSingle.value = true
+    } else {
+      isStartingContinuous.value = true
+    }
     processingMode.value = 'continuous' // Optimistic update
 
     // Send command via WebSocket if connected
@@ -996,7 +1213,8 @@ const startContinuousProcessing = async () => {
       jobsStore.wsConnection.send(
         JSON.stringify({
           type: 'start_continuous',
-          source_type: selectedSourceTypeFilter.value
+          source_type: selectedSourceTypeFilter.value,
+          job_limit: jobLimit
         })
       )
 
@@ -1007,8 +1225,10 @@ const startContinuousProcessing = async () => {
         const toast = useToast()
         const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
         toast.add({
-          title: 'Continuous Processing Started',
-          description: `Processing ${typeLabel} jobs continuously`,
+          title: jobLimit ? `Processing ${jobLimit} Jobs` : 'Continuous Processing Started',
+          description: jobLimit
+            ? `Processing up to ${jobLimit} ${typeLabel} job${jobLimit === 1 ? '' : 's'} then stopping`
+            : `Processing ${typeLabel} jobs continuously`,
           color: 'success',
           duration: 3000
         })
@@ -1029,7 +1249,8 @@ const startContinuousProcessing = async () => {
       const response = await useApiFetch('jobs/processing/continuous', {
         method: 'POST',
         body: {
-          source_type: selectedSourceTypeFilter.value
+          source_type: selectedSourceTypeFilter.value,
+          job_limit: jobLimit
         }
       })
 
@@ -1037,8 +1258,10 @@ const startContinuousProcessing = async () => {
         const toast = useToast()
         const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
         toast.add({
-          title: 'Continuous Processing Started',
-          description: response.message || `Processing ${typeLabel} jobs continuously`,
+          title: jobLimit ? `Processing ${jobLimit} Jobs` : 'Continuous Processing Started',
+          description: response.message || (jobLimit
+            ? `Processing up to ${jobLimit} ${typeLabel} job${jobLimit === 1 ? '' : 's'} then stopping`
+            : `Processing ${typeLabel} jobs continuously`),
           color: 'success',
           duration: 3000
         })
@@ -1065,7 +1288,11 @@ const startContinuousProcessing = async () => {
       duration: 4000
     })
   } finally {
-    isStartingContinuous.value = false
+    if (useSingleSpinner) {
+      isStartingSingle.value = false
+    } else {
+      isStartingContinuous.value = false
+    }
   }
 }
 
@@ -1089,7 +1316,7 @@ const stopAllProcessing = async () => {
         const toast = useToast()
         toast.add({
           title: 'Processing Stopped',
-          description: 'All job processing has been stopped and ComfyUI is restarting...',
+          description: 'Continuous processing halted and current jobs interrupted. Models stay loaded.',
           color: 'success',
           duration: 3000
         })
@@ -1114,7 +1341,7 @@ const stopAllProcessing = async () => {
         const toast = useToast()
         toast.add({
           title: 'Processing Stopped',
-          description: 'All job processing has been stopped and ComfyUI is restarting...',
+          description: 'Continuous processing halted and current jobs interrupted. Models stay loaded.',
           color: 'success',
           duration: 3000
         })
@@ -1132,6 +1359,69 @@ const stopAllProcessing = async () => {
     })
   } finally {
     isStopping.value = false
+  }
+}
+
+const forceRestartWorkers = async () => {
+  try {
+    isRestarting.value = true
+    processingMode.value = 'idle' // Optimistic update
+
+    // Send command via WebSocket if connected
+    if (jobsStore.wsConnection && jobsStore.wsConnected) {
+      jobsStore.wsConnection.send(
+        JSON.stringify({
+          type: 'force_restart_workers'
+        })
+      )
+
+      const ackReceived = await waitForAck('force_restart_workers', 5000)
+
+      const toast = useToast()
+      if (ackReceived) {
+        toast.add({
+          title: 'Workers Restarting',
+          description: 'Containers restarting — models will reload on the next job.',
+          color: 'success',
+          duration: 3000
+        })
+      } else {
+        toast.add({
+          title: 'Restart Command Sent',
+          description: 'Workers should restart shortly',
+          color: 'warning',
+          duration: 3000
+        })
+      }
+    } else {
+      // Fallback to HTTP if WebSocket not connected
+      console.warn('⚠️ WebSocket not connected, falling back to HTTP')
+      const response = await useApiFetch('jobs/processing/force-restart', {
+        method: 'POST'
+      })
+
+      if (response.success) {
+        const toast = useToast()
+        toast.add({
+          title: 'Workers Restarting',
+          description: 'Containers restarting — models will reload on the next job.',
+          color: 'success',
+          duration: 3000
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Failed to force restart workers:', error)
+
+    const toast = useToast()
+    toast.add({
+      title: 'Restart Failed',
+      description: error.data?.statusMessage || error.message || 'Failed to restart workers',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isRestarting.value = false
   }
 }
 
@@ -1257,6 +1547,21 @@ const getStatusDisplayText = status => {
 const getJobActions = job => {
   const actions = []
 
+  // Edit the preset this queued i2v job references. Since queued jobs resolve
+  // params live from the preset row, saving the preset propagates to every
+  // queued job using it — no per-job edit needed.
+  if (job.status === 'queued' && job.job_type === 'i2v' && job.preset_id) {
+    actions.push({
+      label: 'Edit Preset',
+      icon: 'i-heroicons-pencil-square',
+      onSelect: async () => {
+        if (submitJobModalRef.value?.editPresetFromJob) {
+          await submitJobModalRef.value.editPresetFromJob(job)
+        }
+      }
+    })
+  }
+
   // Add cancel option for queued/active/need_input/failed jobs
   if (['queued', 'active', 'need_input', 'failed'].includes(job.status)) {
     actions.push({
@@ -1286,6 +1591,20 @@ const getJobActions = job => {
       icon: 'i-heroicons-arrow-path',
       onSelect: async () => {
         await retryJob(job)
+      }
+    })
+  }
+
+  // Duplicate: open Submit Job modal pre-filled with this job's subject, source image, and params.
+  // Only wired up for i2v since that's the flow with a single source image + tweakable params.
+  if (job.job_type === 'i2v' && job.subject_uuid && job.source_media_uuid) {
+    actions.push({
+      label: 'Duplicate (Tweak)',
+      icon: 'i-heroicons-document-duplicate',
+      onSelect: async () => {
+        if (submitJobModalRef.value?.duplicateFromJob) {
+          await submitJobModalRef.value.duplicateFromJob(job)
+        }
       }
     })
   }
@@ -1331,15 +1650,18 @@ const handleJobDeleted = async () => {
 
 // Handle jobs created from submit job modal
 const handleJobsCreated = async result => {
-  const toast = useToast()
-  toast.add({
-    title: 'Jobs Created Successfully',
-    description: `${result.successCount} job${result.successCount !== 1 ? 's' : ''} created successfully!`,
-    color: 'green',
-    duration: 3000
-  })
+  // Edit mode shows its own toast inside the modal — don't double up.
+  if (!result.edited) {
+    const toast = useToast()
+    toast.add({
+      title: 'Jobs Created Successfully',
+      description: `${result.successCount} job${result.successCount !== 1 ? 's' : ''} created successfully!`,
+      color: 'green',
+      duration: 3000
+    })
+  }
 
-  // Refresh the jobs list to show new jobs
+  // Refresh the jobs list to show new or updated jobs
   await refreshJobsWithCurrentState()
 }
 
@@ -1613,6 +1935,17 @@ const deleteJobFromModal = async () => {
   }
 }
 
+// Reactively reflect a rating change made in the modal back into the jobs list,
+// so the row's stars update without a manual refresh. Matches by media UUID
+// against each job's output/dest media records.
+const handleRatingChanged = ({ mediaUuid, rating }) => {
+  if (!mediaUuid) return
+  for (const job of jobs.value) {
+    if (job.output_media && job.output_media.uuid === mediaUuid) job.output_media.rating = rating
+    if (job.dest_media && job.dest_media.uuid === mediaUuid) job.dest_media.rating = rating
+  }
+}
+
 // Handle job change from JobDetailsModal
 const handleJobDetailsChanged = async newJob => {
   try {
@@ -1627,6 +1960,66 @@ const handleJobDetailsChanged = async newJob => {
 }
 
 // Bulk operation methods
+// In-memory priority queue mirror — populated from /api/jobs/processing/priority-queue
+// and updated optimistically on push-to-front actions. Used to render the PRI
+// badge and ordinal on prioritized rows.
+const priorityQueue = ref([])
+const priorityQueueSet = computed(() => new Set(priorityQueue.value))
+const priorityIndex = (jobId) => priorityQueue.value.indexOf(jobId)
+
+const fetchPriorityQueue = async () => {
+  try {
+    const res = await useApiFetch('jobs/processing/priority-queue')
+    priorityQueue.value = res?.queue || []
+  } catch (e) {
+    console.error('Failed to fetch priority queue:', e)
+  }
+}
+
+const bulkPushToFront = async () => {
+  const queuedSelected = selectedJobsArray.value.filter(jobId => {
+    const job = jobs.value.find(j => j.id === jobId)
+    return job && job.status === 'queued'
+  })
+
+  if (queuedSelected.length === 0) {
+    const toast = useToast()
+    toast.add({
+      title: 'Nothing to prioritize',
+      description: 'Only jobs in status=queued can be pushed to the front.',
+      color: 'warning',
+      duration: 3000
+    })
+    return
+  }
+
+  try {
+    const response = await useApiFetch('jobs/processing/prioritize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { job_ids: queuedSelected }
+    })
+    priorityQueue.value = response?.queue || priorityQueue.value
+    const toast = useToast()
+    toast.add({
+      title: 'Pushed to front',
+      description: response?.message || `${queuedSelected.length} job(s) prioritized`,
+      color: 'success',
+      duration: 3000
+    })
+    clearSelection()
+  } catch (error) {
+    console.error('Failed to push jobs to front:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Push to Front Failed',
+      description: error?.data?.statusMessage || error?.message || 'Could not prioritize jobs',
+      color: 'error',
+      duration: 4000
+    })
+  }
+}
+
 const bulkQueue = async () => {
   const jobsToQueue = selectedJobsArray.value.filter(jobId => {
     const job = jobs.value.find(j => j.id === jobId)
@@ -1879,6 +2272,16 @@ watch([pageNumber, currentFilter, selectedSubjectFilter, selectedSourceTypeFilte
   clearSelection()
 })
 
+// Re-fetch jobs whenever the preset filter changes
+watch(selectedPresetFilter, async () => {
+  pageNumber.value = 1
+  clearSelection()
+  const statusFilter = currentFilter.value || ''
+  const subjectUuid = selectedSubjectFilter?.value?.value || ''
+  const sourceTypeFilter = selectedSourceTypeFilter.value || 'all'
+  await fetchJobsDirectly(pageNumber.value, itemsPerPage.value, statusFilter, subjectUuid, sourceTypeFilter)
+})
+
 // Watch for processing status changes from the backend
 watch(
   () => jobsStore.systemStatus?.comfyuiProcessing?.status,
@@ -1888,6 +2291,31 @@ watch(
       processingMode.value = 'idle'
     }
   }
+)
+
+// Also reset processing mode when active job count drops to 0
+// (covers i2v/t2v cases where comfyui status doesn't transition)
+watch(
+  () => jobsStore.queueStatus?.queue?.active,
+  (newActive) => {
+    if (newActive === 0 && !isStartingSingle.value && !isStartingContinuous.value) {
+      processingMode.value = 'idle'
+    }
+  }
+)
+
+// Sync local processingMode from shared store state (multi-device sync)
+watch(
+  () => jobsStore.processingState,
+  (state) => {
+    if (!state) return
+    if (state.isActive) {
+      processingMode.value = state.isContinuous ? 'continuous' : 'single'
+    } else if (!isStartingSingle.value && !isStartingContinuous.value) {
+      processingMode.value = 'idle'
+    }
+  },
+  { deep: true, immediate: true }
 )
 
 // WebSocket event listeners for command acknowledgments
@@ -1936,6 +2364,8 @@ onMounted(async () => {
   currentFilter.value = defaultFilter
   await fetchJobsDirectly(1, itemsPerPage.value, defaultFilter, '', 'all')
 
+  // Load the priority queue so PRI badges/ordinals render on first paint
+  await fetchPriorityQueue()
 })
 
 onUnmounted(() => {
