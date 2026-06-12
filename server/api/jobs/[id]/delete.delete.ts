@@ -55,8 +55,13 @@ export default defineEventHandler(async event => {
       deletedCount += deletedOutputMedia.length
       logger.info(`🗑️ Deleted ${deletedOutputMedia.length} output media for job ${jobId}`)
 
+      // i2i/faceswap (fs) jobs must never cascade: many fs jobs can share the
+      // same destination image, so deleting one must not wipe its siblings or
+      // the shared destination media. Force single-job deletion for fs.
+      const allowCascade = cascade && job.jobType !== 'fs'
+
       // If job has a dest_media_uuid and cascade is enabled, cascade delete all related records
-      if (cascade && destMediaUuid) {
+      if (allowCascade && destMediaUuid) {
         logger.info(`🗑️ Cascading delete for dest video ${destMediaUuid}`)
 
         // Find all jobs that use the same dest video

@@ -109,8 +109,11 @@ export default defineEventHandler(async event => {
       }))
     )
 
-    // If job has a dest_media_uuid, find all related jobs
-    if (job.destMediaUuid) {
+    // If job has a dest_media_uuid, find all related jobs.
+    // i2i/faceswap (fs) jobs never cascade (see delete.delete.ts), so the
+    // preview must not list sibling jobs or the shared destination media —
+    // only this job's own output is removed.
+    if (job.destMediaUuid && job.jobType !== 'fs') {
       const relatedJobs = await db
         .select({
           id: jobs.id,

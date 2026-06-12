@@ -80,11 +80,24 @@
             <h4 class="text-sm sm:text-base font-medium text-gray-900 dark:text-white">Media Thumbnails</h4>
             <div class="flex gap-2 sm:gap-4">
               <!-- Subject Thumbnail -->
-              <div v-if="job.subject_thumbnail_uuid" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'subject' }">
+              <div v-if="subjectImageUuid" class="flex-1 min-w-0 cursor-pointer rounded-lg" :class="{ 'ring-2 ring-primary': mainSlot?.key === 'subject' }">
                 <div class="mb-1 sm:mb-2 text-center">
                   <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Subject</span>
                 </div>
-                <MediaCard :key="`subject-${job.subject_thumbnail_uuid}`" :media="{ uuid: job.subject_thumbnail_uuid, type: 'image', thumbnail: `/api/media/${job.subject_thumbnail_uuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="selectSlot('subject')" />
+                <div class="relative">
+                  <MediaCard :key="`subject-${subjectImageUuid}`" :media="{ uuid: subjectImageUuid, type: 'image', thumbnail: `/api/media/${subjectImageUuid}/image`, filename: 'Subject thumbnail' }" :show-duration="false" :show-delete="false" aspect-ratio="3/4" @click="selectSlot('subject')" />
+                  <!-- Favorite toggle for the subject image actually used -->
+                  <button
+                    type="button"
+                    class="absolute bottom-1 left-1 z-40 rounded-full w-7 h-7 flex items-center justify-center transition-colors disabled:opacity-50"
+                    :class="subjectFavorite ? 'bg-yellow-400/90 hover:bg-yellow-300 text-black' : 'bg-black/70 hover:bg-black/90 text-white'"
+                    :title="subjectFavorite ? 'Unmark favorite' : 'Mark as favorite'"
+                    :disabled="subjectFavoriteSaving"
+                    @click.stop="toggleSubjectFavorite"
+                  >
+                    <UIcon :name="subjectFavorite ? 'i-heroicons-star-solid' : 'i-heroicons-star'" class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <!-- Source Image Thumbnail -->
@@ -333,6 +346,9 @@ const videoContainer = ref(null)
 // Rating state
 const outputRating = ref(null)
 const destRating = ref(null)
+// Favorite flag for the subject image actually used (subjectImageUuid).
+const subjectFavorite = ref(false)
+const subjectFavoriteSaving = ref(false)
 
 // Which video the rating thumb button targets. Two cases:
 //   - Face-swap jobs (have both dest and output): respect the user's toggle
@@ -343,6 +359,12 @@ const destRating = ref(null)
 // All media slots that can occupy the main display, keyed by role. Each carries
 // a cropUuid (the real media UUID to crop, or null when only a derived thumbnail
 // is available — e.g. the subject).
+
+// The subject image actually used for this job is the resolved source image
+// (the reference the source workflow picked, or the subject's single source
+// image). Fall back to the subject's main thumbnail when there's no source.
+const subjectImageUuid = computed(() => props.job?.source_media_uuid || props.job?.subject_thumbnail_uuid || null)
+
 const slotByKey = computed(() => {
   const j = props.job
   if (!j) return {}
@@ -370,10 +392,10 @@ const slotByKey = computed(() => {
       rating: null, cropUuid: j.source_media_uuid
     }
   }
-  if (j.subject_thumbnail_uuid) {
+  if (subjectImageUuid.value) {
     map.subject = {
-      key: 'subject', uuid: j.subject_thumbnail_uuid, type: 'image',
-      thumbnail: `/api/media/${j.subject_thumbnail_uuid}/image`, label: 'Subject',
+      key: 'subject', uuid: subjectImageUuid.value, type: 'image',
+      thumbnail: `/api/media/${subjectImageUuid.value}/image`, label: 'Subject',
       rating: null, cropUuid: null
     }
   }
@@ -605,6 +627,48 @@ const fetchDestRating = async destUuid => {
   }
 }
 
+// Fetch the favorite flag for the subject image actually used
+const fetchSubjectFavorite = async uuid => {
+  if (!uuid) {
+    subjectFavorite.value = false
+    return
+  }
+  try {
+    const response = await useApiFetch(`media/${uuid}/info`)
+    subjectFavorite.value = !!response.favorite
+  } catch (error) {
+    console.error('Failed to fetch subject favorite:', error)
+    subjectFavorite.value = false
+  }
+}
+
+// Toggle favorite on the subject image actually used (optimistic + rollback).
+const toggleSubjectFavorite = async () => {
+  const uuid = subjectImageUuid.value
+  if (!uuid || subjectFavoriteSaving.value) return
+  const before = subjectFavorite.value
+  const next = !before
+  subjectFavorite.value = next
+  subjectFavoriteSaving.value = true
+  try {
+    await useApiFetch(`media/${uuid}/favorite`, {
+      method: 'PUT',
+      body: { favorite: next }
+    })
+  } catch (error) {
+    subjectFavorite.value = before
+    const toast = useToast()
+    toast.add({
+      title: 'Favorite update failed',
+      description: error.data?.statusMessage || error.message || 'Could not update favorite',
+      color: 'error',
+      duration: 3000
+    })
+  } finally {
+    subjectFavoriteSaving.value = false
+  }
+}
+
 // Reset video states when job changes
 watch(
   () => props.job,
@@ -628,6 +692,9 @@ watch(
     } else {
       destRating.value = null
     }
+
+    // Fetch favorite flag for the subject image actually used
+    await fetchSubjectFavorite(subjectImageUuid.value)
 
     // Update current job index based on the new job
     if (newJob && props.jobsList.length > 0) {

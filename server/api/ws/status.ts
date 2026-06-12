@@ -114,7 +114,7 @@ export default defineWebSocketHandler({
 })
 
 // Command Handlers
-async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' = 'all', jobLimit: number | null = null) {
+async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' = 'all', jobLimit: number | null = null) {
   try {
     const result = startContinuousProcessing(sourceType, jobLimit)
 
@@ -157,7 +157,7 @@ async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | '
   }
 }
 
-async function handleStartSingle(peer: any, sourceType: 'all' | 'source' | 'vid' = 'all') {
+async function handleStartSingle(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' = 'all') {
   try {
     // Note: startSingleJob is async, but we acknowledge immediately
     // The actual job processing happens in background

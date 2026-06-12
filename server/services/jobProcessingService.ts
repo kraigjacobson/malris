@@ -133,8 +133,31 @@ export interface ProcessNextJobResult {
   active_job_id?: string
   skip?: boolean
   noJobsRemaining?: boolean // Signals continuous mode should stop (no jobs of any type)
+  workerUnreachable?: boolean // Signals continuous mode should stop (worker for this job type is down)
   usedFallback?: boolean // Indicates we processed a different type than preferred
   actualType?: 'source' | 'vid' // What type was actually processed
+}
+
+// Distinguish "the worker container is down/unreachable" (a connection-level
+// failure — every job of this type will fail the same way, so continuous mode
+// should stop) from a genuine per-job error (bad input, missing media — skip
+// that one job and keep going). Covers the undici "fetch failed" we see when a
+// worker container is not running, plus common connection error codes/timeouts.
+function isWorkerUnreachableError(err: any): boolean {
+  if (!err) return false
+  const msg = (err.message || '').toLowerCase()
+  const causeCode = err.cause ? (err.cause.code || err.cause.errno || '') : ''
+  const code = (err.code || causeCode || '').toString().toUpperCase()
+  return (
+    msg.includes('fetch failed') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enotfound') ||
+    msg.includes('econnreset') ||
+    msg.includes('socket hang up') ||
+    err.name === 'AbortError' ||
+    err.name === 'TimeoutError' ||
+    ['ECONNREFUSED', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)
+  )
 }
 
 // Function to get current processing status
@@ -314,6 +337,25 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     }
 
     logger.info(`✅ ComfyUI worker is healthy and idle - proceeding with job processing (preferredSourceType: ${preferredSourceType})`)
+
+    // SINGLE-ACTIVE GUARD: never start a new job while one is already active.
+    // We hold the isCurrentlyProcessing lock for the whole function and this is
+    // the only code path that sets a job to 'active', so once this reads 0 it
+    // stays 0 until we set our own job active below. Checked BEFORE dispatching
+    // to the worker so a busy slot leaves the candidate queued instead of
+    // failing the running job.
+    const [{ count: activeNow } = { count: 0 }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(jobs)
+      .where(eq(jobs.status, 'active'))
+    if (Number(activeNow) > 0) {
+      logger.info(`🕐 ${activeNow} job(s) already active - leaving next job queued until the slot frees up`)
+      return {
+        success: false,
+        message: `Skipping - ${activeNow} job(s) already active`,
+        skip: true
+      }
+    }
 
     // Check counts of queued jobs by type. The i2v count narrows to the
     // pinned preset when presetFilter is set so we don't incorrectly claim
@@ -853,56 +895,8 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       const workerResult = await workerResponse.json()
       logger.info('✅ Worker response:', workerResult)
 
-      // STRICT SOLUTION: Only allow 1 active job at a time
-      // Mark all other active jobs as failed before starting the new one
-
-      // First, get all currently active jobs to mark them as failed
-      const currentActiveJobs = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.status, 'active'))
-
-      // Get the job IDs that will be marked as failed for cleanup
-      const jobsToFail = currentActiveJobs
-
-      // Delete output media records for jobs that will be marked as failed
-      if (jobsToFail.length > 0) {
-        const { mediaRecords } = await import('~/server/utils/schema')
-        const jobIdsToClean = jobsToFail.map(j => j.id)
-
-        for (const jobId of jobIdsToClean) {
-          try {
-            const deletedMedia = await db
-              .delete(mediaRecords)
-              .where(and(eq(mediaRecords.jobId, jobId), eq(mediaRecords.purpose, 'output')))
-              .returning({
-                uuid: mediaRecords.uuid,
-                filename: mediaRecords.filename
-              })
-
-            if (deletedMedia.length > 0) {
-              logger.info(`🗑️ Cleaned up ${deletedMedia.length} output media records for failed job ${jobId}`)
-            }
-          } catch (cleanupError) {
-            logger.error(`⚠️ Failed to clean up media records for job ${jobId}:`, cleanupError)
-          }
-        }
-      }
-
-      // Mark ALL currently active jobs as failed since we only allow 1 active job
-      let affectedRows = 0
-      if (jobsToFail.length > 0) {
-        const result = await db
-          .update(jobs)
-          .set({
-            status: 'failed',
-            updatedAt: new Date(),
-            errorMessage: 'Job marked as failed - only 1 active job allowed at a time'
-          })
-          .where(eq(jobs.status, 'active'))
-
-        affectedRows = result.rowCount || 0
-        logger.info(`🧹 Marked ${affectedRows} active jobs as failed to enforce single active job limit`)
-      } else {
-        logger.info(`✅ No active jobs found - proceeding with new job`)
-      }
+      // The single-active guard at the top of processNextJob already ensured no
+      // other job is active before we dispatched, so we simply promote this job.
 
       // Now update the current job to active status. Persist the preset
       // snapshot (if any) atomically with the status change so display and
@@ -943,6 +937,22 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       }
     } catch (workerError: any) {
       logger.error('❌ Failed to send job to worker:', workerError)
+
+      // Worker container is down / unreachable: every job of this type would
+      // fail identically, so DON'T burn this job. Leave it queued (we haven't
+      // flipped it to active yet) and signal continuous mode to stop. This is
+      // the brake that prevents an OOM'd worker from failing the whole queue.
+      if (isWorkerUnreachableError(workerError)) {
+        logger.error(`🛑 Worker for ${job.jobType} jobs is unreachable — leaving job ${job.id} queued and signaling stop`)
+        return {
+          success: false,
+          job_id: job.id,
+          status: 'queued',
+          message: `Worker for '${job.jobType}' jobs is unreachable (${workerError.message}). Stopped to avoid failing the queue — job left queued.`,
+          workerUnreachable: true,
+          skip: true
+        }
+      }
 
       // Set job status to failed on worker error (don't retry automatically)
       await db
@@ -1067,6 +1077,21 @@ export function startContinuousProcessing(sourceType: PreferredSourceType = 'all
             processingInterval = null
           }
           updateAutoProcessingStatus('disabled', 'Continuous processing stopped - no jobs remaining', false)
+          broadcastProcessingStateChange()
+          return
+        }
+
+        // Worker for the picked job type is down: stop immediately instead of
+        // churning the whole queue into failures. The job that hit this was left
+        // queued, so nothing is lost — restart the worker and resume.
+        if (result.workerUnreachable) {
+          logger.error(`🛑 Continuous processing: ${result.message} - auto-stopping`)
+          continuousMode = false
+          if (processingInterval) {
+            clearInterval(processingInterval)
+            processingInterval = null
+          }
+          updateAutoProcessingStatus('disabled', result.message || 'Continuous processing stopped - worker unreachable', false)
           broadcastProcessingStateChange()
           return
         }

@@ -8,7 +8,7 @@ export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
+    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, exclude_dest_for_subject, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
 
     // Debug logging for include_thumbnails parameter
     logger.info('🔍 Media search parameters:', {
@@ -112,6 +112,7 @@ export default defineEventHandler(async event => {
         bitrate: result.bitrate,
         tags: result.tags,
         rating: result.rating,
+        favorite: result.favorite,
         subject_uuid: result.subject_uuid,
         source_media_uuid_ref: result.source_media_uuid_ref,
         dest_media_uuid_ref: result.dest_media_uuid_ref,
@@ -295,6 +296,21 @@ export default defineEventHandler(async event => {
 
     if (dest_media_uuid_ref) {
       conditions.push(eq(mediaRecords.destMediaUuidRef, dest_media_uuid_ref as string))
+    }
+
+    // Hide dest images that already have a (non-failed) job for the given
+    // subject, so the faceswap picker can't surface targets that would create a
+    // duplicate job. Failed jobs are excluded from the match on purpose — a dest
+    // whose only job failed stays visible so it can be retried.
+    if (exclude_dest_for_subject) {
+      conditions.push(
+        sql`NOT EXISTS (
+          SELECT 1 FROM ${jobs}
+          WHERE ${jobs.destMediaUuid} = ${mediaRecords.uuid}
+            AND ${jobs.subjectUuid} = ${exclude_dest_for_subject as string}
+            AND ${jobs.status} <> 'failed'
+        )`
+      )
     }
 
     // Preset filter — match media that participates in any job (as source / dest / output)
@@ -654,6 +670,7 @@ export default defineEventHandler(async event => {
       bitrate: result.bitrate,
       tags: result.tags,
       rating: result.rating,
+      favorite: result.favorite,
       subject_uuid: result.subject_uuid,
       source_media_uuid_ref: result.source_media_uuid_ref,
       dest_media_uuid_ref: result.dest_media_uuid_ref,

@@ -1388,7 +1388,7 @@ const updateSubject = async () => {
       title: 'Success',
       description: 'Subject updated successfully',
       color: 'green',
-      timeout: 3000
+      duration: 500
     })
 
     closeModal()

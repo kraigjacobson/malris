@@ -353,14 +353,6 @@ const handleSubjectUpdated = (updatedSubject) => {
   if (subjectIndex !== -1) {
     subjectResults.value[subjectIndex] = { ...subjectResults.value[subjectIndex], ...updatedSubject }
   }
-  
-  const toast = useToast()
-  toast.add({
-    title: 'Success',
-    description: 'Subject updated successfully',
-    color: 'green',
-    timeout: 3000
-  })
 }
 
 // Watch for page changes

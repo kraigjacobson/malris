@@ -319,6 +319,11 @@
               <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-primary" />
               <span class="text-sm font-medium">{{ fsSelectedSubject.label }}</span>
               <UButton variant="ghost" size="xs" icon="i-heroicons-x-mark" @click="clearFsSubject" />
+              <div class="flex items-center gap-3 ml-2">
+                <UCheckbox v-model="fsShowSubjectImages" label="Subject images" size="xs" />
+                <UCheckbox v-model="fsShowOutputImages" label="Output images" size="xs" />
+                <UCheckbox v-model="fsShowFavoritesOnly" label="Favorites" size="xs" />
+              </div>
               <span class="ml-auto text-xs text-gray-400">
                 {{ fsSelectedFaces.length }} face{{ fsSelectedFaces.length !== 1 ? 's' : '' }} × {{ fsSelectedDestImages.length }} dest = {{ fsSelectedFaces.length * fsSelectedDestImages.length }} job{{ fsSelectedFaces.length * fsSelectedDestImages.length !== 1 ? 's' : '' }}
               </span>
@@ -328,9 +333,18 @@
             <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
               <!-- Left: Source face multi-pick -->
               <div class="overflow-y-auto">
-                <p class="text-xs text-gray-400 mb-2">Select source face(s) — identity to swap IN:</p>
+                <div class="flex items-center justify-between mb-2 gap-2">
+                  <p class="text-xs text-gray-400">Select source face(s) — identity to swap IN:</p>
+                  <UCheckbox
+                    :model-value="allVisibleFacesSelected"
+                    :disabled="fsDisplayedImages.length === 0"
+                    label="Select all"
+                    size="xs"
+                    @update:model-value="toggleSelectAllVisibleFaces"
+                  />
+                </div>
                 <SourceImageGrid
-                  :images="fsSubjectImages"
+                  :images="fsDisplayedImages"
                   :loading="fsSubjectImagesLoading"
                   :selected-uuids="fsSelectedFaces.map(s => s.uuid)"
                   empty-message="No source images found for this subject"
@@ -497,8 +511,34 @@ const emit = defineEmits(['update:modelValue', 'jobsCreated'])
 
 // Use composables
 const { setSubjectTags, setVideoTags, filterHairTags, clearTags } = useTags()
-const { displayImages } = useSettings()
+const { displayImages, settingsStore } = useSettings()
 const searchStore = useSearchStore()
+
+// Faceswap I2I source-face picker toggles (persisted). Bound to the two
+// checkboxes next to the selected subject name. Writing goes through the store
+// setter so the choice is saved to localforage; the watcher below reloads the
+// left-column images whenever either flips.
+const fsShowSubjectImages = computed({
+  get: () => settingsStore.fsShowSubjectImages,
+  set: (v) => settingsStore.setFsShowSubjectImages(v)
+})
+const fsShowOutputImages = computed({
+  get: () => settingsStore.fsShowOutputImages,
+  set: (v) => settingsStore.setFsShowOutputImages(v)
+})
+// When on, the left-column face picker shows only favorited images. This is a
+// pure display filter over the already-loaded set — no reload needed.
+const fsShowFavoritesOnly = computed({
+  get: () => settingsStore.fsShowFavoritesOnly,
+  set: (v) => settingsStore.setFsShowFavoritesOnly(v)
+})
+
+// The source faces actually rendered: optionally narrowed to favorites only.
+const fsDisplayedImages = computed(() =>
+  fsShowFavoritesOnly.value
+    ? fsSubjectImages.value.filter(img => img.favorite)
+    : fsSubjectImages.value
+)
 
 // Computed
 const isOpen = computed({
@@ -880,11 +920,53 @@ const handleFsSubjectSelection = (subject) => {
   nextTick(() => searchDestImages())
 }
 
+// Fetch every page of a subject's source images for a given origin. Both the
+// uploaded identity faces and the faceswap-job outputs live under
+// purpose='source' with the same subject_uuid — they're distinguished by
+// source_job_type: 'none' = no job (the real subject images), 'fs' = produced
+// by a Faceswap I2I job (the output images). The previous version capped at
+// limit=100 AND didn't split origins, so it leaked fs outputs and dropped the
+// rest. We loop on offset until a short page comes back so SourceImageGrid's
+// infinite scroll gets the full set.
+const fetchAllSubjectImages = async (subjectUuid, sourceJobType) => {
+  const pageSize = 200
+  const all = []
+  let offset = 0
+  // Safety cap so a runaway count can't loop forever.
+  while (offset < 10000) {
+    const data = await useApiFetch(
+      `media/search?subject_uuid=${subjectUuid}&purpose=source&source_job_type=${sourceJobType}&media_type=image&limit=${pageSize}&offset=${offset}`
+    )
+    const results = data?.results || []
+    all.push(...results)
+    if (results.length < pageSize) break
+    offset += pageSize
+  }
+  return all
+}
+
 const loadFsSubjectImages = async (subjectUuid) => {
   fsSubjectImagesLoading.value = true
+  fsSubjectImages.value = []
   try {
-    const data = await useApiFetch(`media/search?subject_uuid=${subjectUuid}&purpose=source&media_type=image&limit=100`)
-    fsSubjectImages.value = data?.results || []
+    // Each checkbox maps to a source_job_type origin filter.
+    const origins = []
+    if (fsShowSubjectImages.value) origins.push('none') // uploaded identity faces
+    if (fsShowOutputImages.value) origins.push('fs') // faceswap-job outputs
+
+    const batches = await Promise.all(origins.map(o => fetchAllSubjectImages(subjectUuid, o)))
+
+    // Merge purposes, de-duping by uuid so an image can't appear twice.
+    const seen = new Set()
+    const merged = []
+    for (const batch of batches) {
+      for (const img of batch) {
+        if (seen.has(img.uuid)) continue
+        seen.add(img.uuid)
+        merged.push(img)
+      }
+    }
+    fsSubjectImages.value = merged
   } catch (e) {
     console.error('Failed to load fs subject source images:', e)
     fsSubjectImages.value = []
@@ -893,12 +975,45 @@ const loadFsSubjectImages = async (subjectUuid) => {
   }
 }
 
+// Reload the left-column faces whenever the purpose toggles change, as long as a
+// subject is selected. The .value on fsSelectedSubject holds the subject id.
+watch([fsShowSubjectImages, fsShowOutputImages], () => {
+  if (fsSelectedSubject.value?.value) {
+    loadFsSubjectImages(fsSelectedSubject.value.value)
+  }
+})
+
 const toggleFsFace = (img) => {
   const idx = fsSelectedFaces.value.findIndex(s => s.uuid === img.uuid)
   if (idx >= 0) {
     fsSelectedFaces.value.splice(idx, 1)
   } else {
     fsSelectedFaces.value.push(img)
+  }
+}
+
+// Are all currently-visible source faces already selected?
+const allVisibleFacesSelected = computed(() => {
+  const visible = fsDisplayedImages.value
+  if (visible.length === 0) return false
+  const selected = new Set(fsSelectedFaces.value.map(s => s.uuid))
+  return visible.every(img => selected.has(img.uuid))
+})
+
+// Select (or deselect) every visible source face, respecting the current
+// subject/output/favorite filters. Other selections outside the visible set
+// are left untouched.
+const toggleSelectAllVisibleFaces = () => {
+  const visible = fsDisplayedImages.value
+  if (visible.length === 0) return
+  if (allVisibleFacesSelected.value) {
+    const visibleUuids = new Set(visible.map(img => img.uuid))
+    fsSelectedFaces.value = fsSelectedFaces.value.filter(s => !visibleUuids.has(s.uuid))
+  } else {
+    const selected = new Set(fsSelectedFaces.value.map(s => s.uuid))
+    for (const img of visible) {
+      if (!selected.has(img.uuid)) fsSelectedFaces.value.push(img)
+    }
   }
 }
 
@@ -968,6 +1083,12 @@ const loadDestImages = async (reset = false) => {
     const params = new URLSearchParams()
     params.append('media_type', 'image')
     params.append('purpose', 'dest')
+
+    // Hide dest images that already have a (non-failed) job for this subject so
+    // we don't accidentally queue a duplicate faceswap for the same target.
+    if (fsSelectedSubject.value?.value) {
+      params.append('exclude_dest_for_subject', fsSelectedSubject.value.value)
+    }
 
     const limit = typeof searchStore.videoSearch.limitOptions === 'object' ? searchStore.videoSearch.limitOptions.value : searchStore.videoSearch.limitOptions || 50
     params.append('limit', limit.toString())
@@ -1768,8 +1889,10 @@ const createBatchJobs = async () => {
       // Each face is the ReActor identity (source_media_uuid); each dest
       // image is the swap target (dest_media_uuid). Output lands as a
       // favorited i2v source image so bulk-i2v auto-picks it up.
-      for (const face of fsSelectedFaces.value) {
-        for (const destImg of fsSelectedDestImages.value) {
+      // Order: process all source faces for one dest image before moving to
+      // the next dest (dest is the outer loop).
+      for (const destImg of fsSelectedDestImages.value) {
+        for (const face of fsSelectedFaces.value) {
           try {
             const payload = {
               job_type: 'fs',

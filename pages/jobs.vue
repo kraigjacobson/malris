@@ -16,6 +16,15 @@
                 />
               </div>
 
+              <!-- Job Type Filter for continuous processing (only Process All / Process N pick these up) -->
+              <div class="hidden sm:block w-40" title="Limit Process All / Process N to a single job type">
+                <USelect
+                  v-model="processingJobType"
+                  :items="processingJobTypeOptions"
+                  placeholder="All job types"
+                />
+              </div>
+
               <!-- Pick Order Toggle (chronological vs random preset-reuse) -->
               <div
                 class="hidden sm:flex items-center gap-1.5 px-2"
@@ -106,6 +115,13 @@
                 v-model="presetFilterValue"
                 job-type="i2v"
                 placeholder="All presets"
+              />
+            </div>
+            <div class="flex-1 min-w-0" title="Limit Process All / Process N to a single job type">
+              <USelect
+                v-model="processingJobType"
+                :items="processingJobTypeOptions"
+                placeholder="All job types"
               />
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0" :title="pickOrderTooltip">
@@ -723,6 +739,26 @@ const sourceTypeOptions = [
 // Preset filter (id of the i2v preset stashed on jobs.parameters._preset_id)
 const selectedPresetFilter = ref(null)
 
+// Processing job-type filter — sits next to the "All presets" filter in the
+// Queue Status header and scopes ONLY what Process All / Process N pick up.
+// Independent of the subject-card source-type filter (which also filters the
+// visible list). When left on 'all', we fall back to the subject-card filter
+// so existing behavior is preserved.
+const processingJobType = ref('all')
+// Only real continuous-picker scopes belong here. 'tagging' is intentionally
+// excluded — tagging jobs bypass the picker and are dispatched directly, and
+// feeding it as a scope would make the picker fall through to "process all".
+const processingJobTypeOptions = [
+  { value: 'all', label: 'All job types' },
+  { value: 'i2v', label: 'Wan I2V' },
+  { value: 'fs', label: 'Faceswap I2I' },
+  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' }
+]
+// Effective source_type sent to the picker: explicit header choice wins,
+// otherwise inherit whatever the subject-card filter is set to.
+const effectiveProcessingSourceType = () =>
+  processingJobType.value !== 'all' ? processingJobType.value : selectedSourceTypeFilter.value
+
 // Star rating filter state - default to empty (show only unrated)
 const selectedRatings = ref([])
 const showUnrated = ref(false)
@@ -1118,12 +1154,14 @@ const startSingleProcessing = async () => {
     isStartingSingle.value = true
     processingMode.value = 'single' // Optimistic update
 
+    const procType = effectiveProcessingSourceType()
+
     // Send command via WebSocket if connected
     if (jobsStore.wsConnection && jobsStore.wsConnected) {
       jobsStore.wsConnection.send(
         JSON.stringify({
           type: 'start_single',
-          source_type: selectedSourceTypeFilter.value
+          source_type: procType
         })
       )
 
@@ -1132,7 +1170,7 @@ const startSingleProcessing = async () => {
 
       if (ackReceived) {
         const toast = useToast()
-        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'any' : selectedSourceTypeFilter.value
+        const typeLabel = procType === 'all' ? 'any' : procType
         toast.add({
           title: 'Single Job Processing Started',
           description: `Processing one ${typeLabel} job`,
@@ -1156,13 +1194,13 @@ const startSingleProcessing = async () => {
       const response = await useApiFetch('jobs/processing/single', {
         method: 'POST',
         body: {
-          source_type: selectedSourceTypeFilter.value
+          source_type: procType
         }
       })
 
       if (response.success) {
         const toast = useToast()
-        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'any' : selectedSourceTypeFilter.value
+        const typeLabel = procType === 'all' ? 'any' : procType
         toast.add({
           title: 'Single Job Processing Started',
           description: response.message || `Processing one ${typeLabel} job`,
@@ -1208,12 +1246,14 @@ const startContinuousProcessing = async (options = {}) => {
     }
     processingMode.value = 'continuous' // Optimistic update
 
+    const procType = effectiveProcessingSourceType()
+
     // Send command via WebSocket if connected
     if (jobsStore.wsConnection && jobsStore.wsConnected) {
       jobsStore.wsConnection.send(
         JSON.stringify({
           type: 'start_continuous',
-          source_type: selectedSourceTypeFilter.value,
+          source_type: procType,
           job_limit: jobLimit
         })
       )
@@ -1223,7 +1263,7 @@ const startContinuousProcessing = async (options = {}) => {
 
       if (ackReceived) {
         const toast = useToast()
-        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
+        const typeLabel = procType === 'all' ? 'all' : procType
         toast.add({
           title: jobLimit ? `Processing ${jobLimit} Jobs` : 'Continuous Processing Started',
           description: jobLimit
@@ -1249,14 +1289,14 @@ const startContinuousProcessing = async (options = {}) => {
       const response = await useApiFetch('jobs/processing/continuous', {
         method: 'POST',
         body: {
-          source_type: selectedSourceTypeFilter.value,
+          source_type: procType,
           job_limit: jobLimit
         }
       })
 
       if (response.success) {
         const toast = useToast()
-        const typeLabel = selectedSourceTypeFilter.value === 'all' ? 'all' : selectedSourceTypeFilter.value
+        const typeLabel = procType === 'all' ? 'all' : procType
         toast.add({
           title: jobLimit ? `Processing ${jobLimit} Jobs` : 'Continuous Processing Started',
           description: response.message || (jobLimit
