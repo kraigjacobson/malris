@@ -32,7 +32,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const isProcessing = ref(false)
 
   // Processing state from jobProcessingService (source of truth)
-  const processingState = ref<{ mode: string; isActive: boolean; isContinuous: boolean } | null>(null)
+  const processingState = ref<{ mode: string; isActive: boolean; isContinuous: boolean; sourceType?: string; pickOrder?: 'chronological' | 'random'; presetFilter?: string | null; jobLimit?: number | null; jobsProcessedCount?: number } | null>(null)
 
   // Manual processing state
   const isManualProcessing = ref(false)
@@ -327,7 +327,8 @@ export const useJobsStore = defineStore('jobs', () => {
             }
           }
 
-          // Don't automatically refresh job list - let user click filters to refresh
+          // Don't auto-refresh here — page watchers on queueStatus handle list refresh
+          // so filters/pagination stay in sync
         }
         break
 

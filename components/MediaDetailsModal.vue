@@ -12,18 +12,18 @@
 
         <div class="flex items-center gap-2 sm:gap-2 shrink-0">
           <!-- Purpose Selector -->
-          <USelect v-model="currentPurpose" :items="purposeOptions" :size="isMobile ? 'sm' : 'xs'" :class="isMobile ? 'w-24' : 'w-20'" :loading="isSavingPurpose" @update:model-value="updatePurpose" />
+          <USelect v-model="currentPurpose" :items="purposeOptions" size="sm" :class="isMobile ? 'w-24' : 'w-20'" :loading="isSavingPurpose" @update:model-value="updatePurpose" />
 
           <!-- Save button for crop/trim modes -->
-          <UButton v-if="currentMode === 'crop' || currentMode === 'trim'" variant="solid" color="success" :size="isMobile ? 'md' : 'xs'" :loading="isSavingEdits" @click="saveVideoEdits"> Save </UButton>
+          <UButton v-if="currentMode === 'crop' || currentMode === 'trim'" variant="solid" color="success" :size="isMobile ? 'md' : 'sm'" :loading="isSavingEdits" @click="saveVideoEdits"> Save </UButton>
 
           <!-- Duplicate button (only in none mode) -->
-          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-document-duplicate" color="primary" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="isDuplicating" @click="duplicateMedia" square />
+          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-document-duplicate" color="primary" :size="isMobile ? 'lg' : 'sm'" :loading="isDuplicating" square @click="duplicateMedia" />
 
           <!-- Delete button (only in none mode) -->
-          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-trash" color="error" :size="isMobile ? 'lg' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px] flex items-center justify-center' : ''" :loading="deletingIds.includes(media.uuid)" @click="$emit('confirmDelete', media)" square />
+          <UButton v-if="currentMode === 'none'" variant="solid" icon="i-heroicons-trash" color="error" :size="isMobile ? 'lg' : 'sm'" :loading="deletingIds.includes(media.uuid)" square @click="$emit('confirmDelete', media)" />
 
-          <UButton variant="ghost" icon="i-heroicons-x-mark" :size="isMobile ? 'xl' : 'xs'" :class="isMobile ? 'min-w-[44px] min-h-[44px]' : ''" @click="closeModal" />
+          <UButton variant="ghost" icon="i-heroicons-x-mark" :size="isMobile ? 'xl' : 'sm'" @click="closeModal" />
         </div>
       </div>
     </template>
@@ -31,7 +31,7 @@
     <template #body>
       <div v-if="media" class="flex flex-col h-full">
         <!-- Mode Tabs -->
-        <UTabs v-model="currentMode" :items="modeTabItems" class="border-b border-gray-200 dark:border-gray-700" />
+        <UTabs v-model="currentMode" :items="modeTabItems" />
 
         <div :class="[currentMode === 'crop' ? '' : currentMode === 'tag' ? '' : 'p-3 sm:p-6', currentMode === 'crop' ? 'overflow-hidden' : 'overflow-auto']" class="flex-1" @touchstart="handleGestureTouchStartWrapper" @touchmove="handleGestureTouchMoveWrapper" @touchend="handleGestureTouchEndWrapper">
           <!-- Tag Mode Layout -->
@@ -305,6 +305,19 @@
     </template>
 
     <template #footer>
+      <!-- Navigation buttons (shown in view and tag modes) -->
+      <div v-if="currentMode === 'none' || currentMode === 'tag'" class="w-full flex items-center justify-between px-4 py-2">
+        <div class="flex gap-2">
+          <UButton :disabled="!props.hasPrevious" variant="outline" size="lg" square class="w-12 h-12 flex items-center justify-center" @click="navigatePrevious">
+            <UIcon name="i-heroicons-chevron-left" class="w-6 h-6" />
+          </UButton>
+          <UButton :disabled="!props.hasNext" variant="outline" size="lg" square class="w-12 h-12 flex items-center justify-center" @click="navigateNext">
+            <UIcon name="i-heroicons-chevron-right" class="w-6 h-6" />
+          </UButton>
+        </div>
+        <span v-if="currentIndex !== undefined && totalCount !== undefined" class="text-sm text-gray-500">{{ currentIndex + 1 }} / {{ totalCount }}</span>
+      </div>
+
       <!-- Frame scrubber slider (only in crop mode) -->
       <div v-if="currentMode === 'crop' && media && media.type === 'video'" class="w-full bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
         <div class="w-full px-4 py-3 space-y-2">

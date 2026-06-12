@@ -1,7 +1,8 @@
 import { getDb } from '~/server/utils/database'
-import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
+import { jobs, jobPresets, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray, sql } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
+import { resolveJobParameters } from '~/server/utils/presetSnapshot'
 
 export default defineEventHandler(async event => {
   const startTime = performance.now()
@@ -9,7 +10,7 @@ export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { status, job_type, subject_uuid, source_media_uuid, dest_media_uuid, output_uuid, source_type, min_progress, max_progress, created_after, created_before, started_after, started_before, completed_after, completed_before, updated_after, updated_before, has_error, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, include_thumbnails = false } = query
+    const { status, job_type, subject_uuid, source_media_uuid, dest_media_uuid, output_uuid, source_type, preset_id, min_progress, max_progress, created_after, created_before, started_after, started_before, completed_after, completed_before, updated_after, updated_before, has_error, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, include_thumbnails = false } = query
 
     const db = getDb()
 
@@ -56,14 +57,26 @@ export default defineEventHandler(async event => {
       conditions.push(eq(jobs.outputUuid, output_uuid as string))
     }
 
-    // Source type filtering
+    // Preset filter — preset identity now lives on the dedicated preset_id
+    // column (queued jobs always have it; terminal jobs have it backfilled
+    // from their parameters._preset_id stash).
+    if (preset_id) {
+      conditions.push(eq(jobs.presetId, preset_id as string))
+    }
+
+    // Source type filtering.
+    // Legacy 'vid'/'source' narrow to vid_faceswap sub-modes (presence/absence
+    // of source_media_uuid). Newer values filter the broader jobType column
+    // directly so the same dropdown can scope to fs / i2v / tagging.
     if (source_type) {
       if (source_type === 'vid') {
-        // Jobs with source_media_uuid (video jobs)
+        conditions.push(eq(jobs.jobType, 'vid_faceswap'))
         conditions.push(isNotNull(jobs.sourceMediaUuid))
       } else if (source_type === 'source') {
-        // Jobs without source_media_uuid (source jobs)
+        conditions.push(eq(jobs.jobType, 'vid_faceswap'))
         conditions.push(isNull(jobs.sourceMediaUuid))
+      } else if (source_type === 'vid_faceswap' || source_type === 'fs' || source_type === 'i2v' || source_type === 'tagging') {
+        conditions.push(eq(jobs.jobType, source_type as string))
       }
       // 'all' case doesn't add any condition
     }
@@ -200,7 +213,8 @@ export default defineEventHandler(async event => {
       }
     }
 
-    // Execute the main query with joins
+    // Execute the main query with joins. Joining job_presets lets us
+    // synthesize parameters from the live preset for queued jobs.
     const results = await db
       .select({
         id: jobs.id,
@@ -210,6 +224,7 @@ export default defineEventHandler(async event => {
         source_media_uuid: jobs.sourceMediaUuid,
         dest_media_uuid: jobs.destMediaUuid,
         output_uuid: jobs.outputUuid,
+        preset_id: jobs.presetId,
         parameters: jobs.parameters,
         progress: jobs.progress,
         error_message: jobs.errorMessage,
@@ -220,10 +235,13 @@ export default defineEventHandler(async event => {
         // Subject info
         subject_name: subjects.name,
         subject_tags: subjects.tags,
-        subject_thumbnail_uuid: subjects.thumbnail
+        subject_thumbnail_uuid: subjects.thumbnail,
+        // Preset row (nullable) for queued-job parameter synthesis
+        preset: jobPresets
       })
       .from(jobs)
       .leftJoin(subjects, eq(jobs.subjectUuid, subjects.id))
+      .leftJoin(jobPresets, eq(jobs.presetId, jobPresets.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(orderByClause)
       .limit(limitNum)
@@ -265,7 +283,9 @@ export default defineEventHandler(async event => {
       })
     }
 
-    // Build enhanced results using the media map
+    // Build enhanced results using the media map. Resolve parameters from
+    // the live preset for queued jobs (and any other job without a snapshot)
+    // so the frontend always sees a fully-populated dict.
     const enhancedResults = results.map(job => ({
       id: job.id,
       job_type: job.job_type,
@@ -274,7 +294,8 @@ export default defineEventHandler(async event => {
       source_media_uuid: job.source_media_uuid,
       dest_media_uuid: job.dest_media_uuid,
       output_uuid: job.output_uuid,
-      parameters: job.parameters,
+      preset_id: job.preset_id,
+      parameters: resolveJobParameters(job.parameters as any, job.preset_id, job.preset),
       progress: job.progress,
       error_message: job.error_message,
       created_at: job.created_at,

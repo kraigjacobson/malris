@@ -67,7 +67,8 @@ export const useSearchStore = defineStore('search', () => {
       celeb: false,
       asmr: false,
       real: true
-    }
+    },
+    viewMode: 'grid' as 'grid' | 'list'
   })
 
   // Media gallery filters state
@@ -128,7 +129,8 @@ export const useSearchStore = defineStore('search', () => {
           nameFilters: {
             ...subjectSearch.value.nameFilters,
             ...(savedSubjectSearch.nameFilters || {})
-          }
+          },
+          viewMode: savedSubjectSearch.viewMode || 'grid'
         }
       }
 
@@ -210,7 +212,8 @@ export const useSearchStore = defineStore('search', () => {
         celeb: false,
         asmr: false,
         real: true
-      }
+      },
+      viewMode: 'grid'
     }
     await saveSubjectSearch()
   }

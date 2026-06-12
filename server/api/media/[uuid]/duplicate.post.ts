@@ -62,6 +62,9 @@ export default defineEventHandler(async event => {
         encryptionMetadata: original.encryptionMetadata,
         rating: original.rating,
         completions: 0
+        // content_sha256 intentionally omitted: this endpoint creates a
+        // deliberate copy, and copying the value would violate the UNIQUE
+        // index on content_sha256. The copy starts as NULL (legacy-like).
       })
       .returning()
 

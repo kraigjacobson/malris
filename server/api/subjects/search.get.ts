@@ -44,26 +44,42 @@ export default defineEventHandler(async event => {
       whereConditions.push(ilike(subjects.name, `%${name_pattern}%`))
     }
 
-    // Add name category filtering
+    // Add category filtering.
+    // Prefers the explicit subjects.category column when set; falls back to the
+    // legacy name-substring heuristic when category IS NULL so untouched rows
+    // still classify as they did before migration 006.
     if (name_filters.celeb || name_filters.asmr || name_filters.real) {
-      const nameConditions = []
+      const categoryConditions = []
 
       if (name_filters.celeb) {
-        nameConditions.push(ilike(subjects.name, '%celeb%'))
+        categoryConditions.push(or(
+          sql`${subjects.category} = 'celeb'`,
+          and(sql`${subjects.category} IS NULL`, ilike(subjects.name, '%celeb%'))
+        ))
       }
 
       if (name_filters.asmr) {
-        nameConditions.push(ilike(subjects.name, '%asmr%'))
+        categoryConditions.push(or(
+          sql`${subjects.category} = 'asmr'`,
+          and(sql`${subjects.category} IS NULL`, ilike(subjects.name, '%asmr%'))
+        ))
       }
 
       if (name_filters.real) {
-        // Real means names that don't contain 'celeb' or 'asmr'
-        nameConditions.push(and(sql`${subjects.name} NOT ILIKE '%celeb%'`, sql`${subjects.name} NOT ILIKE '%asmr%'`))
+        // Real = explicitly 'real', OR unset + name doesn't hint at celeb/asmr
+        categoryConditions.push(or(
+          sql`${subjects.category} = 'real'`,
+          and(
+            sql`${subjects.category} IS NULL`,
+            sql`${subjects.name} NOT ILIKE '%celeb%'`,
+            sql`${subjects.name} NOT ILIKE '%asmr%'`
+          )
+        ))
       }
 
-      // Use OR logic for name filters - any of the selected categories
-      if (nameConditions.length > 0) {
-        whereConditions.push(or(...nameConditions))
+      // OR logic across selected categories
+      if (categoryConditions.length > 0) {
+        whereConditions.push(or(...categoryConditions))
       }
     }
 
@@ -98,6 +114,7 @@ export default defineEventHandler(async event => {
         name: subjects.name,
         thumbnail: subjects.thumbnail,
         tags: subjects.tags,
+        category: subjects.category,
         createdAt: subjects.createdAt,
         updatedAt: subjects.updatedAt,
         has_thumbnail: sql<boolean>`CASE WHEN ${subjects.thumbnail} IS NOT NULL THEN true ELSE false END`,
@@ -184,6 +201,7 @@ export default defineEventHandler(async event => {
         name: subject.name,
         thumbnail: subject.thumbnail,
         tags: subject.tags,
+        category: subject.category,
         created_at: subject.createdAt,
         updated_at: subject.updatedAt,
         has_thumbnail: subject.has_thumbnail,

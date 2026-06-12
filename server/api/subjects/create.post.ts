@@ -4,7 +4,16 @@
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
-    const { name, tags, note, thumbnail } = body
+    const { name, tags, note, thumbnail, category } = body
+
+    // Validate category up front so we fail before hitting the DB on bad input
+    const ALLOWED_CATEGORIES = ['celeb', 'asmr', 'real']
+    if (category != null && !ALLOWED_CATEGORIES.includes(category)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `category must be one of ${ALLOWED_CATEGORIES.join(', ')} or null`
+      })
+    }
     
     if (!name) {
       throw createError({
@@ -64,7 +73,8 @@ export default defineEventHandler(async (event) => {
       name: name.trim(),
       tags: tagsJson,
       note: note?.trim() || null,
-      thumbnail: thumbnail || null
+      thumbnail: thumbnail || null,
+      category: category ?? null
     }).returning({
       id: subjects.id,
       name: subjects.name,

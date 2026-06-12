@@ -5,7 +5,7 @@
 
     <!-- Image Preview -->
     <div v-if="media.type === 'image'" class="w-full h-full relative" @click="$emit('click')">
-      <img v-if="displayImages" :src="getImageUrl(media, 'md')" :alt="media.filename" class="w-full h-full object-cover object-top transition-opacity duration-300" :class="{ 'opacity-0': isLoading }" loading="lazy" @load="handleLoad" @error="handleImageError" />
+      <img v-if="displayImages" :src="getImageUrl(media, imageSize)" :alt="media.filename" class="w-full h-full object-cover object-top transition-opacity duration-300" :class="{ 'opacity-0': isLoading }" loading="lazy" @load="handleLoad" @error="handleImageError" />
       <div v-else class="w-full h-full flex items-center justify-center bg-gray-800">
         <UIcon name="i-heroicons-photo" class="text-4xl text-gray-400" />
       </div>
@@ -63,6 +63,7 @@ const props = defineProps({
   showDuration: { type: Boolean, default: true },
   autoplay: { type: Boolean, default: false },
   aspectRatio: { type: String, default: 'square' }, // 'square', '3/4', '16/9', 'auto', or custom like '4/3'
+  imageSize: { type: String, default: 'md' }, // image variant to request: 'thumbnail'|'sm'|'md'|'lg'|'preview'|'full' ('preview'/'full' are uncropped)
   showControls: { type: Boolean, default: false }, // Show persistent video controls
   showDelete: { type: Boolean, default: true }, // Show delete button
   showRating: { type: Boolean, default: true } // Show star rating button
@@ -98,11 +99,20 @@ const aspectRatioClass = computed(() => {
 // Helper methods - defined before watch to avoid TDZ errors
 const getImageUrl = (media, size = 'md') => {
   if (!media || !media.uuid) return ''
+  // Optional cache-buster so callers can force a refetch after the bytes change
+  // (e.g. an in-place crop) without changing the underlying UUID.
+  const v = media.cacheBuster ? `&v=${media.cacheBuster}` : ''
+  // Uncropped variants must come from the ORIGINAL media — the thumbnail_uuid
+  // points to a pre-cropped (fit:cover) thumbnail, so requesting it at any size
+  // still returns cropped pixels.
+  if (size === 'preview' || size === 'full') {
+    return `/api/media/${media.uuid}/image?size=${size}${v}`
+  }
   if (media.thumbnail) return media.thumbnail
   if (media.thumbnail_uuid && media.thumbnail_uuid !== 'undefined' && media.thumbnail_uuid !== 'null') {
-    return `/api/media/${media.thumbnail_uuid}/image?size=${size}`
+    return `/api/media/${media.thumbnail_uuid}/image?size=${size}${v}`
   }
-  return `/api/media/${media.uuid}/image?size=${size}`
+  return `/api/media/${media.uuid}/image?size=${size}${v}`
 }
 
 const getVideoPosterUrl = media => {

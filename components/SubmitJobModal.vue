@@ -1,30 +1,154 @@
 <template>
-  <UModal v-model:open="isOpen" :dismissible="false" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
+  <UModal v-model:open="isOpen" :dismissible="presetEditMode" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
     <template #header>
       <div class="flex items-center justify-between w-full">
-        <h3 class="text-lg font-semibold">Submit Job</h3>
+        <div class="flex items-center gap-2 min-w-0">
+          <h3 class="text-lg font-semibold">{{ presetEditMode ? 'Edit Preset' : 'Submit Job' }}</h3>
+          <UBadge v-if="selectedJobTypeLabel && !presetEditMode" color="primary" variant="soft" size="md" class="truncate">
+            {{ selectedJobTypeLabel }}
+          </UBadge>
+        </div>
         <UButton variant="ghost" size="lg" icon="i-heroicons-x-mark" @click="closeModal" :disabled="isSubmitting" class="ml-4" />
       </div>
     </template>
 
     <template #body>
       <div class="flex flex-col h-[75vh] min-h-[600px]">
-        <!-- Initial Selection Mode (when no workflow is active) -->
-        <div v-if="!workflowMode" class="flex-shrink-0">
+        <!-- Job Type Selection -->
+        <div v-if="!selectedJobType" class="flex-shrink-0">
           <div class="text-center">
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Choose your workflow to create batch Face Swap jobs:</p>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Choose job type:</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="selectedJobType = 'vid_faceswap'">
+                <UIcon name="i-heroicons-face-smile-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium leading-tight">Faceswap I2V Legacy</span>
+                <span class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">src image · dest video</span>
+              </UButton>
+              <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="startFsWorkflow">
+                <UIcon name="i-heroicons-photo-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium leading-tight">Faceswap I2I</span>
+                <span class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">src image · dest image</span>
+              </UButton>
+              <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="startI2vWorkflow">
+                <UIcon name="i-heroicons-video-camera-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium leading-tight">Wan I2V</span>
+                <span class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">src image · wan presets</span>
+              </UButton>
+              <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="startTaggingWorkflow">
+                <UIcon name="i-heroicons-tag-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium leading-tight">Tagging</span>
+              </UButton>
+            </div>
+          </div>
+        </div>
+
+        <!-- Face Swap: Workflow Selection -->
+        <div v-if="selectedJobType === 'vid_faceswap' && !workflowMode" class="flex-shrink-0">
+          <div class="text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Choose your workflow:</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <!-- Subject First Workflow -->
               <UButton variant="outline" size="sm" class="h-12 flex flex-col items-center justify-center space-y-1" @click="startSubjectFirstWorkflow">
                 <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4" />
                 <span class="text-xs font-medium">Select Subject First</span>
               </UButton>
-
-              <!-- Video First Workflow -->
               <UButton variant="outline" size="sm" class="h-12 flex flex-col items-center justify-center space-y-1" @click="startVideoFirstWorkflow">
                 <UIcon name="i-heroicons-film-20-solid" class="w-4 h-4" />
                 <span class="text-xs font-medium">Select Video First</span>
               </UButton>
+            </div>
+          </div>
+        </div>
+
+        <!-- I2V Workflow -->
+        <div v-if="selectedJobType === 'i2v'" class="flex flex-col flex-1 min-h-0">
+          <!-- Preset Edit Mode: form only, the form's own Update button is the action -->
+          <div v-if="presetEditMode" class="flex flex-col flex-1 min-h-0">
+            <p class="flex-shrink-0 text-xs text-gray-400 mb-2">
+              Editing the preset's parameters. Click <span class="font-medium">Update</span> at the top to save — all queued jobs using this preset will pick up the new values automatically.
+            </p>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+            </div>
+          </div>
+
+          <!-- Shared filter section (applies to both bulk and per-subject modes) -->
+          <div v-if="!presetEditMode" class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex items-center gap-2">
+            <span class="text-xs text-gray-400">Filter:</span>
+            <USelect v-model="i2vSourceJobTypeFilter" :items="i2vSourceJobTypeFilterOptions" size="xs" class="w-44" />
+          </div>
+
+          <!-- Bulk Mode Toggle -->
+          <div v-if="!presetEditMode" class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex items-center gap-2">
+            <UCheckbox v-model="bulkMode" />
+            <span class="text-sm">
+              Auto-queue every favorited
+              <template v-if="i2vSourceJobTypeFilter !== 'all'">
+                <span class="font-medium text-primary">{{ i2vSourceJobTypeFilterLabel }}</span>
+              </template>
+              source image
+            </span>
+          </div>
+
+          <!-- Bulk Mode: parameters only (skips subject + image selection) -->
+          <div v-if="!presetEditMode && bulkMode" class="flex flex-col flex-1 min-h-0">
+            <p class="flex-shrink-0 text-xs text-gray-400 mb-2">
+              One i2v job will be created for every source image marked as favorite (set from the Manage Subject modal). All jobs share the settings below.
+            </p>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+            </div>
+          </div>
+
+          <!-- Step 1: Subject Selection -->
+          <div v-if="!presetEditMode && !bulkMode && !i2vSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <SubjectSearchFilters ref="i2vSubjectSearchFilters" @search="searchSubjects" @clear="clearSubjectFilters" class="flex-shrink-0 mb-2" />
+            <div v-if="subjectHasSearched || subjectLoading" class="flex-1 min-h-0 overflow-y-auto">
+              <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :display-images="displayImages" @subject-click="handleI2vSubjectSelection" />
+            </div>
+          </div>
+
+          <!-- Step 2: Source Image Selection + Parameters -->
+          <div v-if="!presetEditMode && !bulkMode && i2vSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <!-- Selected subject header -->
+            <div class="flex-shrink-0 mb-2 flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+              <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-primary" />
+              <span class="text-sm font-medium">{{ i2vSelectedSubject.label }}</span>
+              <UButton variant="ghost" size="xs" icon="i-heroicons-x-mark" @click="i2vSelectedSubject = null; i2vSelectedImages = []" />
+              <span v-if="i2vSelectedImages.length > 0" class="ml-auto text-xs text-gray-400">
+                {{ i2vSelectedImages.length }} image{{ i2vSelectedImages.length !== 1 ? 's' : '' }} selected
+              </span>
+            </div>
+
+            <!-- Two-column layout: images + params -->
+            <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
+              <!-- Left: Source images grid -->
+              <div class="overflow-y-auto">
+                <div class="flex items-center gap-2 mb-2">
+                  <UCheckbox
+                    :model-value="i2vAllVisibleSelected"
+                    :disabled="i2vSubjectImages.length === 0"
+                    @update:model-value="toggleAllI2vVisible"
+                  />
+                  <span class="text-xs text-gray-400">
+                    Select all visible ({{ i2vSubjectImages.length }})
+                  </span>
+                </div>
+                <SourceImageGrid
+                  :images="i2vSubjectImages"
+                  :loading="i2vSubjectImagesLoading"
+                  :selected-uuids="i2vSelectedImages.map(s => s.uuid)"
+                  :job-counts="i2vImageJobCounts"
+                  :show-job-count="true"
+                  empty-message="No source images found for this subject"
+                  @click="toggleI2vImage"
+                />
+              </div>
+
+              <!-- Right: I2V Parameters -->
+              <div class="overflow-y-auto">
+                <p class="text-xs text-gray-400 mb-2">Generation settings:</p>
+                <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+              </div>
             </div>
           </div>
         </div>
@@ -177,6 +301,120 @@
             </div>
           </div>
         </div>
+
+        <!-- FS (Image Face Swap → I2V Source) Workflow -->
+        <div v-if="selectedJobType === 'fs'" class="flex flex-col flex-1 min-h-0">
+          <!-- Step 1: Subject Selection -->
+          <div v-if="!fsSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <SubjectSearchFilters ref="fsSubjectSearchFilters" @search="searchSubjects" @clear="clearSubjectFilters" class="flex-shrink-0 mb-2" />
+            <div v-if="subjectHasSearched || subjectLoading" class="flex-1 min-h-0 overflow-y-auto">
+              <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :display-images="displayImages" @subject-click="handleFsSubjectSelection" />
+            </div>
+          </div>
+
+          <!-- Step 2: Face multi-pick + Dest image multi-pick -->
+          <div v-if="fsSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <!-- Selected subject header -->
+            <div class="flex-shrink-0 mb-2 flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+              <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-primary" />
+              <span class="text-sm font-medium">{{ fsSelectedSubject.label }}</span>
+              <UButton variant="ghost" size="xs" icon="i-heroicons-x-mark" @click="clearFsSubject" />
+              <span class="ml-auto text-xs text-gray-400">
+                {{ fsSelectedFaces.length }} face{{ fsSelectedFaces.length !== 1 ? 's' : '' }} × {{ fsSelectedDestImages.length }} dest = {{ fsSelectedFaces.length * fsSelectedDestImages.length }} job{{ fsSelectedFaces.length * fsSelectedDestImages.length !== 1 ? 's' : '' }}
+              </span>
+            </div>
+
+            <!-- Two-column layout: faces (left) + dest images (right) -->
+            <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
+              <!-- Left: Source face multi-pick -->
+              <div class="overflow-y-auto">
+                <p class="text-xs text-gray-400 mb-2">Select source face(s) — identity to swap IN:</p>
+                <SourceImageGrid
+                  :images="fsSubjectImages"
+                  :loading="fsSubjectImagesLoading"
+                  :selected-uuids="fsSelectedFaces.map(s => s.uuid)"
+                  empty-message="No source images found for this subject"
+                  @click="toggleFsFace"
+                />
+              </div>
+
+              <!-- Right: Dest image multi-pick -->
+              <div class="flex flex-col min-h-0">
+                <p class="text-xs text-gray-400 mb-2 flex-shrink-0">Select dest image(s) — target to swap face ONTO:</p>
+                <div class="flex-shrink-0 mb-2">
+                  <VideoSearchFilters ref="fsDestImageSearchFilters" :loading="destImageLoading" title="Dest Image Filters" />
+                </div>
+                <div class="flex-1 min-h-0 overflow-y-auto">
+                  <div v-if="destImageError" class="text-center py-12">
+                    <UAlert color="error" title="Error" :description="destImageError" variant="subtle" />
+                  </div>
+                  <MediaGrid v-else :media-results="destImages" :loading="destImageLoading" :has-searched="destImageHasSearched" :selection-mode="true" :multi-select="true" :selected-items="fsSelectedDestImages" grid-class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3" @media-click="toggleFsDestImage" />
+                  <div v-if="destImageIsLoadingMore" class="flex justify-center py-8">
+                    <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                      <UIcon name="i-heroicons-arrow-path" class="animate-spin text-xl" />
+                      <span class="text-sm">Loading more...</span>
+                    </div>
+                  </div>
+                  <div v-if="destImageHasMoreResults && !destImageIsLoadingMore" ref="destImageScrollSentinel" class="h-px"></div>
+                  <div v-if="!destImageHasMoreResults && destImageHasSearched && destImages.length > 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <p class="text-sm">End of results</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tagging Workflow -->
+        <div v-if="selectedJobType === 'tagging'" class="flex flex-col flex-1 min-h-0">
+          <!-- Step 1: Subject Selection -->
+          <div v-if="!taggingSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <SubjectSearchFilters ref="taggingSubjectSearchFilters" @search="searchSubjects" @clear="clearSubjectFilters" class="flex-shrink-0 mb-2" />
+            <div v-if="subjectHasSearched || subjectLoading" class="flex-1 min-h-0 overflow-y-auto">
+              <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :display-images="displayImages" @subject-click="handleTaggingSubjectSelection" />
+            </div>
+          </div>
+
+          <!-- Step 2: Subject's images with filter + multi-select -->
+          <div v-if="taggingSelectedSubject" class="flex flex-col flex-1 min-h-0">
+            <!-- Header: subject + filter dropdown + counts -->
+            <div class="flex-shrink-0 mb-2 flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+              <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-primary" />
+              <span class="text-sm font-medium">{{ taggingSelectedSubject.label }}</span>
+              <UButton variant="ghost" size="xs" icon="i-heroicons-x-mark" @click="clearTaggingSubject" />
+              <USelect v-model="taggingFilter" :items="taggingFilterOptions" size="xs" class="ml-2 w-36" />
+              <span class="ml-auto text-xs text-gray-400">
+                <template v-if="taggingSelectedImages.length > 0">
+                  {{ taggingSelectedImages.length }} selected
+                </template>
+                <template v-else>
+                  {{ taggingFilteredImages.length }} {{ taggingFilter }} of {{ taggingSubjectImages.length }}
+                </template>
+              </span>
+            </div>
+
+            <!-- Quick actions -->
+            <div class="flex-shrink-0 mb-2 flex gap-2">
+              <UButton size="xs" variant="outline" :disabled="taggingFilteredImages.length === 0" @click="selectAllVisibleTaggingImages">
+                Select all visible ({{ taggingFilteredImages.length }})
+              </UButton>
+              <UButton v-if="taggingSelectedImages.length > 0" size="xs" variant="outline" color="error" @click="clearTaggingImageSelection">
+                Clear selection
+              </UButton>
+            </div>
+
+            <!-- Images grid -->
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <SourceImageGrid
+                :images="taggingFilteredImages"
+                :loading="taggingSubjectImagesLoading"
+                :selected-uuids="taggingSelectedImages.map(s => s.uuid)"
+                empty-message="No images match the current filter"
+                @click="toggleTaggingImage"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -187,7 +425,7 @@
           <!-- Left side: Close and Back buttons -->
           <div class="flex gap-2">
             <UButton variant="outline" @click="closeModal" :disabled="isSubmitting"> Close </UButton>
-            <UButton v-if="workflowMode" variant="outline" @click="resetWorkflow" :disabled="isSubmitting" size="sm" color="primary"> Back </UButton>
+            <UButton v-if="selectedJobType && !presetEditMode" variant="outline" @click="goBack" :disabled="isSubmitting" size="sm" color="primary"> Back </UButton>
           </div>
 
           <!-- Right side: Search Actions and Create Jobs -->
@@ -216,9 +454,16 @@
               <UButton color="primary" size="sm" icon="i-heroicons-magnifying-glass" @click="searchSubjects" :disabled="isSubmitting"> Search Subjects </UButton>
             </template>
 
+            <!-- Search Actions for FS workflow (dest-image selection) -->
+            <template v-else-if="selectedJobType === 'fs' && fsSelectedSubject">
+              <UButton v-if="destImageHasSearched || searchStore.videoSearch.selectedTags.length > 0" color="gray" variant="outline" size="sm" icon="i-heroicons-x-mark" @click="clearDestImageFilters" :disabled="isSubmitting"> Clear </UButton>
+              <UButton v-if="destImageHasSearched" color="gray" variant="outline" size="sm" icon="i-heroicons-arrow-path" @click="reshuffleDestImages" :disabled="isSubmitting || destImageLoading"> Shuffle </UButton>
+              <UButton color="primary" size="sm" icon="i-heroicons-magnifying-glass" @click="searchDestImages" :disabled="isSubmitting"> Search Dest Images </UButton>
+            </template>
+
             <!-- Create Jobs Action -->
-            <UButton v-if="workflowMode && canCreateJobs" type="button" :loading="isSubmitting" :disabled="!canCreateJobs" size="sm" color="primary" @click="createBatchJobs">
-              {{ isSubmitting ? 'Creating Jobs...' : `Create Jobs (${jobCount})` }}
+            <UButton v-if="!presetEditMode && (workflowMode || selectedJobType === 'i2v' || selectedJobType === 'fs' || selectedJobType === 'tagging') && canCreateJobs" type="button" :loading="isSubmitting" :disabled="!canCreateJobs" size="sm" color="primary" @click="createBatchJobs">
+              {{ submitButtonLabel }}
             </UButton>
           </div>
         </div>
@@ -231,8 +476,10 @@
 import { useTags } from '~/composables/useTags'
 import { useSettings } from '~/composables/useSettings'
 import { useSearchStore } from '~/stores/search'
+import { applyLoraDisableOverrides, loraOffKey } from '~/utils/loraDisable'
 import VideoSearchFilters from '~/components/VideoSearchFilters.vue'
 import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
+import SourceImageGrid from '~/components/SourceImageGrid.vue'
 
 // Use our responsive breakpoints composable
 const { isMobile } = useBreakpoints()
@@ -249,7 +496,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'jobsCreated'])
 
 // Use composables
-const { setSubjectTags, setVideoTags, clearTags } = useTags()
+const { setSubjectTags, setVideoTags, filterHairTags, clearTags } = useTags()
 const { displayImages } = useSettings()
 const searchStore = useSearchStore()
 
@@ -259,14 +506,68 @@ const isOpen = computed({
   set: value => emit('update:modelValue', value)
 })
 
-// Hardcoded job type - Face Swap only
+// Job type selection
+const selectedJobType = ref(null) // 'vid_faceswap' | 'i2v' | null
 const form = ref({
   job_type: 'vid_faceswap'
 })
 
 // Workflow state
 const workflowMode = ref(null) // 'subject-first' | 'video-first' | null
+
+// I2V workflow state
+const i2vSelectedSubject = ref(null)
+const i2vSelectedImages = ref([])
+const i2vSubjectImages = ref([])
+const i2vImageJobCounts = ref({})
+const i2vSubjectImagesLoading = ref(false)
+const availableLoras = ref([])
+// When true, the I2V flow skips per-subject selection and creates one job per
+// source image for every subject that already has at least one job.
+const bulkMode = ref(false)
+// Filter source images by the job type that produced them. 'all' is no filter;
+// 'fs' restricts to images created by Faceswap I2I jobs (the typical pipeline
+// where FS output feeds into bulk i2v). Applies to BOTH the per-subject image
+// grid and bulk auto-queue candidate selection.
+const i2vSourceJobTypeFilter = ref('all')
+const i2vSourceJobTypeFilterOptions = [
+  { label: 'All source images', value: 'all' },
+  { label: 'From Faceswap I2I (fs)', value: 'fs' }
+]
+const i2vSourceJobTypeFilterLabel = computed(
+  () => i2vSourceJobTypeFilterOptions.find(o => o.value === i2vSourceJobTypeFilter.value)?.label || ''
+)
+const i2vParams = ref({
+  prompt: '',
+  negative_prompt: 'blurry, distorted, low quality, watermark, text, deformed',
+  length: 81,
+  lora_1_high: null,
+  lora_1_low: null,
+  lora_1_high_strength: 1,
+  lora_1_low_strength: 1,
+  lora_2_high: null,
+  lora_2_low: null,
+  lora_2_high_strength: 1,
+  lora_2_low_strength: 1,
+  lora_3_high: null,
+  lora_3_low: null,
+  lora_3_high_strength: 1,
+  lora_3_low_strength: 1,
+  lora_4_high: null,
+  lora_4_low: null,
+  lora_4_high_strength: 1,
+  lora_4_low_strength: 1,
+  lora_5_high: null,
+  lora_5_low: null,
+  lora_5_high_strength: 1,
+  lora_5_low_strength: 1,
+})
 const isSubmitting = ref(false)
+
+// When true, the modal is in "edit preset" mode: subject/image selection is
+// skipped, only the i2v form is shown, and the only meaningful action is the
+// Update button inside the form (which PUTs to /api/presets/{id}).
+const presetEditMode = ref(false)
 
 // Thumbnail loading states
 const selectedVideoThumbnailLoaded = ref(false)
@@ -300,8 +601,84 @@ const subjectError = ref(null)
 const subjectCurrentPage = ref(1)
 const subjectHasSearched = ref(false)
 
+// FS (Image Face Swap -> I2V source) workflow state
+const fsSelectedSubject = ref(null)
+const fsSelectedFaces = ref([])
+const fsSubjectImages = ref([])
+const fsSubjectImagesLoading = ref(false)
+const fsSelectedDestImages = ref([])
+const destImages = ref([])
+const destImageLoading = ref(false)
+const destImageError = ref(null)
+const destImageHasSearched = ref(false)
+const destImageCurrentPage = ref(1)
+const destImageHasMoreResults = ref(false)
+const destImageIsLoadingMore = ref(false)
+const destImageScrollObserver = ref(null)
+const destImageScrollSentinel = ref(null)
+// Stable random seed for paginated dest-image search — pinned per filter-change
+// so `ORDER BY hashtext(uuid || seed)` is consistent across pages and doesn't
+// surface duplicates as the user scrolls.
+const destImageSeed = ref(null)
+const fsDestImageSearchFilters = ref(null)
+
+// Tagging workflow state
+const taggingSelectedSubject = ref(null)
+const taggingSubjectImages = ref([])
+const taggingSubjectImagesLoading = ref(false)
+const taggingSelectedImages = ref([])
+const taggingFilter = ref('untagged') // 'all' | 'tagged' | 'untagged'
+const taggingFilterOptions = [
+  { label: 'Show: all', value: 'all' },
+  { label: 'Show: tagged', value: 'tagged' },
+  { label: 'Show: untagged', value: 'untagged' }
+]
+
+// Human-readable label for the currently selected job type, shown as a badge
+// in the modal header so you don't lose context when several steps deep.
+// For vid_faceswap, also append the active workflow mode (subject-first /
+// video-first) once it's been picked.
+const selectedJobTypeLabel = computed(() => {
+  switch (selectedJobType.value) {
+    case 'vid_faceswap': {
+      const mode = workflowMode.value === 'subject-first' ? ' · Subject First'
+        : workflowMode.value === 'video-first' ? ' · Video First'
+        : ''
+      return `Faceswap I2V Legacy${mode}`
+    }
+    case 'fs': return 'Faceswap I2I'
+    case 'i2v': return bulkMode.value ? 'Wan I2V · Bulk' : 'Wan I2V'
+    case 'tagging': return 'Tagging'
+    default: return ''
+  }
+})
+
+// Tagging: filter the loaded source images by tag presence (client-side).
+// An image counts as "tagged" when its tags JSON has a non-empty tags array.
+const taggingFilteredImages = computed(() => {
+  if (taggingFilter.value === 'all') return taggingSubjectImages.value
+  const isTagged = img => Array.isArray(img.tags?.tags) && img.tags.tags.length > 0
+  return taggingSubjectImages.value.filter(img =>
+    taggingFilter.value === 'tagged' ? isTagged(img) : !isTagged(img)
+  )
+})
+
 // Computed properties
 const canCreateJobs = computed(() => {
+  if (selectedJobType.value === 'i2v') {
+    if (bulkMode.value) {
+      return i2vParams.value.prompt.trim() !== ''
+    }
+    return i2vSelectedImages.value.length > 0 && i2vParams.value.prompt.trim() !== ''
+  }
+  if (selectedJobType.value === 'fs') {
+    return fsSelectedSubject.value && fsSelectedFaces.value.length > 0 && fsSelectedDestImages.value.length > 0
+  }
+  if (selectedJobType.value === 'tagging') {
+    if (!taggingSelectedSubject.value) return false
+    // Either explicitly selected images, or "tag all visible" via the filter
+    return taggingSelectedImages.value.length > 0 || taggingFilteredImages.value.length > 0
+  }
   if (workflowMode.value === 'subject-first') {
     return selectedSubject.value && selectedVideos.value.length > 0
   } else if (workflowMode.value === 'video-first') {
@@ -311,12 +688,34 @@ const canCreateJobs = computed(() => {
 })
 
 const jobCount = computed(() => {
+  if (selectedJobType.value === 'i2v') {
+    return i2vSelectedImages.value.length
+  }
+  if (selectedJobType.value === 'fs') {
+    return fsSelectedFaces.value.length * fsSelectedDestImages.value.length
+  }
+  if (selectedJobType.value === 'tagging') {
+    return taggingSelectedImages.value.length > 0
+      ? taggingSelectedImages.value.length
+      : taggingFilteredImages.value.length
+  }
   if (workflowMode.value === 'subject-first') {
     return selectedVideos.value.length
   } else if (workflowMode.value === 'video-first') {
     return selectedSubjects.value.length
   }
   return 0
+})
+
+const submitButtonLabel = computed(() => {
+  if (isSubmitting.value) return 'Creating Jobs...'
+  if (bulkMode.value && selectedJobType.value === 'i2v') return 'Create Bulk Jobs'
+  if (selectedJobType.value === 'tagging') {
+    return taggingSelectedImages.value.length > 0
+      ? `Tag Selected (${taggingSelectedImages.value.length})`
+      : `Tag All Visible (${taggingFilteredImages.value.length})`
+  }
+  return `Create Jobs (${jobCount.value})`
 })
 
 // Modal methods
@@ -327,6 +726,8 @@ const closeModal = () => {
 
 // Workflow methods
 const startSubjectFirstWorkflow = () => {
+  selectedJobType.value = 'vid_faceswap'
+  form.value.job_type = 'vid_faceswap'
   workflowMode.value = 'subject-first'
   resetSelections()
   // Auto-load all subjects when starting this workflow
@@ -336,6 +737,8 @@ const startSubjectFirstWorkflow = () => {
 }
 
 const startVideoFirstWorkflow = () => {
+  selectedJobType.value = 'vid_faceswap'
+  form.value.job_type = 'vid_faceswap'
   workflowMode.value = 'video-first'
   resetSelections()
   // Auto-load videos when starting this workflow
@@ -344,8 +747,400 @@ const startVideoFirstWorkflow = () => {
   })
 }
 
+const startI2vWorkflow = () => {
+  selectedJobType.value = 'i2v'
+  form.value.job_type = 'i2v'
+  resetSelections()
+  fetchLoras()
+  nextTick(() => searchSubjects())
+}
+
+const fetchLoras = async () => {
+  try {
+    const data = await useApiFetch('loras')
+    availableLoras.value = data?.loras || []
+  } catch (e) {
+    console.error('Failed to fetch LoRAs:', e)
+    availableLoras.value = []
+  }
+}
+
+const handleI2vSubjectSelection = (subject) => {
+  i2vSelectedSubject.value = {
+    value: subject.id,
+    label: subject.name,
+    tags: subject.tags
+  }
+  i2vSelectedImages.value = []
+  loadI2vSubjectImages(subject.id)
+}
+
+const loadI2vSubjectImages = async (subjectUuid) => {
+  i2vSubjectImagesLoading.value = true
+  try {
+    const params = new URLSearchParams({
+      subject_uuid: subjectUuid,
+      purpose: 'source',
+      media_type: 'image',
+      limit: '100'
+    })
+    if (i2vSourceJobTypeFilter.value && i2vSourceJobTypeFilter.value !== 'all') {
+      params.append('source_job_type', i2vSourceJobTypeFilter.value)
+    }
+    const data = await useApiFetch(`media/search?${params.toString()}`)
+    const images = data?.results || []
+
+    // Order images by how often they've been used as a job source so the
+    // user's favorites land at the top of the grid (which reveals 30 at a
+    // time). If the counts fetch fails we still show the images unsorted.
+    if (images.length > 0) {
+      try {
+        const countsRes = await useApiFetch('media/job-counts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: { image_uuids: images.map(img => img.uuid) }
+        })
+        const counts = countsRes?.job_counts || {}
+        i2vImageJobCounts.value = counts
+        images.sort((a, b) => (counts[b.uuid] || 0) - (counts[a.uuid] || 0))
+      } catch (e) {
+        console.error('Failed to load job counts for ordering:', e)
+        i2vImageJobCounts.value = {}
+      }
+    } else {
+      i2vImageJobCounts.value = {}
+    }
+
+    i2vSubjectImages.value = images
+  } catch (e) {
+    console.error('Failed to load subject images:', e)
+    i2vSubjectImages.value = []
+    i2vImageJobCounts.value = {}
+  } finally {
+    i2vSubjectImagesLoading.value = false
+  }
+}
+
+const toggleI2vImage = (img) => {
+  const idx = i2vSelectedImages.value.findIndex(s => s.uuid === img.uuid)
+  if (idx >= 0) {
+    i2vSelectedImages.value.splice(idx, 1)
+  } else {
+    i2vSelectedImages.value.push(img)
+  }
+}
+
+// Checked when every currently-visible image is in the selection. Visible =
+// whatever the source-job-type filter loaded for this subject. Empty grid
+// reports false so the checkbox can't appear pre-checked with nothing to do.
+const i2vAllVisibleSelected = computed(() => {
+  if (i2vSubjectImages.value.length === 0) return false
+  const selected = new Set(i2vSelectedImages.value.map(s => s.uuid))
+  return i2vSubjectImages.value.every(img => selected.has(img.uuid))
+})
+
+const toggleAllI2vVisible = (checked) => {
+  if (checked) {
+    // Union of (already-selected items not in current view) ∪ (all visible).
+    // Items selected under a previous filter that are now hidden stay selected.
+    const have = new Set(i2vSelectedImages.value.map(s => s.uuid))
+    for (const img of i2vSubjectImages.value) {
+      if (!have.has(img.uuid)) {
+        i2vSelectedImages.value.push(img)
+        have.add(img.uuid)
+      }
+    }
+  } else {
+    // Remove only the visible ones; keep hidden-but-selected from prior filters.
+    const visible = new Set(i2vSubjectImages.value.map(img => img.uuid))
+    i2vSelectedImages.value = i2vSelectedImages.value.filter(s => !visible.has(s.uuid))
+  }
+}
+
+// ---- FS (Image Face Swap -> I2V source) workflow ----
+const startFsWorkflow = () => {
+  selectedJobType.value = 'fs'
+  form.value.job_type = 'fs'
+  resetSelections()
+  nextTick(() => searchSubjects())
+}
+
+const handleFsSubjectSelection = (subject) => {
+  fsSelectedSubject.value = {
+    value: subject.id,
+    label: subject.name,
+    tags: subject.tags
+  }
+  fsSelectedFaces.value = []
+  loadFsSubjectImages(subject.id)
+  // Pre-fill dest-image filters with the subject's hair tags only — non-hair
+  // tags are too sparse on dest images and surface an empty grid.
+  const subjectTagList = subject.tags?.tags || []
+  searchStore.videoSearch.selectedTags = filterHairTags(subjectTagList)
+  nextTick(() => searchDestImages())
+}
+
+const loadFsSubjectImages = async (subjectUuid) => {
+  fsSubjectImagesLoading.value = true
+  try {
+    const data = await useApiFetch(`media/search?subject_uuid=${subjectUuid}&purpose=source&media_type=image&limit=100`)
+    fsSubjectImages.value = data?.results || []
+  } catch (e) {
+    console.error('Failed to load fs subject source images:', e)
+    fsSubjectImages.value = []
+  } finally {
+    fsSubjectImagesLoading.value = false
+  }
+}
+
+const toggleFsFace = (img) => {
+  const idx = fsSelectedFaces.value.findIndex(s => s.uuid === img.uuid)
+  if (idx >= 0) {
+    fsSelectedFaces.value.splice(idx, 1)
+  } else {
+    fsSelectedFaces.value.push(img)
+  }
+}
+
+const toggleFsDestImage = (img) => {
+  const idx = fsSelectedDestImages.value.findIndex(s => s.uuid === img.uuid)
+  if (idx >= 0) {
+    fsSelectedDestImages.value.splice(idx, 1)
+  } else {
+    fsSelectedDestImages.value.push(img)
+  }
+}
+
+const clearFsSubject = () => {
+  fsSelectedSubject.value = null
+  fsSelectedFaces.value = []
+  fsSelectedDestImages.value = []
+  fsSubjectImages.value = []
+  destImages.value = []
+  destImageHasSearched.value = false
+  destImageSeed.value = null
+  searchStore.videoSearch.selectedTags = []
+}
+
+const rerollDestImageSeed = () => {
+  destImageSeed.value = Math.random().toString(36).slice(2, 14)
+}
+
+// Dest image search (purpose=dest, media_type=image). Shares the videoSearch
+// filter store since the filter semantics (tags/sort/ratings) are identical.
+const searchDestImages = () => {
+  rerollDestImageSeed()
+  destImageCurrentPage.value = 1
+  loadDestImages(true)
+  if (fsDestImageSearchFilters.value?.collapse) {
+    fsDestImageSearchFilters.value.collapse()
+  }
+}
+
+const reshuffleDestImages = () => {
+  rerollDestImageSeed()
+  destImageCurrentPage.value = 1
+  loadDestImages(true)
+}
+
+const clearDestImageFilters = () => {
+  searchStore.resetVideoFilters()
+  destImages.value = []
+  destImageHasSearched.value = false
+  destImageSeed.value = null
+}
+
+const loadDestImages = async (reset = false) => {
+  if (!reset && destImageIsLoadingMore.value) return
+
+  if (reset) {
+    destImageLoading.value = true
+    destImages.value = []
+    destImageCurrentPage.value = 1
+  } else {
+    destImageIsLoadingMore.value = true
+  }
+
+  destImageError.value = null
+  destImageHasSearched.value = true
+
+  try {
+    const params = new URLSearchParams()
+    params.append('media_type', 'image')
+    params.append('purpose', 'dest')
+
+    const limit = typeof searchStore.videoSearch.limitOptions === 'object' ? searchStore.videoSearch.limitOptions.value : searchStore.videoSearch.limitOptions || 50
+    params.append('limit', limit.toString())
+    params.append('offset', ((destImageCurrentPage.value - 1) * limit).toString())
+
+    const sortType = typeof searchStore.videoSearch.sortType === 'object' ? searchStore.videoSearch.sortType.value : searchStore.videoSearch.sortType || 'random'
+    const sortOrder = typeof searchStore.videoSearch.sortOrder === 'object' ? searchStore.videoSearch.sortOrder.value : searchStore.videoSearch.sortOrder || 'asc'
+    params.append('sort_by', sortType)
+    params.append('sort_order', sortOrder)
+    if (sortType === 'random') {
+      if (!destImageSeed.value) rerollDestImageSeed()
+      params.append('seed', destImageSeed.value)
+    }
+
+    if (searchStore.videoSearch.selectedTags.length > 0) {
+      params.append('tags', searchStore.videoSearch.selectedTags.join(','))
+    }
+    if (searchStore.videoSearch.selectedRatings.length > 0) {
+      params.append('ratings', searchStore.videoSearch.selectedRatings.join(','))
+    }
+    if (searchStore.videoSearch.showUnrated) {
+      params.append('unrated_only', 'true')
+    }
+
+    const response = await useApiFetch(`media/search?${params.toString()}`)
+    const newResults = response.results || []
+
+    if (reset) {
+      destImages.value = newResults
+    } else {
+      destImages.value = [...destImages.value, ...newResults]
+    }
+
+    destImageHasMoreResults.value = newResults.length === limit
+  } catch (err) {
+    console.error('Error loading dest images:', err)
+    destImageError.value = err.message || 'Failed to load dest images'
+    if (!reset) {
+      destImageHasMoreResults.value = false
+    }
+  } finally {
+    if (reset) {
+      destImageLoading.value = false
+    } else {
+      destImageIsLoadingMore.value = false
+    }
+  }
+}
+
+const loadMoreDestImageResults = async () => {
+  if (!destImageHasMoreResults.value || destImageIsLoadingMore.value || destImageLoading.value) {
+    return
+  }
+  destImageCurrentPage.value++
+  await loadDestImages(false)
+}
+
+const setupDestImageScrollObserver = () => {
+  if (destImageScrollObserver.value) {
+    destImageScrollObserver.value.disconnect()
+  }
+  if (!destImageScrollSentinel.value) return
+
+  destImageScrollObserver.value = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !destImageLoading.value && !destImageIsLoadingMore.value && destImageHasMoreResults.value) {
+          loadMoreDestImageResults()
+        }
+      })
+    },
+    { root: null, rootMargin: '400px', threshold: 0 }
+  )
+  destImageScrollObserver.value.observe(destImageScrollSentinel.value)
+}
+
+// ---- Tagging workflow ----
+const startTaggingWorkflow = () => {
+  selectedJobType.value = 'tagging'
+  form.value.job_type = 'tagging'
+  resetSelections()
+  nextTick(() => searchSubjects())
+}
+
+const handleTaggingSubjectSelection = (subject) => {
+  taggingSelectedSubject.value = {
+    value: subject.id,
+    label: subject.name,
+    tags: subject.tags
+  }
+  taggingSelectedImages.value = []
+  loadTaggingSubjectImages(subject.id)
+}
+
+const loadTaggingSubjectImages = async (subjectUuid) => {
+  taggingSubjectImagesLoading.value = true
+  try {
+    // Pull up to 200 source images for the subject; the dropdown filter narrows
+    // this down client-side so the user can preview tagged/untagged counts without
+    // re-querying.
+    const data = await useApiFetch(`media/search?subject_uuid=${subjectUuid}&purpose=source&media_type=image&limit=200`)
+    taggingSubjectImages.value = data?.results || []
+  } catch (e) {
+    console.error('Failed to load tagging subject images:', e)
+    taggingSubjectImages.value = []
+  } finally {
+    taggingSubjectImagesLoading.value = false
+  }
+}
+
+const toggleTaggingImage = (img) => {
+  const idx = taggingSelectedImages.value.findIndex(s => s.uuid === img.uuid)
+  if (idx >= 0) {
+    taggingSelectedImages.value.splice(idx, 1)
+  } else {
+    taggingSelectedImages.value.push(img)
+  }
+}
+
+const selectAllVisibleTaggingImages = () => {
+  // Union of (currently-selected items still visible) ∪ (everything visible).
+  // Items selected under a previous filter that are now hidden stay selected.
+  const visible = taggingFilteredImages.value
+  const have = new Set(taggingSelectedImages.value.map(s => s.uuid))
+  for (const img of visible) {
+    if (!have.has(img.uuid)) {
+      taggingSelectedImages.value.push(img)
+      have.add(img.uuid)
+    }
+  }
+}
+
+const clearTaggingImageSelection = () => {
+  taggingSelectedImages.value = []
+}
+
+const clearTaggingSubject = () => {
+  taggingSelectedSubject.value = null
+  taggingSelectedImages.value = []
+  taggingSubjectImages.value = []
+}
+
+const goBack = () => {
+  if (selectedJobType.value === 'i2v') {
+    if (i2vSelectedSubject.value) {
+      i2vSelectedSubject.value = null
+      i2vSelectedImages.value = []
+    } else {
+      selectedJobType.value = null
+    }
+  } else if (selectedJobType.value === 'fs') {
+    if (fsSelectedSubject.value) {
+      clearFsSubject()
+    } else {
+      selectedJobType.value = null
+    }
+  } else if (selectedJobType.value === 'tagging') {
+    if (taggingSelectedSubject.value) {
+      clearTaggingSubject()
+    } else {
+      selectedJobType.value = null
+    }
+  } else if (workflowMode.value) {
+    workflowMode.value = null
+  } else {
+    selectedJobType.value = null
+  }
+}
+
 const resetWorkflow = () => {
+  selectedJobType.value = null
   workflowMode.value = null
+  presetEditMode.value = false
   resetSelections()
   clearTags()
 }
@@ -362,6 +1157,29 @@ const resetSelections = () => {
   selectedSubjects.value = []
   subjects.value = []
   subjectHasSearched.value = false
+
+  // Clear i2v workflow
+  i2vSelectedSubject.value = null
+  i2vSelectedImages.value = []
+  i2vSubjectImages.value = []
+  i2vImageJobCounts.value = {}
+  bulkMode.value = false
+  i2vSourceJobTypeFilter.value = 'all'
+
+  // Clear fs workflow
+  fsSelectedSubject.value = null
+  fsSelectedFaces.value = []
+  fsSubjectImages.value = []
+  fsSelectedDestImages.value = []
+  destImages.value = []
+  destImageHasSearched.value = false
+  destImageHasMoreResults.value = false
+
+  // Clear tagging workflow
+  taggingSelectedSubject.value = null
+  taggingSelectedImages.value = []
+  taggingSubjectImages.value = []
+  taggingFilter.value = 'untagged'
 }
 
 // Subject selection handlers
@@ -823,7 +1641,158 @@ const createBatchJobs = async () => {
   try {
     const jobTypeValue = form.value.job_type?.value || form.value.job_type
 
-    if (workflowMode.value === 'subject-first') {
+    if (selectedJobType.value === 'i2v' && bulkMode.value) {
+      // Single bulk request — backend resolves qualifying subjects + their images
+      // and inserts every job in one shot.
+      try {
+        const response = await useApiFetch('jobs/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            job_type: 'i2v',
+            source_job_type: i2vSourceJobTypeFilter.value,
+            parameters: applyLoraDisableOverrides(i2vParams.value)
+          }
+        })
+        successCount = response?.created || 0
+        const subjectsCount = response?.subjects_qualified || 0
+        const skipped = response?.skipped_already_queued || 0
+        if (successCount === 0) {
+          const filterSuffix = i2vSourceJobTypeFilter.value !== 'all'
+            ? ` matching the ${i2vSourceJobTypeFilterLabel.value.toLowerCase()} filter`
+            : ''
+          toast.add({
+            title: 'Nothing to queue',
+            description: skipped > 0
+              ? `All ${skipped} matching favorite${skipped !== 1 ? 's are' : ' is'} already queued for this preset.`
+              : `No favorited source images found${filterSuffix}. Mark some from the Manage Subject modal.`,
+            color: 'info',
+            duration: 4000
+          })
+        } else {
+          const skipNote = skipped > 0 ? ` (skipped ${skipped} already queued)` : ''
+          toast.add({
+            title: 'Bulk Jobs Queued',
+            description: `Created ${successCount} i2v job${successCount !== 1 ? 's' : ''} from favorites across ${subjectsCount} subject${subjectsCount !== 1 ? 's' : ''}${skipNote}.`,
+            color: 'success',
+            duration: 4000
+          })
+        }
+        if (successCount > 0) {
+          emit('jobsCreated', { successCount, errorCount: 0, bulk: true })
+          closeModal()
+        }
+      } catch (error) {
+        errorCount = 1
+        errors.push(error?.data?.statusMessage || error?.message || 'Unknown error')
+        toast.add({
+          title: 'Bulk Creation Failed',
+          description: error?.data?.statusMessage || error?.message || 'Could not create jobs',
+          color: 'error',
+          duration: 4000
+        })
+      }
+      isSubmitting.value = false
+      return
+    } else if (selectedJobType.value === 'i2v') {
+      // Create one i2v job per selected source image
+      for (const img of i2vSelectedImages.value) {
+        try {
+          const payload = {
+            job_type: 'i2v',
+            source_media_uuid: img.uuid,
+            subject_uuid: i2vSelectedSubject.value?.value || null,
+            parameters: applyLoraDisableOverrides(i2vParams.value)
+          }
+
+          await useApiFetch('submit-job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload
+          })
+
+          successCount++
+        } catch (error) {
+          errorCount++
+          errors.push(`${img.filename || img.uuid}: ${error.message}`)
+        }
+      }
+    } else if (selectedJobType.value === 'tagging') {
+      // Single batch request to /api/media/tag-batch.
+      // If the user selected specific images, tag those. Otherwise tag everything
+      // currently visible (after the filter).
+      const uuids = taggingSelectedImages.value.length > 0
+        ? taggingSelectedImages.value.map(i => i.uuid)
+        : taggingFilteredImages.value.map(i => i.uuid)
+
+      if (uuids.length === 0) {
+        toast.add({
+          title: 'Nothing to tag',
+          description: 'No images match the current filter or selection.',
+          color: 'info',
+          duration: 4000
+        })
+        isSubmitting.value = false
+        return
+      }
+
+      try {
+        const response = await useApiFetch('media/tag-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: { media_uuids: uuids }
+        })
+        successCount = response?.count || uuids.length
+        toast.add({
+          title: 'Tagging started',
+          description: `Queued ${successCount} image${successCount !== 1 ? 's' : ''} for tagging. Tags will appear when ready.`,
+          color: 'success',
+          duration: 4000
+        })
+        emit('jobsCreated', { successCount, errorCount: 0 })
+        closeModal()
+      } catch (error) {
+        errorCount = 1
+        errors.push(error?.data?.statusMessage || error?.message || 'Unknown error')
+        toast.add({
+          title: 'Tagging Failed',
+          description: error?.data?.statusMessage || error?.message || 'Could not start tagging',
+          color: 'error',
+          duration: 4000
+        })
+      }
+      isSubmitting.value = false
+      return
+    } else if (selectedJobType.value === 'fs') {
+      // Create one fs job per (selected face × selected dest image) pair.
+      // Each face is the ReActor identity (source_media_uuid); each dest
+      // image is the swap target (dest_media_uuid). Output lands as a
+      // favorited i2v source image so bulk-i2v auto-picks it up.
+      for (const face of fsSelectedFaces.value) {
+        for (const destImg of fsSelectedDestImages.value) {
+          try {
+            const payload = {
+              job_type: 'fs',
+              subject_uuid: fsSelectedSubject.value.value,
+              source_media_uuid: face.uuid,
+              dest_media_uuid: destImg.uuid,
+              parameters: {}
+            }
+
+            await useApiFetch('submit-job', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+            })
+
+            successCount++
+          } catch (error) {
+            errorCount++
+            errors.push(`${face.filename || face.uuid} → ${destImg.filename || destImg.uuid}: ${error.message}`)
+          }
+        }
+      }
+    } else if (workflowMode.value === 'subject-first') {
       // Create jobs for each selected video with the selected subject
       for (const video of selectedVideos.value) {
         try {
@@ -917,20 +1886,47 @@ onMounted(async () => {
   }
 })
 
+// When the source-job-type filter changes while a subject is selected in the
+// i2v flow, reload that subject's images so the grid matches the new filter.
+// Bulk mode pulls candidates server-side at submit time, so no reload there.
+watch(i2vSourceJobTypeFilter, () => {
+  if (selectedJobType.value === 'i2v' && i2vSelectedSubject.value && !bulkMode.value) {
+    i2vSelectedImages.value = []
+    loadI2vSubjectImages(i2vSelectedSubject.value.value)
+  }
+})
+
 // Watch for modal opening/closing
 watch(
   () => props.modelValue,
   isOpen => {
     if (!isOpen) {
       resetWorkflow()
-      // Clean up observer when modal closes
+      // Clean up observers when modal closes
       if (videoScrollObserver.value) {
         videoScrollObserver.value.disconnect()
         videoScrollObserver.value = null
       }
+      if (destImageScrollObserver.value) {
+        destImageScrollObserver.value.disconnect()
+        destImageScrollObserver.value = null
+      }
     }
   }
 )
+
+// Watch for dest image results to re-setup the fs scroll observer
+watch(destImages, newResults => {
+  nextTick(() => {
+    if (newResults.length > 0 && destImageHasMoreResults.value) {
+      setTimeout(() => {
+        if (destImageScrollSentinel.value) {
+          setupDestImageScrollObserver()
+        }
+      }, 100)
+    }
+  })
+})
 
 // Watch for video results changes to re-setup observer
 watch(videos, newResults => {
@@ -962,13 +1958,175 @@ watch(videos, newResults => {
   })
 })
 
-// Cleanup observer on unmount
+// Cleanup observers on unmount
 onUnmounted(() => {
   if (videoScrollObserver.value) {
     videoScrollObserver.value.disconnect()
     videoScrollObserver.value = null
   }
+  if (destImageScrollObserver.value) {
+    destImageScrollObserver.value.disconnect()
+    destImageScrollObserver.value = null
+  }
 })
+
+// Pre-fill the i2v workflow from an existing job so the user can tweak and re-submit.
+// Currently only supports i2v jobs (the ones that have a single source image + params).
+const duplicateFromJob = async (job) => {
+  if (!job) return
+
+  if (job.job_type !== 'i2v') {
+    const toast = useToast()
+    toast.add({
+      title: 'Cannot Duplicate',
+      description: `Duplicate is only supported for i2v jobs right now (this job is ${job.job_type || 'unknown'}).`,
+      color: 'warning',
+      duration: 4000
+    })
+    return
+  }
+
+  if (!job.subject_uuid || !job.source_media_uuid) {
+    const toast = useToast()
+    toast.add({
+      title: 'Cannot Duplicate',
+      description: 'This job is missing a subject or source image.',
+      color: 'warning',
+      duration: 4000
+    })
+    return
+  }
+
+  // Reset any prior state and enter the i2v flow
+  resetWorkflow()
+  selectedJobType.value = 'i2v'
+  form.value.job_type = 'i2v'
+  await fetchLoras()
+
+  // Seed the subject from the job
+  i2vSelectedSubject.value = {
+    value: job.subject_uuid,
+    label: job.subject?.name || 'Subject',
+    tags: job.subject?.tags || null
+  }
+
+  // Load the subject's source images, then pick the one from this job
+  await loadI2vSubjectImages(job.subject_uuid)
+  const match = i2vSubjectImages.value.find(img => img.uuid === job.source_media_uuid)
+  if (match) {
+    i2vSelectedImages.value = [match]
+  } else if (job.source_media) {
+    // Fall back to the embedded source_media if the image list doesn't include it
+    // (e.g. the source was deleted or filtered out)
+    i2vSelectedImages.value = [job.source_media]
+  }
+
+  // Seed params — strip internal preset stash markers so we don't show a stale preset
+  const params = job.parameters || {}
+  const { _preset_id, _preset_name, ...rest } = params
+  void _preset_id
+  i2vParams.value = {
+    ...i2vParams.value,
+    ...rest,
+    // Preserve the preset identity so the jobs list still shows the preset badge on the clone
+    ...(params._preset_id ? { _preset_id: params._preset_id, _preset_name: params._preset_name } : {})
+  }
+
+  isOpen.value = true
+}
+
+// Open the modal in preset-edit mode for the preset that a queued job references.
+// Always fetch the preset definition fresh — queued jobs no longer carry a parameter
+// snapshot (that only gets stamped on at queued→active), so job.parameters is either
+// synthesized server-side or stale latent data. Either way, the preset row is the
+// source of truth for what to show in the form.
+const editPresetFromJob = async (job) => {
+  const toast = useToast()
+  if (!job?.preset_id) {
+    toast.add({
+      title: 'No preset',
+      description: 'This job is not linked to a preset.',
+      color: 'warning',
+      duration: 3000
+    })
+    return
+  }
+  if (job.job_type !== 'i2v') {
+    toast.add({
+      title: 'Cannot edit preset',
+      description: `Preset editing is only supported for i2v jobs (this job is ${job.job_type || 'unknown'}).`,
+      color: 'warning',
+      duration: 4000
+    })
+    return
+  }
+
+  let preset
+  try {
+    const data = await $fetch('/api/presets?job_type=i2v')
+    preset = data?.presets?.find(p => p.id === job.preset_id)
+  } catch (e) {
+    console.error('Failed to fetch preset:', e)
+  }
+  if (!preset) {
+    toast.add({
+      title: 'Preset not found',
+      description: 'Could not load the preset definition for this job.',
+      color: 'warning',
+      duration: 4000
+    })
+    return
+  }
+
+  resetWorkflow()
+  presetEditMode.value = true
+  selectedJobType.value = 'i2v'
+  form.value.job_type = 'i2v'
+  await fetchLoras()
+
+  const seeded = {
+    prompt: preset.prompt || '',
+    negative_prompt: preset.negativePrompt || i2vParams.value.negative_prompt,
+    length: preset.length || 81,
+    lora_1_high: preset.lora1High || null,
+    lora_1_low: preset.lora1Low || null,
+    lora_1_high_strength: preset.lora1HighStrength ?? 1,
+    lora_1_low_strength: preset.lora1LowStrength ?? 1,
+    lora_2_high: preset.lora2High || null,
+    lora_2_low: preset.lora2Low || null,
+    lora_2_high_strength: preset.lora2HighStrength ?? 1,
+    lora_2_low_strength: preset.lora2LowStrength ?? 1,
+    lora_3_high: preset.lora3High || null,
+    lora_3_low: preset.lora3Low || null,
+    lora_3_high_strength: preset.lora3HighStrength ?? 1,
+    lora_3_low_strength: preset.lora3LowStrength ?? 1,
+    lora_4_high: preset.lora4High || null,
+    lora_4_low: preset.lora4Low || null,
+    lora_4_high_strength: preset.lora4HighStrength ?? 1,
+    lora_4_low_strength: preset.lora4LowStrength ?? 1,
+    lora_5_high: preset.lora5High || null,
+    lora_5_low: preset.lora5Low || null,
+    lora_5_high_strength: preset.lora5HighStrength ?? 1,
+    lora_5_low_strength: preset.lora5LowStrength ?? 1,
+    _preset_id: preset.id,
+    _preset_name: preset.name,
+  }
+  if (preset.lora1HighStrengthOff) seeded[loraOffKey('lora_1_high_strength')] = true
+  if (preset.lora1LowStrengthOff) seeded[loraOffKey('lora_1_low_strength')] = true
+  if (preset.lora2HighStrengthOff) seeded[loraOffKey('lora_2_high_strength')] = true
+  if (preset.lora2LowStrengthOff) seeded[loraOffKey('lora_2_low_strength')] = true
+  if (preset.lora3HighStrengthOff) seeded[loraOffKey('lora_3_high_strength')] = true
+  if (preset.lora3LowStrengthOff) seeded[loraOffKey('lora_3_low_strength')] = true
+  if (preset.lora4HighStrengthOff) seeded[loraOffKey('lora_4_high_strength')] = true
+  if (preset.lora4LowStrengthOff) seeded[loraOffKey('lora_4_low_strength')] = true
+  if (preset.lora5HighStrengthOff) seeded[loraOffKey('lora_5_high_strength')] = true
+  if (preset.lora5LowStrengthOff) seeded[loraOffKey('lora_5_low_strength')] = true
+  i2vParams.value = seeded
+
+  isOpen.value = true
+}
+
+defineExpose({ duplicateFromJob, editPresetFromJob })
 </script>
 
 <style scoped>

@@ -1,69 +1,45 @@
 <template>
-  <div class="flex items-center gap-2">
-    <!-- LED Indicator -->
-    <div class="relative">
-      <div
-        :class="[
-          'w-3 h-3 rounded-full transition-all duration-300',
-          isHealthy
-            ? 'bg-green-500 shadow-green-500/50 shadow-lg animate-pulse'
-            : 'bg-red-500 shadow-red-500/50 shadow-lg'
-        ]"
-      />
-      <!-- Glow effect for healthy status -->
-      <div
-        v-if="isHealthy"
-        :class="[
-          'absolute inset-0 w-3 h-3 rounded-full bg-green-400 opacity-75 animate-ping'
-        ]"
-      />
+  <div class="flex items-center gap-3">
+    <!-- Faceswap Worker -->
+    <div class="flex items-center gap-1.5" :title="`Faceswap: ${faceswapStatus}`">
+      <div :class="['w-2.5 h-2.5 rounded-full', faceswapHealthy ? 'bg-green-500 animate-pulse' : 'bg-red-500']" />
+      <span :class="['text-xs', faceswapHealthy ? 'text-green-400' : 'text-red-400']">FS</span>
     </div>
 
-    <!-- Status Text -->
-    <span
-      :class="[
-        'text-sm font-medium transition-colors duration-300',
-        isHealthy ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-      ]"
-    >
+    <!-- Wan Worker -->
+    <div class="flex items-center gap-1.5" :title="`Wan I2V: ${wanStatus}`">
+      <div :class="['w-2.5 h-2.5 rounded-full', wanHealthy ? 'bg-green-500 animate-pulse' : 'bg-red-500']" />
+      <span :class="['text-xs', wanHealthy ? 'text-green-400' : 'text-red-400']">I2V</span>
+    </div>
+
+    <!-- Overall Status Text -->
+    <span :class="['text-sm font-medium', anyHealthy ? 'text-green-400' : 'text-red-400']">
       {{ statusText }}
     </span>
   </div>
 </template>
 
 <script setup lang="ts">
-// Use jobs store for real-time WebSocket updates instead of polling
 const jobsStore = useJobsStore()
 
-// Computed health status from WebSocket state
-const isHealthy = computed(() => {
-  const systemStatus = jobsStore.systemStatus
-  if (!systemStatus) return false
-
-  // Worker is healthy if both RunPod worker and ComfyUI are healthy
-  return systemStatus.runpodWorker?.status === 'healthy' &&
-         systemStatus.comfyui?.status === 'healthy'
+const faceswapHealthy = computed(() => {
+  const s = jobsStore.systemStatus
+  return s?.runpodWorker?.status === 'healthy' && s?.comfyui?.status === 'healthy'
 })
 
-// Computed availability status
-const isAvailable = computed(() => {
-  const systemStatus = jobsStore.systemStatus
-  if (!systemStatus) return false
-
-  // Worker is available if ComfyUI processing status is idle
-  return systemStatus.comfyuiProcessing?.status === 'idle'
+const wanHealthy = computed(() => {
+  return jobsStore.systemStatus?.wanWorker?.status === 'healthy'
 })
 
-// Computed status text
+const anyHealthy = computed(() => faceswapHealthy.value || wanHealthy.value)
+
+const faceswapStatus = computed(() => faceswapHealthy.value ? 'Healthy' : 'Offline')
+const wanStatus = computed(() => wanHealthy.value ? 'Healthy' : 'Offline')
+
 const statusText = computed(() => {
-  if (!isHealthy.value) {
-    return 'Worker Offline'
-  }
-  if (!isAvailable.value) {
-    return 'Worker Busy'
-  }
-  return 'Worker Ready'
+  if (!anyHealthy.value) return 'All Offline'
+  if (faceswapHealthy.value && wanHealthy.value) return 'All Ready'
+  if (faceswapHealthy.value) return 'FS Ready'
+  return 'I2V Ready'
 })
-
-// No more polling - all updates come via WebSocket in real-time!
 </script>

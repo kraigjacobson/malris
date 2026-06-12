@@ -1,31 +1,33 @@
 <template>
-  <UModal v-model:open="isModalOpen" :ui="{ width: 'max-w-6xl' }" :fullscreen="isMobile">
-    <template #header>
-      <div class="flex justify-between items-center w-full">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-          Subjects
-        </h1>
-        <div class="flex items-center gap-2">
-          <UButton
-            @click="openManageSubjectModal()"
-            color="primary"
-            icon="i-heroicons-plus"
-            size="sm"
-          >
-            Add Subject
-          </UButton>
-          <UButton
-            variant="ghost"
-            size="sm"
-            icon="i-heroicons-x-mark"
-            @click="isModalOpen = false"
-          />
-        </div>
+  <div class="container mx-auto p-3 sm:p-6 pb-16 sm:pb-24">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center mb-3 sm:mb-6">
+      <h1 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+        Subjects
+      </h1>
+      <div class="flex items-center gap-2">
+        <UButton
+          @click="openManageSubjectModal()"
+          color="primary"
+          variant="outline"
+          icon="i-heroicons-plus"
+          size="sm"
+        >
+          Add Subject
+        </UButton>
+        <UButton
+          @click="searchSubjects"
+          :loading="isLoading"
+          color="primary"
+          icon="i-heroicons-magnifying-glass"
+          size="sm"
+        >
+          Search
+        </UButton>
       </div>
-    </template>
+    </div>
 
-    <template #body>
-      <div class="space-y-6 max-h-[70vh] overflow-y-auto">
+    <div class="space-y-6">
         <!-- Search Filters -->
         <SubjectSearchFilters
           :selected-subject="selectedSearchSubject"
@@ -113,7 +115,7 @@
               <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">
                 Created {{ formatDate(subject.created_at) }}
               </p>
-              <div v-if="subject.tags && subject.tags.tags && subject.tags.tags.length > 0" class="flex flex-wrap gap-1 mt-1 hidden sm:flex">
+              <div v-if="subject.tags && subject.tags.tags && subject.tags.tags.length > 0" class="flex-wrap gap-1 mt-1 hidden sm:flex">
                 <span
                   v-for="tag in subject.tags.tags.slice(0, 3)"
                   :key="tag"
@@ -150,6 +152,17 @@
     </div>
 
 
+        <!-- Pagination -->
+        <div v-if="pagination.total > pagination.limit" class="w-full flex justify-center pt-4">
+          <UPagination
+            v-model:page="currentPage"
+            :items-per-page="pagination.limit"
+            :total="pagination.total"
+            show-last
+            show-first
+          />
+        </div>
+
         <!-- Manage Subject Modal -->
         <ManageSubjectModal
           v-model="isManageSubjectModalOpen"
@@ -160,47 +173,8 @@
           @subject-updated="handleSubjectUpdated"
           @subject-changed="handleSubjectChanged"
         />
-      </div>
-    </template>
-
-    <template #footer>
-      <div class="w-full space-y-3">
-        <!-- Pagination -->
-        <div v-if="pagination.total > pagination.limit" class="w-full flex justify-center">
-          <UPagination
-            v-model:page="currentPage"
-            :items-per-page="pagination.limit"
-            :total="pagination.total"
-            show-last
-            show-first
-          />
-        </div>
-        
-        <!-- Action Buttons Row -->
-        <div class="w-full flex justify-between items-center">
-          <!-- Close Button (Left) -->
-          <UButton
-            @click="isModalOpen = false"
-            variant="outline"
-            size="sm"
-            icon="i-heroicons-x-mark"
-          >
-            Close
-          </UButton>
-          
-          <!-- Search and Clear Buttons (Right) -->
-          <div class="flex gap-3">
-            <UButton @click="clearFilters" variant="outline" size="sm">
-              Clear
-            </UButton>
-            <UButton @click="searchSubjects" :loading="isLoading" color="primary" size="sm">
-              Search
-            </UButton>
-          </div>
-        </div>
-      </div>
-    </template>
-  </UModal>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -212,9 +186,6 @@ import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 definePageMeta({
   title: 'Subjects Gallery'
 })
-
-// Use Nuxt's device detection
-const { isMobile } = useDevice()
 
 // Initialize stores
 const settingsStore = useSettingsStore()
@@ -251,9 +222,11 @@ const { getSubjects } = useSubjects()
 const subjectResults = ref([])
 const isLoading = ref(false)
 const hasSearched = ref(false)
-const viewMode = ref('grid')
+const viewMode = computed({
+  get: () => searchStore.subjectSearch.viewMode,
+  set: val => { searchStore.subjectSearch.viewMode = val }
+})
 const isManageSubjectModalOpen = ref(false)
-const isModalOpen = ref(true)
 const selectedSubjectForManagement = ref(null)
 const currentSubjectIndex = ref(0)
 const currentPage = ref(1)
@@ -400,6 +373,7 @@ watch(currentPage, (newPage, oldPage) => {
 // Initialize settings on mount (subjects cache is handled globally in app.vue)
 onMounted(async () => {
   await settingsStore.initializeSettings()
+  await searchStore.initializeSearch()
 })
 
 // Page head

@@ -10,8 +10,10 @@ export default defineEventHandler(async (event) => {
     // Read body to get optional source_type parameter
     const body = await readBody(event).catch(() => ({}))
     const sourceType = body.source_type || 'all'
+    const rawLimit = body.job_limit
+    const jobLimit = typeof rawLimit === 'number' && rawLimit > 0 ? Math.floor(rawLimit) : null
 
-    const result = startContinuousProcessing(sourceType)
+    const result = startContinuousProcessing(sourceType, jobLimit)
 
     return {
       success: result.success,

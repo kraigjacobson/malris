@@ -69,10 +69,26 @@
       <UButton :label="confirmLabel" :color="variant === 'error' ? 'error' : (variant || 'primary')" variant="solid" @click="handleConfirm" />
     </template>
   </UModal>
+
+  <!-- Mobile thumb buttons - reachable with left thumb for one-handed delete flow.
+       Teleported to body so the fixed-positioned overlay sits above the modal (z-60). -->
+  <Teleport to="body">
+    <ThumbButtons
+      v-if="isOpen && isMobile"
+      container-class="z-[70]"
+      :slot2="cancelLabel ? { icon: 'i-heroicons-x-mark', color: 'neutral', title: cancelLabel } : null"
+      :slot3="alternateLabel ? { icon: 'i-heroicons-check-circle', color: 'warning', title: alternateLabel } : null"
+      :slot4="{ icon: 'i-heroicons-trash', color: variant === 'error' ? 'error' : (variant || 'primary'), title: confirmLabel }"
+      @thumb-click-slot-2="handleCancel"
+      @thumb-click-slot-3="handleAlternate"
+      @thumb-click-slot-4="handleConfirm"
+    />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
 const confirmDialog = useConfirmDialog()
+const { isMobile } = useDevice()
 
 const { isOpen, title, message, confirmLabel, alternateLabel, cancelLabel, variant, items, alternateItems, handleConfirm, handleAlternate, handleCancel } = confirmDialog
 </script>

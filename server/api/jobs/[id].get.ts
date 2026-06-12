@@ -1,7 +1,8 @@
 import { getDb } from '~/server/utils/database'
-import { jobs, subjects, mediaRecords } from '~/server/utils/schema'
+import { jobs, jobPresets, subjects, mediaRecords } from '~/server/utils/schema'
 import { eq } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
+import { resolveJobParameters } from '~/server/utils/presetSnapshot'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -29,7 +30,8 @@ export default defineEventHandler(async (event) => {
 
     const db = getDb()
 
-    // Get the job with subject information
+    // Get the job with subject information and the live preset (so queued
+    // jobs can synthesize their parameters from the preset's current values).
     const jobResult = await db
       .select({
         id: jobs.id,
@@ -39,6 +41,7 @@ export default defineEventHandler(async (event) => {
         source_media_uuid: jobs.sourceMediaUuid,
         dest_media_uuid: jobs.destMediaUuid,
         output_uuid: jobs.outputUuid,
+        preset_id: jobs.presetId,
         parameters: jobs.parameters,
         progress: jobs.progress,
         error_message: jobs.errorMessage,
@@ -50,9 +53,12 @@ export default defineEventHandler(async (event) => {
         subject_name: subjects.name,
         subject_tags: subjects.tags,
         subject_thumbnail_uuid: subjects.thumbnail,
+        // Preset row (nullable)
+        preset: jobPresets,
       })
       .from(jobs)
       .leftJoin(subjects, eq(jobs.subjectUuid, subjects.id))
+      .leftJoin(jobPresets, eq(jobs.presetId, jobPresets.id))
       .where(eq(jobs.id, jobId))
       .limit(1)
 
@@ -104,7 +110,11 @@ export default defineEventHandler(async (event) => {
         .limit(1) : Promise.resolve([])
     ])
 
-    // Build the response in the expected format
+    // Build the response in the expected format. For queued jobs (or any job
+    // without a snapshot), resolve parameters from the live preset so the
+    // frontend always sees a fully-populated dict.
+    const resolvedParameters = resolveJobParameters(job.parameters as any, job.preset_id, job.preset)
+
     const jobResponse = {
       id: job.id,
       job_type: job.job_type,
@@ -113,7 +123,8 @@ export default defineEventHandler(async (event) => {
       source_media_uuid: job.source_media_uuid,
       dest_media_uuid: job.dest_media_uuid,
       output_uuid: job.output_uuid,
-      parameters: job.parameters,
+      preset_id: job.preset_id,
+      parameters: resolvedParameters,
       progress: job.progress,
       error_message: job.error_message,
       created_at: job.created_at,

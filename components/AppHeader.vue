@@ -59,6 +59,19 @@
                         {{ jobsStore.systemStatus.comfyui.status.toUpperCase() }}
                       </span>
                     </div>
+
+                    <!-- Wan I2V Worker Status -->
+                    <div v-if="jobsStore.systemStatus.wanWorker" class="flex items-center gap-2">
+                      <UIcon
+                        :name="getWorkerStatusIcon(jobsStore.systemStatus.wanWorker.status)"
+                        :class="getWorkerStatusColor(jobsStore.systemStatus.wanWorker.status)"
+                        class="w-4 h-4"
+                      />
+                      <span class="font-medium">Wan I2V:</span>
+                      <span :class="getWorkerStatusColor(jobsStore.systemStatus.wanWorker.status)">
+                        {{ jobsStore.systemStatus.wanWorker.status.toUpperCase() }}
+                      </span>
+                    </div>
                     
                     <!-- ComfyUI Processing Status -->
                     <div class="flex items-center gap-2">
@@ -285,6 +298,11 @@ const navigationItems = ref<NavigationMenuItem[]>([
         label: 'Utilities',
         icon: 'i-heroicons-cog-6-tooth',
         to: '/utilities'
+      },
+      {
+        label: 'I2V Presets',
+        icon: 'i-heroicons-bookmark',
+        to: '/i2v-presets'
       }
     ]
   }

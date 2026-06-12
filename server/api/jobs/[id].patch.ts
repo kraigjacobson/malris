@@ -5,47 +5,36 @@ import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
-    // Get job ID from route parameters
     const jobId = getRouterParam(event, 'id')
-    
+
     if (!jobId) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Job ID is required'
-      })
+      throw createError({ statusCode: 400, statusMessage: 'Job ID is required' })
     }
 
-    // Check if this is a prefixed tagging job ID - these are not stored in the jobs table
+    // Tagging jobs are not stored in the jobs table; no-op so the worker's
+    // progress pings don't 404.
     if (jobId.startsWith('tag_')) {
-      // For tagging jobs, just return success since they don't need progress tracking
-      return {
-        success: true,
-        message: 'Tagging job progress update ignored (not stored in database)'
-      }
+      return { success: true, message: 'Tagging job progress update ignored (not stored in database)' }
     }
 
-    // Get request body
     const body = await readBody(event)
-    
-    if (!body || typeof body.progress !== 'number') {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Progress value is required and must be a number'
-      })
+    if (!body || typeof body !== 'object') {
+      throw createError({ statusCode: 400, statusMessage: 'Body is required' })
     }
-
-    // Validate progress range
-    const progress = Math.max(0, Math.min(100, Math.round(body.progress)))
 
     const db = getDb()
+    if (typeof body.progress !== 'number') {
+      throw createError({ statusCode: 400, statusMessage: 'progress (number) is required' })
+    }
 
-    // Update job progress
+    const updates = {
+      updatedAt: new Date(),
+      progress: Math.max(0, Math.min(100, Math.round(body.progress)))
+    }
+
     const updatedJob = await db
       .update(jobs)
-      .set({
-        progress: progress,
-        updatedAt: new Date()
-      })
+      .set(updates)
       .where(eq(jobs.id, jobId))
       .returning({
         id: jobs.id,
@@ -55,38 +44,24 @@ export default defineEventHandler(async (event) => {
       })
 
     if (updatedJob.length === 0) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Job not found'
-      })
+      throw createError({ statusCode: 404, statusMessage: 'Job not found' })
     }
 
-    // Update job counts to refresh frontend queue status (for consistency)
     try {
       const { updateJobCounts } = await import('~/server/services/systemStatusManager')
       await updateJobCounts()
     } catch (error) {
-      logger.error('❌ Failed to update job counts after progress update:', error)
+      logger.error('❌ Failed to update job counts after job update:', error)
     }
 
-    return {
-      success: true,
-      job: updatedJob[0],
-      message: `Job progress updated to ${progress}%`
-    }
+    return { success: true, job: updatedJob[0], message: `Job progress updated to ${updates.progress}%` }
 
   } catch (error: any) {
-    logger.error('Error updating job progress:', error)
-    
-    // If it's already an HTTP error, re-throw it
-    if (error.statusCode) {
-      throw error
-    }
-
-    // Generic error
+    logger.error('Error updating job:', error)
+    if (error.statusCode) throw error
     throw createError({
       statusCode: 500,
-      statusMessage: `Failed to update job progress: ${error.message || 'Unknown error'}`
+      statusMessage: `Failed to update job: ${error.message || 'Unknown error'}`
     })
   }
 })

@@ -8,7 +8,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
           <div class="flex items-center mb-4">
             <UIcon name="i-heroicons-tag" class="w-8 h-8 text-blue-500 mr-3" />
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">AI Video Tagging</h2>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">AI Media Tagging</h2>
           </div>
 
           <!-- Queue Status Display -->
@@ -23,7 +23,9 @@
                 <div class="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">
                   {{ queueStatus.totalUntagged }}
                 </div>
-                <div class="text-sm font-medium text-slate-600 dark:text-slate-400 leading-tight">Total<br />Untagged</div>
+                <div class="text-sm font-medium text-slate-600 dark:text-slate-400 leading-tight">
+                  Untagged<br /><span class="text-xs opacity-75">{{ currentPurposeLabel }}</span>
+                </div>
               </div>
 
               <div class="bg-white dark:bg-slate-800 rounded-lg p-4 text-center shadow-sm border border-slate-200 dark:border-slate-700">
@@ -65,22 +67,35 @@
             </div>
           </div>
 
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Batch Size (1-1000) </label>
-            <UInput v-model.number="batchSize" type="number" :min="1" :max="1000" placeholder="50" class="w-full" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Per Batch (1-200) </label>
+              <UInput v-model.number="batchSize" type="number" :min="1" :max="200" placeholder="24" class="w-full" />
+              <p class="text-xs text-gray-500 mt-1">Items per ComfyUI job</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Total (1-10000) </label>
+              <UInput v-model.number="totalLimit" type="number" :min="1" :max="10000" placeholder="2000" class="w-full" />
+              <p class="text-xs text-gray-500 mt-1">Total items to queue</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> Purpose </label>
+              <USelect v-model="taggingPurpose" :items="taggingPurposeOptions" class="w-full" />
+              <p class="text-xs text-gray-500 mt-1">Untagged only</p>
+            </div>
           </div>
 
           <div class="flex justify-end">
             <UButton :loading="isTagging" :disabled="isTagging" color="primary" size="lg" @click="tagAllUntaggedVideos">
               <UIcon name="i-heroicons-tag" class="mr-2" />
-              {{ isTagging ? 'Processing Batch...' : `Tag Next ${batchSize} Videos` }}
+              {{ isTagging ? 'Queueing batches...' : `Queue ${plannedBatchCount} batch${plannedBatchCount === 1 ? '' : 'es'} (${effectiveTotal} items)` }}
             </UButton>
           </div>
 
           <div v-if="lastTaggingResult" class="mt-4 p-3 rounded-md" :class="lastTaggingResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
             <p class="text-sm">{{ lastTaggingResult.message }}</p>
             <div v-if="lastTaggingResult.success && lastTaggingResult.totalRemaining !== undefined" class="mt-2 text-xs opacity-75">
-              <div>Videos remaining: {{ lastTaggingResult.totalRemaining }}</div>
+              <div>Items remaining after this run: {{ lastTaggingResult.totalRemaining }}</div>
             </div>
           </div>
         </div>
@@ -196,7 +211,29 @@ definePageMeta({
 
 // Reactive state
 const isTagging = ref(false)
-const batchSize = ref(50) // Default to 50
+const batchSize = ref(24) // Items per ComfyUI tagging job
+const totalLimit = ref(2000) // Total items to queue across all batches
+const taggingPurpose = ref<string>('any')
+const taggingPurposeOptions = [
+  { label: 'All taggable (default)', value: 'any' },
+  { label: 'Source images', value: 'source' },
+  { label: 'Dest images / videos', value: 'dest' },
+  { label: 'Output videos', value: 'output' },
+  { label: 'Subject', value: 'subject' },
+  { label: 'Thumbnail', value: 'thumbnail' },
+  { label: 'Voyeur', value: 'voyeur' },
+  { label: 'Porn', value: 'porn' },
+  { label: 'Todo', value: 'todo' }
+]
+const currentPurposeLabel = computed(() => {
+  const opt = taggingPurposeOptions.find(o => o.value === taggingPurpose.value)
+  return opt?.label ?? 'All taggable'
+})
+const effectiveTotal = computed(() => Math.max(Math.min(totalLimit.value || 0, 10000), batchSize.value || 1))
+const plannedBatchCount = computed(() => {
+  const bs = Math.max(batchSize.value || 1, 1)
+  return Math.max(Math.ceil(effectiveTotal.value / bs), 1)
+})
 const lastTaggingResult = ref<{ success: boolean; message: string; totalRemaining?: number } | null>(null)
 const queueStatus = ref<{
   totalUntagged: number
@@ -234,10 +271,12 @@ const cleanupStatus = ref<{
 let refreshInterval: NodeJS.Timeout | null = null
 let cleanupRefreshInterval: NodeJS.Timeout | null = null
 
-// Auto-refresh queue status every 2 seconds
+// Auto-refresh queue status every 2 seconds. `taggingPurpose` is passed as a
+// reactive query param so changing the dropdown auto-refetches the count.
 const { data: queueData, refresh: refreshQueue } = await useFetch('/api/media/tagging-queue-status', {
   server: false,
   default: () => null,
+  query: { purpose: taggingPurpose },
   transform: (data: any) => data
 })
 
@@ -355,7 +394,7 @@ const fetchOrphanCount = async () => {
   }
 }
 
-// Function to tag next batch of untagged videos
+// Function to queue untagged media in batches (background dispatch)
 const tagAllUntaggedVideos = async () => {
   try {
     isTagging.value = true
@@ -363,24 +402,25 @@ const tagAllUntaggedVideos = async () => {
 
     const toast = useToast()
 
-    // Show loading toast
     toast.add({
-      title: 'Starting AI Tagging',
-      description: `Processing next batch of ${batchSize.value} untagged videos...`,
+      title: 'Queueing AI Tagging',
+      description: `Up to ${effectiveTotal.value} item(s) in batches of ${batchSize.value}...`,
       icon: 'i-heroicons-tag'
     })
 
-    // Call the API to process next batch with custom size
     const response = await $fetch<{
       success: boolean
       count: number
+      batches: number
       totalRemaining: number
       hasMore: boolean
       message: string
     }>('/api/media/tag-all-untagged', {
       method: 'POST',
       body: {
-        batchSize: batchSize.value
+        batchSize: batchSize.value,
+        totalLimit: effectiveTotal.value,
+        purpose: taggingPurpose.value
       }
     })
 
@@ -388,27 +428,23 @@ const tagAllUntaggedVideos = async () => {
       throw new Error(response.message)
     }
 
-    // Store result for display
     lastTaggingResult.value = {
       success: response.success,
       message: response.message,
       totalRemaining: response.totalRemaining
     }
 
-    // Show success toast
     toast.add({
-      title: 'Batch Started',
-      description: `Processing ${response.count} videos. ${response.totalRemaining} videos remaining after this batch.`,
+      title: 'Batches Queued',
+      description: `${response.count} item(s) across ${response.batches} batch(es). ${response.totalRemaining} remaining after this run.`,
       icon: 'i-heroicons-check-circle',
       color: 'success'
     })
 
-    // Refresh queue status immediately after starting batch
     refreshQueue()
   } catch (error: any) {
     const toast = useToast()
 
-    // Store error result
     lastTaggingResult.value = {
       success: false,
       message: error?.message || 'Failed to start tagging process'
@@ -420,7 +456,7 @@ const tagAllUntaggedVideos = async () => {
       icon: 'i-heroicons-exclamation-triangle',
       color: 'error'
     })
-    console.error('Error tagging videos:', error)
+    console.error('Error tagging media:', error)
   } finally {
     isTagging.value = false
   }

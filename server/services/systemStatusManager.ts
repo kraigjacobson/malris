@@ -59,6 +59,10 @@ async function requeueOrphanedActiveJobs(): Promise<void> {
         progress: 0,
         startedAt: null,
         errorMessage: null,
+        // Drop the preset snapshot — moving back to queued returns the job to
+        // pure-reference mode, picking up the preset's current values on the
+        // next pickup.
+        parameters: {},
         updatedAt: new Date()
       })
       .where(eq(jobs.status, 'active'))
@@ -90,6 +94,11 @@ let currentStatus: SystemStatus = {
     lastChecked: new Date().toISOString()
   },
   comfyui: {
+    status: 'unknown',
+    message: 'Not checked yet',
+    lastChecked: new Date().toISOString()
+  },
+  wanWorker: {
     status: 'unknown',
     message: 'Not checked yet',
     lastChecked: new Date().toISOString()
@@ -189,15 +198,18 @@ function sendToClient(ws: any, message: WebSocketMessage) {
 
 // Calculate overall system health based on component statuses
 function calculateSystemHealth(): SystemHealth {
-  const { runpodWorker, comfyui, autoProcessing } = currentStatus
+  const { runpodWorker, comfyui, wanWorker, autoProcessing } = currentStatus
 
-  // If any critical component is unhealthy, system is unhealthy
-  if (runpodWorker.status === 'unhealthy' || comfyui.status === 'unhealthy') {
+  // System is healthy if at least one worker is up
+  const anyWorkerHealthy = runpodWorker.status === 'healthy' || wanWorker.status === 'healthy'
+  const allWorkersUnhealthy = runpodWorker.status === 'unhealthy' && wanWorker.status === 'unhealthy'
+  const allWorkersUnknown = runpodWorker.status === 'unknown' && wanWorker.status === 'unknown'
+
+  if (allWorkersUnhealthy || comfyui.status === 'unhealthy') {
     return 'unhealthy'
   }
 
-  // If any component is unknown, system health is unknown
-  if (runpodWorker.status === 'unknown' || comfyui.status === 'unknown') {
+  if (allWorkersUnknown || comfyui.status === 'unknown') {
     return 'unknown'
   }
 
@@ -290,6 +302,65 @@ async function checkRunPodWorkerHealth() {
         }
       },
       'runpod_status_change'
+    )
+  }
+}
+
+// Check Wan worker health
+async function checkWanWorkerHealth() {
+  const startTime = Date.now()
+
+  try {
+    const workerUrl = process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000'
+    const response = await fetch(`${workerUrl}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000)
+    })
+
+    const responseTime = Date.now() - startTime
+    const timestamp = new Date().toISOString()
+
+    if (!response.ok) {
+      updateStatus(
+        {
+          wanWorker: {
+            status: 'unhealthy',
+            message: `Wan worker responded with ${response.status}`,
+            lastChecked: timestamp,
+            responseTime
+          }
+        },
+        'status_update'
+      )
+      return
+    }
+
+    const healthData = await response.json()
+    const isHealthy = healthData.status === 'healthy'
+
+    updateStatus(
+      {
+        wanWorker: {
+          status: isHealthy ? 'healthy' : 'unhealthy',
+          message: healthData.message || 'Wan worker is responding',
+          lastChecked: timestamp,
+          responseTime
+        }
+      },
+      'status_update'
+    )
+  } catch (error: any) {
+    const responseTime = Date.now() - startTime
+    updateStatus(
+      {
+        wanWorker: {
+          status: 'unhealthy',
+          message: `Health check failed: ${error.message}`,
+          lastChecked: new Date().toISOString(),
+          responseTime
+        }
+      },
+      'status_update'
     )
   }
 }
@@ -504,11 +575,13 @@ export function startSystemMonitoring() {
   // Start health checks immediately
   checkRunPodWorkerHealth()
   checkComfyUIHealth()
+  checkWanWorkerHealth()
   updateJobCounts()
 
   // Set up intervals (no job counts polling - updated reactively)
   runpodHealthInterval = setInterval(checkRunPodWorkerHealth, RUNPOD_CHECK_INTERVAL)
   comfyuiHealthInterval = setInterval(checkComfyUIHealth, COMFYUI_CHECK_INTERVAL)
+  setInterval(checkWanWorkerHealth, RUNPOD_CHECK_INTERVAL)
 
   // Start reconciliation service
   import('./stateReconciliation')
@@ -548,13 +621,32 @@ export function getConnectedClientsCount(): number {
 }
 
 // Worker health check function for job processing service
-// Returns specific data needed for job processing
+// Checks both faceswap and wan workers — healthy if either is up
 export async function checkWorkerHealth() {
   try {
-    const workerUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+    const results = await Promise.allSettled([
+      checkSingleWorkerHealth(process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'),
+      checkSingleWorkerHealth(process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000'),
+    ])
+
+    const faceswap = results[0].status === 'fulfilled' ? results[0].value : { healthy: false, available: false, runningJobIds: [] }
+    const wan = results[1].status === 'fulfilled' ? results[1].value : { healthy: false, available: false, runningJobIds: [] }
+
+    return {
+      healthy: faceswap.healthy || wan.healthy,
+      available: faceswap.available || wan.available,
+      runningJobIds: [...faceswap.runningJobIds, ...wan.runningJobIds],
+    }
+  } catch (error: any) {
+    return { healthy: false, available: false, runningJobIds: [] }
+  }
+}
+
+async function checkSingleWorkerHealth(workerUrl: string) {
+  try {
     const response = await fetch(`${workerUrl}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000) // 5 second timeout
+      signal: AbortSignal.timeout(5000)
     })
 
     if (!response.ok) {
@@ -564,25 +656,17 @@ export async function checkWorkerHealth() {
     const healthData = await response.json()
     const isHealthy = healthData.status === 'healthy'
 
-    // Use the correct fields from active_jobs
     const actualRunningCount = healthData.active_jobs?.running_count || 0
     const actualPendingCount = healthData.active_jobs?.pending_count || 0
     const isAvailable = actualRunningCount === 0 && actualPendingCount === 0
 
-    // Get the actual running job IDs from the worker
     const runningJobIds = healthData.running_jobs || []
-
-    // No longer doing zombie cleanup here - we handle this by marking all other active jobs
-    // as failed when a new job is sent to the worker
 
     return {
       healthy: isHealthy,
       available: isAvailable,
       runningJobIds,
-      actualRunningCount,
-      healthData
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_error: any) {
     return { healthy: false, available: false, runningJobIds: [] }
   }

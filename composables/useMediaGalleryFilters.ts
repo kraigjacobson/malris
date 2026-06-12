@@ -25,6 +25,7 @@ export interface MediaGalleryFilters {
   onlyShowOrphans: boolean
   selectedRatings: number[]
   showUnrated: boolean
+  selectedPreset: string | null
   sortOptions: {
     sort_by: { label: string; value: string } | string
     sort_order: { label: string; value: string } | string
@@ -50,6 +51,7 @@ const defaultFilters: MediaGalleryFilters = {
   onlyShowOrphans: false,
   selectedRatings: [],
   showUnrated: false,
+  selectedPreset: null,
   sortOptions: {
     sort_by: 'created_at',
     sort_order: 'desc'
@@ -166,6 +168,12 @@ export const useMediaGalleryFilters = () => {
       get: () => filters.value.showUnrated,
       set: value => {
         filters.value.showUnrated = value
+      }
+    }),
+    selectedPreset: computed({
+      get: () => filters.value.selectedPreset,
+      set: value => {
+        filters.value.selectedPreset = value
       }
     }),
     sortBy: computed({

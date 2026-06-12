@@ -221,7 +221,9 @@ function formatSeekTime(seconds: number): string {
  * Send the image to ComfyUI worker for tagging
  */
 async function sendToComfyUIForTagging(jobId: string, mediaUuid: string, imageBase64: string): Promise<void> {
-  const comfyUIUrl = process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+  // Prefer the dedicated tagger worker (so the main worker keeps its checkpoints
+  // loaded); fall back to the main worker if TAGGER_WORKER_URL is unset.
+  const comfyUIUrl = process.env.TAGGER_WORKER_URL || process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
 
   // Prepare form data for the tagging workflow
   const formData = new FormData()

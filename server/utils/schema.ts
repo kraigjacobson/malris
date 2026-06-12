@@ -43,6 +43,57 @@ export const subjects = pgTable("subjects", {
   tags: jsonb("tags"), // JSONB field for tags
   note: text("note"),
   thumbnail: uuid("thumbnail"), // Matches the actual database column name
+  category: varchar("category", { length: 10 }), // 'celeb' | 'asmr' | 'real' | null (null = infer from name)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// LoRA Metadata Table (per-LoRA info keyed by safetensors filename)
+export const loraMetadata = pgTable("lora_metadata", {
+  name: varchar("name", { length: 255 }).primaryKey(),
+  triggerWords: text("trigger_words"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Job Presets Table
+export const jobPresets = pgTable("job_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  jobType: varchar("job_type", { length: 100 }).notNull(),
+  prompt: text("prompt"),
+  negativePrompt: text("negative_prompt"),
+  length: integer("length"),
+  lora1High: varchar("lora_1_high", { length: 255 }),
+  lora1Low: varchar("lora_1_low", { length: 255 }),
+  lora1HighStrength: real("lora_1_high_strength"),
+  lora1LowStrength: real("lora_1_low_strength"),
+  lora1HighStrengthOff: boolean("lora_1_high_strength_off").default(false).notNull(),
+  lora1LowStrengthOff: boolean("lora_1_low_strength_off").default(false).notNull(),
+  lora2High: varchar("lora_2_high", { length: 255 }),
+  lora2Low: varchar("lora_2_low", { length: 255 }),
+  lora2HighStrength: real("lora_2_high_strength"),
+  lora2LowStrength: real("lora_2_low_strength"),
+  lora2HighStrengthOff: boolean("lora_2_high_strength_off").default(false).notNull(),
+  lora2LowStrengthOff: boolean("lora_2_low_strength_off").default(false).notNull(),
+  lora3High: varchar("lora_3_high", { length: 255 }),
+  lora3Low: varchar("lora_3_low", { length: 255 }),
+  lora3HighStrength: real("lora_3_high_strength"),
+  lora3LowStrength: real("lora_3_low_strength"),
+  lora3HighStrengthOff: boolean("lora_3_high_strength_off").default(false).notNull(),
+  lora3LowStrengthOff: boolean("lora_3_low_strength_off").default(false).notNull(),
+  lora4High: varchar("lora_4_high", { length: 255 }),
+  lora4Low: varchar("lora_4_low", { length: 255 }),
+  lora4HighStrength: real("lora_4_high_strength"),
+  lora4LowStrength: real("lora_4_low_strength"),
+  lora4HighStrengthOff: boolean("lora_4_high_strength_off").default(false).notNull(),
+  lora4LowStrengthOff: boolean("lora_4_low_strength_off").default(false).notNull(),
+  lora5High: varchar("lora_5_high", { length: 255 }),
+  lora5Low: varchar("lora_5_low", { length: 255 }),
+  lora5HighStrength: real("lora_5_high_strength"),
+  lora5LowStrength: real("lora_5_low_strength"),
+  lora5HighStrengthOff: boolean("lora_5_high_strength_off").default(false).notNull(),
+  lora5LowStrengthOff: boolean("lora_5_low_strength_off").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -53,12 +104,16 @@ export const jobs = pgTable("jobs", {
   jobType: varchar("job_type", { length: 100 }).notNull(), // vid_faceswap, etc.
   status: jobStatusEnum("status").default("queued").notNull(),
   subjectUuid: uuid("subject_uuid")
-    .references(() => subjects.id)
-    .notNull(),
+    .references(() => subjects.id),
   sourceMediaUuid: uuid("source_media_uuid"), // Will add reference later
   destMediaUuid: uuid("dest_media_uuid"), // Will add reference later
   outputUuid: uuid("output_uuid"), // Will add reference later
-  parameters: jsonb("parameters"), // Job parameters as JSON
+  // Preset reference. Queued jobs read live preset values via this FK; once
+  // queued→active runs, preset values are snapshotted into `parameters` for
+  // historical accuracy. ON DELETE SET NULL keeps terminal jobs displayable
+  // from their snapshot even after the source preset is removed.
+  presetId: uuid("preset_id").references(() => jobPresets.id, { onDelete: "set null" }),
+  parameters: jsonb("parameters"), // Snapshot of preset values + non-preset job params (frames_per_batch, etc.)
   progress: integer("progress").default(0).notNull(), // 0-100
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -91,7 +146,8 @@ export const mediaRecords = pgTable("media_records", {
   jobId: uuid("job_id").references(() => jobs.id),
   thumbnailUuid: uuid("thumbnail_uuid"), // Self-reference removed for now
   encryptedData: bytea("encrypted_data"), // Binary data for encrypted content (nullable for LOB storage)
-  checksum: varchar("checksum", { length: 64 }).notNull(), // SHA256 checksum
+  checksum: varchar("checksum", { length: 64 }).notNull(), // SHA256 of ciphertext (legacy; not used for dedup)
+  contentSha256: bytea("content_sha256"), // SHA256 of plaintext bytes; UNIQUE where not null. Used for idempotent upload dedup.
   // Large object support columns
   storageType: varchar("storage_type", { length: 10 })
     .default("bytea")
@@ -111,6 +167,7 @@ export const mediaRecords = pgTable("media_records", {
   accessCount: integer("access_count").default(0).notNull(),
   completions: integer("completions").default(0).notNull(), // for destination videos
   rating: integer("rating"), // user rating 1-5
+  favorite: boolean("favorite").default(false).notNull(),
 });
 
 // Categories Table

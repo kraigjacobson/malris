@@ -58,6 +58,13 @@ export interface SystemStatus {
     responseTime?: number
     version?: string
   }
+
+  wanWorker: {
+    status: RunPodWorkerStatus
+    message: string
+    lastChecked: string
+    responseTime?: number
+  }
   
   comfyuiProcessing: {
     status: ComfyUIProcessingStatus

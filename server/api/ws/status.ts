@@ -5,7 +5,7 @@
  */
 import { logger } from '~/server/utils/logger'
 import { addWebSocketClient, getCurrentStatus } from '~/server/services/systemStatusManager'
-import { startSingleJob, startContinuousProcessing, stopAllProcessing, getProcessingStatus } from '~/server/services/jobProcessingService'
+import { startSingleJob, startContinuousProcessing, stopAllProcessing, getProcessingStatus, setPickOrder, setPresetFilter } from '~/server/services/jobProcessingService'
 
 export default defineWebSocketHandler({
   open(peer) {
@@ -25,7 +25,12 @@ export default defineWebSocketHandler({
         processingState: {
           mode: processingStatus.mode,
           isActive: processingStatus.isActive,
-          isContinuous: processingStatus.isContinuous
+          isContinuous: processingStatus.isContinuous,
+          sourceType: processingStatus.sourceType,
+          pickOrder: processingStatus.pickOrder,
+          presetFilter: processingStatus.presetFilter,
+          jobLimit: processingStatus.jobLimit,
+          jobsProcessedCount: processingStatus.jobsProcessedCount
         }
       },
       timestamp: new Date().toISOString()
@@ -39,6 +44,9 @@ export default defineWebSocketHandler({
 
       // Extract source_type parameter (default to 'all' if not provided)
       const sourceType = command.source_type || 'all'
+      // Optional integer cap on continuous processing; null means unlimited
+      const rawLimit = command.job_limit
+      const jobLimit = typeof rawLimit === 'number' && rawLimit > 0 ? Math.floor(rawLimit) : null
 
       // Handle different command types
       switch (command.type) {
@@ -50,7 +58,7 @@ export default defineWebSocketHandler({
           break
 
         case 'start_continuous':
-          await handleStartContinuous(peer, sourceType)
+          await handleStartContinuous(peer, sourceType, jobLimit)
           break
 
         case 'start_single':
@@ -61,8 +69,20 @@ export default defineWebSocketHandler({
           await handleStopProcessing(peer)
           break
 
+        case 'force_restart_workers':
+          await handleForceRestartWorkers(peer)
+          break
+
         case 'request_state_sync':
           await handleRequestStateSync(peer)
+          break
+
+        case 'set_pick_order':
+          await handleSetPickOrder(peer, command.pick_order)
+          break
+
+        case 'set_preset_filter':
+          await handleSetPresetFilter(peer, command.preset_filter)
           break
 
         default:
@@ -94,9 +114,9 @@ export default defineWebSocketHandler({
 })
 
 // Command Handlers
-async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' = 'all') {
+async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' = 'all', jobLimit: number | null = null) {
   try {
-    const result = startContinuousProcessing(sourceType)
+    const result = startContinuousProcessing(sourceType, jobLimit)
 
     if (result.success) {
       // Send acknowledgment to requesting client
@@ -110,7 +130,8 @@ async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | '
         timestamp: new Date().toISOString()
       }))
 
-      logger.info(`✅ Continuous processing started via WebSocket command (sourceType: ${sourceType})`)
+      const limitSuffix = jobLimit ? `, jobLimit: ${jobLimit}` : ''
+      logger.info(`✅ Continuous processing started via WebSocket command (sourceType: ${sourceType}${limitSuffix})`)
     } else {
       peer.send(JSON.stringify({
         type: 'command_error',
@@ -205,6 +226,84 @@ async function handleStopProcessing(peer: any) {
   }
 }
 
+async function handleForceRestartWorkers(peer: any) {
+  try {
+    const result = await stopAllProcessing({ forceRestart: true })
+
+    peer.send(JSON.stringify({
+      type: 'command_ack',
+      data: {
+        command: 'force_restart_workers',
+        success: true,
+        message: result.message
+      },
+      timestamp: new Date().toISOString()
+    }))
+
+    logger.info('✅ Workers force-restarted via WebSocket command')
+  } catch (error: any) {
+    logger.error('❌ Failed to force restart workers:', error)
+    peer.send(JSON.stringify({
+      type: 'command_error',
+      data: {
+        command: 'force_restart_workers',
+        success: false,
+        error: error.message || 'Failed to force restart workers'
+      },
+      timestamp: new Date().toISOString()
+    }))
+  }
+}
+
+async function handleSetPickOrder(peer: any, pickOrder: unknown) {
+  try {
+    if (pickOrder !== 'chronological' && pickOrder !== 'random') {
+      throw new Error(`Invalid pick_order: ${pickOrder}`)
+    }
+    setPickOrder(pickOrder)
+    peer.send(JSON.stringify({
+      type: 'command_ack',
+      data: { command: 'set_pick_order', success: true, pickOrder },
+      timestamp: new Date().toISOString()
+    }))
+    logger.info(`✅ pickOrder set to ${pickOrder} via WebSocket`)
+  } catch (error: any) {
+    logger.error('❌ Failed to set pickOrder:', error)
+    peer.send(JSON.stringify({
+      type: 'command_error',
+      data: { command: 'set_pick_order', success: false, error: error.message || 'Failed to set pick order' },
+      timestamp: new Date().toISOString()
+    }))
+  }
+}
+
+async function handleSetPresetFilter(peer: any, presetFilter: unknown) {
+  try {
+    // Accept null/undefined/'all' as "no filter"; otherwise expect a UUID string.
+    let next: string | null = null
+    if (presetFilter && presetFilter !== 'all') {
+      if (typeof presetFilter !== 'string') {
+        throw new Error(`Invalid preset_filter: ${presetFilter}`)
+      }
+      next = presetFilter
+    }
+    setPresetFilter(next)
+    peer.send(JSON.stringify({
+      type: 'command_ack',
+      data: { command: 'set_preset_filter', success: true, presetFilter: next },
+      timestamp: new Date().toISOString()
+    }))
+    logger.info(`✅ presetFilter set to ${next ?? 'all'} via WebSocket`)
+  } catch (error: any) {
+    logger.error('❌ Failed to set presetFilter:', error)
+    peer.send(JSON.stringify({
+      type: 'command_error',
+      data: { command: 'set_preset_filter', success: false, error: error.message || 'Failed to set preset filter' },
+      timestamp: new Date().toISOString()
+    }))
+  }
+}
+
 async function handleRequestStateSync(peer: any) {
   try {
     const currentStatus = getCurrentStatus()
@@ -217,7 +316,12 @@ async function handleRequestStateSync(peer: any) {
         processingState: {
           mode: processingStatus.mode,
           isActive: processingStatus.isActive,
-          isContinuous: processingStatus.isContinuous
+          isContinuous: processingStatus.isContinuous,
+          sourceType: processingStatus.sourceType,
+          pickOrder: processingStatus.pickOrder,
+          presetFilter: processingStatus.presetFilter,
+          jobLimit: processingStatus.jobLimit,
+          jobsProcessedCount: processingStatus.jobsProcessedCount
         }
       },
       timestamp: new Date().toISOString()

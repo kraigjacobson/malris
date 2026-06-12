@@ -98,6 +98,14 @@
           </div>
         </div>
 
+        <!-- Preset Filter (i2v) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">I2V Preset</label>
+            <PresetFilter v-model="selectedPreset" job-type="i2v" placeholder="All presets" />
+          </div>
+        </div>
+
         <!-- Star Rating Filter -->
         <RatingFilter v-model="selectedRatings" v-model:show-unrated="showUnrated" :disabled="!!mediaUuid" />
 
@@ -124,9 +132,26 @@
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Results Header -->
-      <div class="flex justify-between items-center mb-3 sm:mb-4">
-        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">Found {{ mediaResults.length }} of {{ totalDbCount }}</p>
-        <div class="flex gap-1 sm:gap-2">
+      <div class="flex justify-between items-center mb-3 sm:mb-4 flex-wrap gap-2">
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
+          Found {{ mediaResults.length }} of {{ totalDbCount }}
+          <span v-if="multiSelectMode" class="ml-2 text-blue-600 dark:text-blue-400 font-medium">· {{ selectedCount }} selected</span>
+        </p>
+        <div class="flex gap-1 sm:gap-2 items-center flex-wrap">
+          <!-- Multi-select controls -->
+          <template v-if="multiSelectMode">
+            <UButton variant="outline" size="xs" :disabled="selectedCount === mediaResults.length" @click="selectAllVisible">Select all visible</UButton>
+            <UButton variant="outline" size="xs" :disabled="selectedCount === 0" @click="clearSelection">Clear</UButton>
+            <UButton color="primary" size="xs" :disabled="selectedCount === 0" :loading="isTaggingBatch" @click="tagSelectedBatch">
+              <UIcon name="i-heroicons-tag" />
+              Tag selected ({{ selectedCount }})
+            </UButton>
+            <UButton color="neutral" variant="ghost" size="xs" @click="exitMultiSelectMode">Exit</UButton>
+          </template>
+          <UButton v-else variant="outline" size="xs" @click="enterMultiSelectMode">
+            <UIcon name="i-heroicons-check-circle" />
+            <span class="hidden sm:inline">Select</span>
+          </UButton>
           <UButton :variant="viewMode === 'grid' ? 'solid' : 'outline'" size="xs" @click="viewMode = 'grid'">
             <UIcon name="i-heroicons-squares-2x2" />
           </UButton>
@@ -137,21 +162,45 @@
       </div>
 
       <!-- Grid View -->
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3">
-        <MediaCard v-for="media in mediaResults" :key="media.uuid" :media="media" class="aspect-[3/4]" @click="openModal(media)" @delete="confirmDelete(media)" @rating-updated="rating => handleRatingUpdated(media.uuid, rating)" />
+      <div v-if="viewMode === 'grid'" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-3" :class="{ 'select-none': multiSelectMode }">
+        <div
+          v-for="(media, index) in mediaResults"
+          :key="media.uuid"
+          class="relative aspect-[3/4]"
+          :class="multiSelectMode && isMediaSelected(media.uuid) ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-900 rounded' : ''"
+          @click="handleMediaClick(media, $event, index)">
+          <MediaCard :media="media" class="w-full h-full" :show-delete="!multiSelectMode" :show-rating="!multiSelectMode" @delete="confirmDelete(media)" @rating-updated="rating => handleRatingUpdated(media.uuid, rating)" />
+          <!-- Selection indicator -->
+          <div v-if="multiSelectMode" class="absolute top-2 left-2 z-40 pointer-events-none">
+            <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors" :class="isMediaSelected(media.uuid) ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white/80 border-gray-300 text-gray-600'">
+              <UIcon v-if="isMediaSelected(media.uuid)" name="i-heroicons-check" class="w-4 h-4" />
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- List View -->
-      <div v-else class="space-y-1 sm:space-y-2">
-        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group">
+      <div v-else class="space-y-1 sm:space-y-2" :class="{ 'select-none': multiSelectMode }">
+        <div
+          v-for="(media, index) in mediaResults"
+          :key="media.uuid"
+          class="bg-neutral-800 p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group"
+          :class="multiSelectMode && isMediaSelected(media.uuid) ? 'ring-2 ring-blue-500' : ''">
           <div class="flex items-center gap-2 sm:gap-4">
+            <!-- Selection checkbox -->
+            <div v-if="multiSelectMode" class="shrink-0 cursor-pointer" @click="handleMediaClick(media, $event, index)">
+              <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors" :class="isMediaSelected(media.uuid) ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white/80 border-gray-300 text-gray-600'">
+                <UIcon v-if="isMediaSelected(media.uuid)" name="i-heroicons-check" class="w-4 h-4" />
+              </div>
+            </div>
+
             <!-- Thumbnail -->
-            <div class="w-12 h-12 sm:w-16 sm:h-16 shrink-0 cursor-pointer" @click="openModal(media)">
-              <MediaCard :media="media" :show-duration="false" class="w-full h-full" />
+            <div class="w-12 h-12 sm:w-16 sm:h-16 shrink-0 cursor-pointer" @click="handleMediaClick(media, $event, index)">
+              <MediaCard :media="media" :show-duration="false" :show-delete="false" :show-rating="false" class="w-full h-full" />
             </div>
 
             <!-- Info -->
-            <div class="flex-1 min-w-0 cursor-pointer" @click="openModal(media)">
+            <div class="flex-1 min-w-0 cursor-pointer" @click="handleMediaClick(media, $event, index)">
               <p class="text-xs sm:text-sm text-gray-500">
                 {{ media.type }} • {{ media.purpose }}<span class="hidden sm:inline"> • {{ formatDate(media.created_at) }}</span>
               </p>
@@ -163,7 +212,7 @@
             </div>
 
             <!-- Actions -->
-            <div class="shrink-0 flex items-center gap-1 sm:gap-2">
+            <div v-if="!multiSelectMode" class="shrink-0 flex items-center gap-1 sm:gap-2">
               <UButton icon="i-heroicons-trash" color="error" variant="solid" size="xs" :loading="deletingIds.includes(media.uuid)" @click.stop="confirmDelete(media)" />
               <UIcon name="i-heroicons-chevron-right" class="text-gray-400 hidden sm:block" />
             </div>
@@ -257,7 +306,7 @@ definePageMeta({
 
 // Initialize stores and composables
 const settingsStore = useSettingsStore()
-const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedSubjects, filenameSearch, selectedTags, onlyShowUntagged, onlyShowOrphans, selectedRatings, showUnrated, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid } = useMediaGalleryFilters()
+const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedSubjects, filenameSearch, selectedTags, onlyShowUntagged, onlyShowOrphans, selectedRatings, showUnrated, selectedPreset, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid } = useMediaGalleryFilters()
 
 // Template refs
 const modalVideo = ref(null)
@@ -273,7 +322,30 @@ const hasMoreResults = ref(false) // Track if there are more results to load
 const selectedMedia = ref(null)
 const deletingIds = ref([])
 const isModalOpen = ref(false)
+
+// Multi-select state
+const multiSelectMode = ref(false)
+const selectedMediaUuids = ref(new Set())
+const lastSelectedIndex = ref(-1)
+const isTaggingBatch = ref(false)
+const selectedCount = computed(() => selectedMediaUuids.value.size)
+const isMediaSelected = uuid => selectedMediaUuids.value.has(uuid)
+
 const currentPage = ref(1)
+// Stable random seed for paginated infinite-scroll search. Pinned per
+// search-apply so `ORDER BY hashtext(uuid || seed)` is consistent across
+// `loadMoreResults` calls and the grid doesn't surface duplicates.
+const gallerySeed = ref(null)
+const rerollGallerySeed = () => {
+  gallerySeed.value = Math.random().toString(36).slice(2, 14)
+}
+// Independent seed for the slideshow's paginated batch loader. Pinned on
+// start, cleared on stop, so random-sorted slideshow batches don't repeat
+// or skip videos as `slideshowOffset` advances.
+const slideshowSeed = ref(null)
+const rerollSlideshowSeed = () => {
+  slideshowSeed.value = Math.random().toString(36).slice(2, 14)
+}
 const pagination = ref({
   total: 0,
   limit: 24,
@@ -445,6 +517,11 @@ const buildSearchParams = () => {
     params.append('unrated_only', 'true')
   }
 
+  // Add preset filter
+  if (selectedPreset.value) {
+    params.append('preset_id', selectedPreset.value)
+  }
+
   params.append('include_thumbnails', 'true')
   return { params, searchType: 'normal' }
 }
@@ -469,6 +546,8 @@ const addPaginationAndSorting = params => {
     // For random sorting, order doesn't matter but API expects it
     if (sortByValue === 'random') {
       params.append('sort_order', 'asc')
+      if (!gallerySeed.value) rerollGallerySeed()
+      params.append('seed', gallerySeed.value)
     } else if (sortOrderValue) {
       params.append('sort_order', sortOrderValue)
     }
@@ -513,6 +592,7 @@ const searchMedia = async (append = false) => {
     isLoading.value = true
     hasSearched.value = true
     currentPage.value = 1 // Reset to first page for new search
+    rerollGallerySeed() // Fresh shuffle for each new search-apply
 
     // Collapse filters after search is submitted
     console.log('🔽 Collapsing filters, current value:', filtersCollapsed.value)
@@ -720,6 +800,7 @@ const clearFilters = () => {
   mediaResults.value = []
   hasSearched.value = false
   currentPage.value = 1
+  gallerySeed.value = null
 
   // Reset all filter values
   selectedSubjects.value = []
@@ -729,6 +810,7 @@ const clearFilters = () => {
   showUnrated.value = false
   onlyShowOrphans.value = false
   mediaUuid.value = ''
+  selectedPreset.value = null
 
   // Reset pagination
   pagination.value = {
@@ -1029,6 +1111,98 @@ const openModal = async media => {
   }
 }
 
+// ---- Multi-select handlers ----
+const handleMediaClick = (media, event, index) => {
+  const ctrl = event?.ctrlKey || event?.metaKey
+  const shift = event?.shiftKey
+
+  if (shift && lastSelectedIndex.value >= 0) {
+    if (!multiSelectMode.value) multiSelectMode.value = true
+    const start = Math.min(lastSelectedIndex.value, index)
+    const end = Math.max(lastSelectedIndex.value, index)
+    const next = new Set(selectedMediaUuids.value)
+    for (let i = start; i <= end; i++) {
+      const item = mediaResults.value[i]
+      if (item) next.add(item.uuid)
+    }
+    selectedMediaUuids.value = next
+    return
+  }
+
+  if (ctrl) {
+    if (!multiSelectMode.value) multiSelectMode.value = true
+    toggleMediaSelection(media, index)
+    return
+  }
+
+  if (multiSelectMode.value) {
+    toggleMediaSelection(media, index)
+    return
+  }
+
+  openModal(media)
+}
+
+const toggleMediaSelection = (media, index) => {
+  const next = new Set(selectedMediaUuids.value)
+  if (next.has(media.uuid)) next.delete(media.uuid)
+  else next.add(media.uuid)
+  selectedMediaUuids.value = next
+  lastSelectedIndex.value = index
+}
+
+const enterMultiSelectMode = () => {
+  multiSelectMode.value = true
+}
+
+const exitMultiSelectMode = () => {
+  multiSelectMode.value = false
+  selectedMediaUuids.value = new Set()
+  lastSelectedIndex.value = -1
+}
+
+const selectAllVisible = () => {
+  const next = new Set(selectedMediaUuids.value)
+  for (const m of mediaResults.value) next.add(m.uuid)
+  selectedMediaUuids.value = next
+}
+
+const clearSelection = () => {
+  selectedMediaUuids.value = new Set()
+  lastSelectedIndex.value = -1
+}
+
+const tagSelectedBatch = async () => {
+  const uuids = Array.from(selectedMediaUuids.value)
+  if (uuids.length === 0) return
+  const toast = useToast()
+  isTaggingBatch.value = true
+  try {
+    const response = await useApiFetch('media/tag-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { media_uuids: uuids }
+    })
+    const count = response?.count || uuids.length
+    toast.add({
+      title: 'Tagging started',
+      description: `Queued ${count} item${count !== 1 ? 's' : ''} for tagging. Tags will appear when ready.`,
+      color: 'success',
+      duration: 4000
+    })
+    exitMultiSelectMode()
+  } catch (error) {
+    toast.add({
+      title: 'Tagging Failed',
+      description: error?.data?.statusMessage || error?.message || 'Could not start tagging',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isTaggingBatch.value = false
+  }
+}
+
 const navigateMedia = direction => {
   const newIndex = currentMediaIndex.value + direction
   if (newIndex >= 0 && newIndex < allMediaResults.value.length) {
@@ -1086,6 +1260,7 @@ const startSlideshow = async () => {
   slideshowCurrentIndex.value = -1
   slideshowPaused.value = false
   slideshowOffset.value = 0
+  rerollSlideshowSeed()
 
   // Wait for the DOM to update
   await nextTick()
@@ -1258,6 +1433,7 @@ const stopSlideshow = () => {
   slideshowVideos.value = []
   slideshowCurrentIndex.value = -1
   slideshowOffset.value = 0
+  slideshowSeed.value = null
   isLoadingNextBatch.value = false
 }
 
@@ -1471,6 +1647,11 @@ const loadSlideshowBatch = async () => {
       params.append('unrated_only', 'true')
     }
 
+    // Add preset filter
+    if (selectedPreset.value) {
+      params.append('preset_id', selectedPreset.value)
+    }
+
     // Use the same sort options as the media gallery
     const sortByValue = typeof sortBy.value === 'object' ? sortBy.value.value : sortBy.value
     const sortOrderValue = typeof sortOrder.value === 'object' ? sortOrder.value.value : sortOrder.value
@@ -1479,6 +1660,10 @@ const loadSlideshowBatch = async () => {
       params.append('sort_by', sortByValue)
       if (sortOrderValue) {
         params.append('sort_order', sortOrderValue)
+      }
+      if (sortByValue === 'random') {
+        if (!slideshowSeed.value) rerollSlideshowSeed()
+        params.append('seed', slideshowSeed.value)
       }
     }
 

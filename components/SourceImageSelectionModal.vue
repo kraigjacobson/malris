@@ -879,8 +879,10 @@ const goToNextImage = () => {
 }
 
 const handleKeydown = event => {
-  // Only handle keys when modal is open
   if (!isOpen.value) return
+
+  const tag = event.target?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || event.target?.isContentEditable) return
 
   switch (event.key) {
     case 'ArrowLeft':

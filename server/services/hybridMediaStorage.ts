@@ -10,6 +10,11 @@ export interface StorageResult {
   uuid: string
   storageType: 'bytea' | 'lob'
   size: number
+  // True if the row was not inserted because another row with the same
+  // content_sha256 already exists. `uuid` is the existing row's uuid in that
+  // case — callers should skip post-insert work (thumbnail wiring, metadata
+  // updates) when this is set.
+  wasDuplicate?: boolean
 }
 
 export interface MediaStorageOptions {
@@ -20,6 +25,9 @@ export interface MediaStorageOptions {
   sizeThreshold?: number
   encryptionKey?: string
   chunkSize?: number
+  // SHA256 of plaintext bytes. When provided, the INSERT uses ON CONFLICT on
+  // content_sha256 to make uploads idempotent under races.
+  contentSha256?: Buffer
 }
 
 export interface StreamRange {
@@ -80,12 +88,30 @@ async function storeBytea(client: any, encryptedData: Buffer, fileSize: number, 
     `
     INSERT INTO media_records (
       filename, type, purpose, encrypted_data, file_size, original_size,
-      storage_type, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, 'bytea', $7, $8, $9, $10, $11)
+      storage_type, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata,
+      content_sha256
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'bytea', $7, $8, $9, $10, $11, $12)
+    ON CONFLICT (content_sha256) WHERE content_sha256 IS NOT NULL DO NOTHING
     RETURNING uuid
   `,
-    [options.filename, options.type, options.purpose, encryptedData, fileSize, fileSize, checksum, options.subjectUuid || null, encryptionMethod, chunkMetadata.chunkSize, metadata]
+    [options.filename, options.type, options.purpose, encryptedData, fileSize, fileSize, checksum, options.subjectUuid || null, encryptionMethod, chunkMetadata.chunkSize, metadata, options.contentSha256 || null]
   )
+
+  if (result.rows.length === 0) {
+    // Race: another upload won — fetch the existing uuid so the caller can
+    // treat this as a successful dedup.
+    const existing = await client.query(
+      'SELECT uuid FROM media_records WHERE content_sha256 = $1 LIMIT 1',
+      [options.contentSha256]
+    )
+    logger.info(`Dedup race resolved: existing media uuid=${existing.rows[0]?.uuid}`)
+    return {
+      uuid: existing.rows[0].uuid,
+      storageType: 'bytea',
+      size: fileSize,
+      wasDuplicate: true
+    }
+  }
 
   logger.info(`Stored media ${result.rows[0].uuid} using BYTEA (${fileSize} bytes)`)
 
@@ -157,12 +183,33 @@ async function storeLargeObject(client: any, encryptedData: Buffer, fileSize: nu
       `
       INSERT INTO media_records (
         filename, type, purpose, large_object_oid, file_size, original_size,
-        storage_type, size_threshold, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata
-      ) VALUES ($1, $2, $3, $4::integer, $5, $6, 'lob', $7, $8, $9, $10, $11, $12)
+        storage_type, size_threshold, checksum, subject_uuid, encryption_method, chunk_size, encryption_metadata,
+        content_sha256
+      ) VALUES ($1, $2, $3, $4::integer, $5, $6, 'lob', $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT (content_sha256) WHERE content_sha256 IS NOT NULL DO NOTHING
       RETURNING uuid
     `,
-      [options.filename, options.type, options.purpose, oid, fileSize, fileSize, threshold, checksum, options.subjectUuid || null, encryptionMethod, chunkMetadata.chunkSize, metadata]
+      [options.filename, options.type, options.purpose, oid, fileSize, fileSize, threshold, checksum, options.subjectUuid || null, encryptionMethod, chunkMetadata.chunkSize, metadata, options.contentSha256 || null]
     )
+
+    if (result.rows.length === 0) {
+      // Race: another upload won. Unlink the orphan large object we just
+      // created, commit (lo_unlink runs inside a tx), then return the
+      // existing uuid.
+      await client.query('SELECT lo_unlink($1)', [oid])
+      await client.query('COMMIT')
+      const existing = await client.query(
+        'SELECT uuid FROM media_records WHERE content_sha256 = $1 LIMIT 1',
+        [options.contentSha256]
+      )
+      logger.info(`Dedup race resolved (LOB): existing media uuid=${existing.rows[0]?.uuid}, unlinked orphan oid=${oid}`)
+      return {
+        uuid: existing.rows[0].uuid,
+        storageType: 'lob',
+        size: fileSize,
+        wasDuplicate: true
+      }
+    }
 
     await client.query('COMMIT')
 

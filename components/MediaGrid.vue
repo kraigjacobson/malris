@@ -3,17 +3,24 @@
     <!-- Loading State -->
     <div v-if="loading && mediaResults.length === 0">
       <!-- Skeleton Grid -->
-      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
-        <USkeleton v-for="i in 24" :key="`skeleton-${i}`" class="aspect-[3/4] w-full" />
+      <div :class="gridClass">
+        <USkeleton v-for="i in 24" :key="`skeleton-${i}`" class="aspect-[3/4] w-full rounded-lg" />
       </div>
     </div>
 
     <!-- Results -->
     <div v-else-if="mediaResults.length > 0">
       <!-- Grid View -->
-      <div class="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3">
-        <div v-for="media in mediaResults" :key="media.uuid" class="bg-neutral-800 overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer relative" :class="{ 'ring-2 ring-blue-500': multiSelect && isSelected(media) }" @click="handleMediaClick(media)">
-          <MediaCard :media="media" class="aspect-[3/4]" :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }">
+      <div :class="gridClass">
+        <div
+          v-for="media in mediaResults"
+          :key="media.uuid"
+          class="bg-neutral-800 overflow-hidden rounded-lg border-2 hover:shadow-lg transition-all group cursor-pointer relative"
+          :class="multiSelect && isSelected(media)
+            ? 'border-blue-500 ring-2 ring-blue-500/30'
+            : 'border-neutral-700 hover:border-gray-500'"
+          @click="handleMediaClick(media)">
+          <MediaCard :media="media" class="aspect-[3/4]" :show-delete="!selectionMode" :show-rating="!selectionMode" :class="{ 'opacity-50': updatedVideoStatuses.has(media.uuid) }">
             <template #overlays>
               <!-- Selection Indicator for Multi-Select -->
               <div v-if="multiSelect" class="absolute top-2 left-2 z-10">
@@ -77,6 +84,13 @@ const props = defineProps({
   selectedItems: {
     type: Array,
     default: () => []
+  },
+  // Override the grid column layout when this grid is laid out inside a
+  // narrower container (e.g. fs split-pane). Defaults to the full-width
+  // media-browse cadence.
+  gridClass: {
+    type: String,
+    default: 'grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3'
   }
 })
 

@@ -281,6 +281,121 @@ export default defineEventHandler(async event => {
       }
     }
 
+    // Handle fs (single-image face swap) job type. The swapped image is NOT a
+    // terminal output — it becomes a favorited i2v source image linked to the
+    // subject, so the existing bulk-i2v sweep can pick it up automatically.
+    if (jobType === 'fs' || workflowType === 'fs') {
+      const fsImageFiles = (formData?.filter(field => field.filename) || []).filter(file => {
+        const name = file.filename?.toLowerCase() || ''
+        return name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')
+      })
+
+      if (fsImageFiles.length === 0) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'fs job produced no output image'
+        })
+      }
+
+      const encryptionKey = process.env.MEDIA_ENCRYPTION_KEY
+      if (!encryptionKey) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Media encryption not configured'
+        })
+      }
+
+      const { createHash } = await import('crypto')
+      const { encryptMediaData } = await import('~/server/utils/encryption')
+      const fsSaved: Array<{ uuid: string; filename: string; type: string }> = []
+
+      for (const file of fsImageFiles) {
+        if (!file.data || file.data.length === 0) {
+          logger.info(`⚠️ FS: Skipping empty file: ${file.filename}`)
+          continue
+        }
+
+        const checksum = createHash('sha256').update(file.data).digest('hex')
+        const encryptedData = encryptMediaData(file.data, encryptionKey)
+        const baseFilename = file.filename ? path.basename(file.filename) : 'fs_output.png'
+
+        logger.info(`🎭 FS: Saving swapped image as favorited i2v source`, {
+          filename: baseFilename,
+          subjectUuid: job?.subjectUuid || null,
+          identityFace: job?.sourceMediaUuid || null,
+          destImage: job?.destMediaUuid || null
+        })
+
+        const inserted = await db
+          .insert(mediaRecords)
+          .values({
+            filename: baseFilename,
+            type: 'image',
+            purpose: 'source',
+            subjectUuid: job?.subjectUuid || null,
+            sourceMediaUuidRef: job?.sourceMediaUuid || null, // identity face used
+            destMediaUuidRef: job?.destMediaUuid || null, // dest image swapped onto
+            favorite: true, // so the bulk-i2v sweep auto-queues it
+            encryptedData: encryptedData,
+            fileSize: file.data.length,
+            originalSize: file.data.length,
+            checksum: checksum,
+            jobId: jobId
+          })
+          .returning({
+            uuid: mediaRecords.uuid,
+            filename: mediaRecords.filename,
+            type: mediaRecords.type
+          })
+
+        fsSaved.push(inserted[0])
+        logger.info(`✅ FS: Created favorited source image ${inserted[0].uuid}`)
+      }
+
+      if (fsSaved.length === 0) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'fs job produced no valid output image'
+        })
+      }
+
+      // Complete the fs job and link its primary output
+      const currentFsStatus = await db.select({ status: jobs.status }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
+      if (currentFsStatus.length > 0 && currentFsStatus[0].status === 'failed') {
+        logger.info(`⚠️ FS job ${jobId} already failed - linking output but preserving failed status`)
+        await db.update(jobs).set({ outputUuid: fsSaved[0].uuid, updatedAt: new Date() }).where(eq(jobs.id, jobId))
+      } else {
+        await db
+          .update(jobs)
+          .set({
+            status: 'completed',
+            outputUuid: fsSaved[0].uuid,
+            progress: 100,
+            completedAt: new Date(),
+            errorMessage: null,
+            updatedAt: new Date()
+          })
+          .where(eq(jobs.id, jobId))
+      }
+
+      try {
+        const { updateJobCounts } = await import('~/server/services/systemStatusManager')
+        await updateJobCounts()
+      } catch (error) {
+        logger.error('Failed to update job counts after fs completion:', error)
+      }
+
+      logger.info(`🔄 FS COMPLETION: Continuous processing will handle next job automatically`)
+
+      return {
+        success: true,
+        message: `fs job ${jobId} produced ${fsSaved.length} i2v source image${fsSaved.length !== 1 ? 's' : ''}`,
+        job_id: jobId,
+        status: 'completed',
+        output_files: fsSaved
+      }
+    }
+
     // SINGLE REQUEST PROCESSING: Process ALL files at once
     const files = formData?.filter(field => field.filename) || []
 
@@ -390,14 +505,14 @@ export default defineEventHandler(async event => {
       })
 
       // Use explicit workflow_type parameter to determine workflow behavior
-      // 'test' workflow = multiple outputs, always create new records
-      // 'vid' workflow = 1 video + 1 thumbnail, use update logic
-      const isTestWorkflow = workflowType === 'test'
+      // 'test' / 'i2v' / 't2v' = create new records per output
+      // 'vid' workflow = 1 video + 1 thumbnail, use update logic (requires source+subject)
+      const isCreateNewWorkflow = workflowType === 'test' || workflowType === 'i2v' || workflowType === 't2v'
 
       let mediaRecord
-      if (isTestWorkflow) {
-        // TEST WORKFLOW: Always create separate records for each output image
-        logger.info(`✨ TEST WORKFLOW (${workflowType}): Creating NEW media record for each output image: job ${jobId}, source ${fileSourceUuid}, filename ${baseFilename}`)
+      if (isCreateNewWorkflow) {
+        // Always create separate records for each output
+        logger.info(`✨ ${workflowType?.toUpperCase()} WORKFLOW: Creating NEW media record for job ${jobId}, source ${fileSourceUuid}, filename ${baseFilename}`)
         logger.info(`✨ TEST WORKFLOW DEBUG: fileSourceUuid=${fileSourceUuid}, subjectUuid=${job?.subjectUuid}, purpose=${imagePurpose}`)
         mediaRecord = await db
           .insert(mediaRecords)

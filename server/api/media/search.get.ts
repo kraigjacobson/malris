@@ -8,7 +8,7 @@ export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, dest_media_uuid_ref, has_subject, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
+    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
 
     // Debug logging for include_thumbnails parameter
     logger.info('🔍 Media search parameters:', {
@@ -55,6 +55,7 @@ export default defineEventHandler(async event => {
           bitrate: mediaRecords.bitrate,
           tags: mediaRecords.tags,
           rating: mediaRecords.rating,
+          favorite: mediaRecords.favorite,
           subject_uuid: mediaRecords.subjectUuid,
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
@@ -279,8 +280,35 @@ export default defineEventHandler(async event => {
       conditions.push(eq(mediaRecords.jobId, job_id as string))
     }
 
+    // Filter by the originating job's type — e.g. 'fs' to show only source
+    // images produced by a Faceswap I2I job. 'none' restricts to media with no
+    // originating job at all (manual uploads).
+    if (source_job_type && source_job_type !== 'all') {
+      if (source_job_type === 'none') {
+        conditions.push(isNull(mediaRecords.jobId))
+      } else {
+        conditions.push(
+          sql`EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.id} = ${mediaRecords.jobId} AND ${jobs.jobType} = ${source_job_type as string})`
+        )
+      }
+    }
+
     if (dest_media_uuid_ref) {
       conditions.push(eq(mediaRecords.destMediaUuidRef, dest_media_uuid_ref as string))
+    }
+
+    // Preset filter — match media that participates in any job (as source / dest / output)
+    // whose parameters._preset_id equals the requested preset.
+    if (preset_id) {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1 FROM ${jobs}
+          WHERE (${jobs.sourceMediaUuid} = ${mediaRecords.uuid}
+              OR ${jobs.destMediaUuid} = ${mediaRecords.uuid}
+              OR ${jobs.outputUuid} = ${mediaRecords.uuid})
+            AND ${jobs.parameters}->>'_preset_id' = ${preset_id as string}
+        )`
+      )
     }
 
     if (filename_pattern) {
@@ -449,6 +477,7 @@ export default defineEventHandler(async event => {
           bitrate: mediaRecords.bitrate,
           tags: mediaRecords.tags,
           rating: mediaRecords.rating,
+          favorite: mediaRecords.favorite,
           subject_uuid: mediaRecords.subjectUuid,
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
@@ -490,7 +519,15 @@ export default defineEventHandler(async event => {
 
     switch (sort_by) {
       case 'random':
-        orderByClause = sql`RANDOM()`
+        // With a seed, ordering is stable across paginated calls so infinite
+        // scroll doesn't return duplicates. Without one, fall back to per-call
+        // RANDOM() for backwards compatibility with non-paginated callers.
+        if (seed) {
+          const seedStr = String(seed).slice(0, 64)
+          orderByClause = sql`hashtext(${mediaRecords.uuid}::text || ${seedStr})`
+        } else {
+          orderByClause = sql`RANDOM()`
+        }
         break
       case 'filename':
         orderByClause = sortDirection(mediaRecords.filename)
@@ -558,6 +595,7 @@ export default defineEventHandler(async event => {
         bitrate: mediaRecords.bitrate,
         tags: mediaRecords.tags,
         rating: mediaRecords.rating,
+        favorite: mediaRecords.favorite,
         subject_uuid: mediaRecords.subjectUuid,
         source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
         dest_media_uuid_ref: mediaRecords.destMediaUuidRef,

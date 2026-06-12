@@ -27,6 +27,11 @@ export default defineEventHandler(async (event) => {
     // Get query parameters for size
     const query = getQuery(event)
     const size = query.size || 'md'
+    // Dims-only mode: decrypt the bytes, run sharp().metadata() to read the
+    // header, and return { width, height } as JSON. Used by the backfill
+    // script to populate missing width/height on media_records without
+    // transferring the full image bytes back over HTTP.
+    const dimsOnly = query.dims_only === 'true' || query.dims_only === '1'
 
     // Get media info first
     const mediaInfo = await getMediaInfo(uuid)
@@ -47,6 +52,19 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Weak ETag derived from the DB-stored encrypted size (which changes whenever
+    // the underlying bytes change — e.g. after a rotate overwrites the record).
+    // Include the `size` variant so thumb/preview/sm/md/lg don't collide.
+    const etag = `W/"${mediaInfo.encryptedSize}-${size}"`
+    setHeader(event, 'etag', etag)
+    setHeader(event, 'cache-control', 'private, max-age=86400, stale-while-revalidate=604800')
+
+    const ifNoneMatch = getHeader(event, 'if-none-match')
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      setResponseStatus(event, 304)
+      return null
+    }
+
     // Retrieve and decrypt the data using hybrid storage
     let decryptedData: Buffer | null
     try {
@@ -65,7 +83,23 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Media data not found'
       })
     }
-    
+
+    // Dims-only fast path — skip all the resize/re-encode work.
+    if (dimsOnly) {
+      try {
+        const meta = await sharp(decryptedData).metadata()
+        setHeader(event, 'content-type', 'application/json')
+        setHeader(event, 'cache-control', 'private, max-age=0, must-revalidate')
+        return { width: meta.width ?? null, height: meta.height ?? null }
+      } catch (err) {
+        logger.error('dims_only sharp error:', err)
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Failed to read image dimensions'
+        })
+      }
+    }
+
     // Resize image based on size parameter
     let processedData: Buffer
     try {
@@ -77,6 +111,17 @@ export default defineEventHandler(async (event) => {
             .resize(150, 200, {
               fit: 'cover',
               position: 'top'
+            })
+            .jpeg({ quality: 80 })
+            .toBuffer()
+          break
+        // Aspect-preserving preview used for masonry grids where we want the full
+        // image visible (no crop) at a moderate resolution.
+        case 'preview':
+          processedData = await sharpInstance
+            .resize(400, 400, {
+              fit: 'inside',
+              withoutEnlargement: true
             })
             .jpeg({ quality: 80 })
             .toBuffer()
@@ -125,13 +170,12 @@ export default defineEventHandler(async (event) => {
     // Determine content type - always JPEG for processed images
     const contentType = size === 'full' ? getContentType(mediaInfo.filename, 'image/jpeg') : 'image/jpeg'
     
-    // Set response headers for inline display
+    // Set response headers for inline display (cache-control + etag already set above)
     setHeader(event, 'content-type', contentType)
     setHeader(event, 'content-disposition', 'inline')
-    setHeader(event, 'cache-control', 'no-store')
     setHeader(event, 'access-control-allow-origin', '*')
     setHeader(event, 'access-control-allow-methods', 'GET')
-    
+
     return processedData
 
   } catch (error: any) {

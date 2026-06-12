@@ -424,7 +424,9 @@ export default defineEventHandler(async event => {
               logger.info(`Deleted output media ${output.uuid}`)
             }
 
-            // Reset the job: clear source_media_uuid and set status back to queued
+            // Reset the job: clear source_media_uuid and set status back to
+            // queued. Drop the preset snapshot — the next pickup will read the
+            // preset's current values.
             await db
               .update(jobs)
               .set({
@@ -434,6 +436,7 @@ export default defineEventHandler(async event => {
                 errorMessage: null,
                 startedAt: null,
                 completedAt: null,
+                parameters: {},
                 updatedAt: new Date()
               })
               .where(eq(jobs.id, job.id))

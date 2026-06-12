@@ -1,6 +1,6 @@
 <template>
   <UCollapsible v-model:open="isOpen" class="flex flex-col gap-2">
-    <UButton label="Video Search Filters" color="neutral" variant="subtle" trailing-icon="i-lucide-chevron-down" block />
+    <UButton :label="title" color="neutral" variant="subtle" trailing-icon="i-lucide-chevron-down" block />
 
     <template #content>
       <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -41,6 +41,12 @@ defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  // Customize the collapsible header label — the same filter UI is reused by
+  // multiple flows (dest videos, dest images, etc.).
+  title: {
+    type: String,
+    default: 'Video Search Filters'
   }
 })
 

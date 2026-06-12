@@ -82,12 +82,14 @@ export default defineEventHandler(async event => {
       logger.info(`ℹ️ No output images found to clean up for job ${jobId}`)
     }
 
-    // Update job with source media and set status back to queued
+    // Update job with source media and set status back to queued. Drop the
+    // preset snapshot — the next pickup will read the preset's current values.
     const updatedJob = await db
       .update(jobs)
       .set({
         sourceMediaUuid: body.source_media_uuid,
         status: 'queued',
+        parameters: {},
         updatedAt: new Date()
       })
       .where(eq(jobs.id, jobId))

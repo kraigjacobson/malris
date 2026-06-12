@@ -115,25 +115,27 @@ export default defineEventHandler(async event => {
           // Read media file to calculate checksum BEFORE storing
           const mediaBuffer = await readFile(tempFilePath)
 
-          // Calculate checksum
-          const checksum = createHash('sha256').update(mediaBuffer).digest('hex')
-          logger.info(`📊 Calculated checksum for ${baseFilename}: ${checksum}`)
+          // Plaintext SHA256 — populates the UNIQUE content_sha256 column for
+          // idempotent uploads. Note: dedup is intentionally cross-purpose,
+          // so a file re-uploaded as 'source' after it existed as 'dest' is
+          // still treated as the same content.
+          const contentSha256 = createHash('sha256').update(mediaBuffer).digest()
+          logger.info(`📊 Calculated content_sha256 for ${baseFilename}: ${contentSha256.toString('hex')}`)
 
-          // Check for duplicates based on checksum first (most accurate)
-          const existingByChecksum = await db
-            .select()
+          const existingByContent = await db
+            .select({ uuid: mediaRecords.uuid, thumbnailUuid: mediaRecords.thumbnailUuid, filename: mediaRecords.filename })
             .from(mediaRecords)
-            .where(and(eq(mediaRecords.checksum, checksum), eq(mediaRecords.type, fileType), eq(mediaRecords.purpose, uploadPurpose)))
+            .where(eq(mediaRecords.contentSha256, contentSha256))
             .limit(1)
 
-          if (existingByChecksum.length > 0) {
-            const existing = existingByChecksum[0]
-            logger.info(`⚠️  Duplicate ${fileType} detected by checksum: ${baseFilename} (existing: ${existing.filename})`)
+          if (existingByContent.length > 0) {
+            const existing = existingByContent[0]
+            logger.info(`⚠️  Duplicate ${fileType} detected by content_sha256: ${baseFilename} (existing: ${existing.filename})`)
 
             results.push({
               filename: baseFilename,
               success: true,
-              message: `Duplicate ${fileType} skipped (checksum match)`,
+              message: `Duplicate ${fileType} skipped (content match)`,
               media_uuid: existing.uuid,
               thumbnail_uuid: existing.thumbnailUuid,
               type: fileType,
@@ -212,8 +214,27 @@ export default defineEventHandler(async event => {
           const mediaResult = await storeMedia(mediaBuffer, {
             filename: baseFilename,
             type: fileType,
-            purpose: uploadPurpose
+            purpose: uploadPurpose,
+            contentSha256
           })
+
+          // Race: a concurrent upload won the INSERT between our pre-check and
+          // here. Drop the orphan thumbnail we just stored and report the
+          // existing row.
+          if (mediaResult.wasDuplicate) {
+            logger.info(`⚠️  Race-deduped ${fileType}: ${baseFilename} → existing uuid=${mediaResult.uuid}`)
+            results.push({
+              filename: baseFilename,
+              success: true,
+              message: `Duplicate ${fileType} skipped (race)`,
+              media_uuid: mediaResult.uuid,
+              thumbnail_uuid: null,
+              type: fileType,
+              metadata: metadata
+            })
+            await unlink(tempFilePath)
+            continue
+          }
 
           const thumbnailUuid = thumbnailResult.uuid
           const mediaUuid = mediaResult.uuid
