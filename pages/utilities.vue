@@ -198,6 +198,84 @@
             <p class="text-sm">{{ lastCleanupResult.message }}</p>
           </div>
         </div>
+
+        <!-- Duplicate Image Finder Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+          <div class="flex items-center mb-4">
+            <UIcon name="i-heroicons-square-2-stack" class="w-8 h-8 text-amber-500 mr-3" />
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Duplicate Image Finder</h2>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400 mb-6">
+            Finds visually-duplicate images (re-encodes, resizes, and partial crops) that the byte-exact upload
+            dedup can't catch. Step 1 fingerprints images (perceptual hashes); step 2 compares them and flags
+            suspected duplicates for side-by-side review.
+          </p>
+
+          <!-- Coverage -->
+          <div v-if="dedupStatus" class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+            <div v-for="c in dedupStatus.coverage.filter(c => c.purpose !== 'thumbnail')" :key="c.purpose"
+              class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 text-center border border-slate-200 dark:border-slate-700">
+              <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ c.hashed }}<span class="text-sm text-slate-400">/{{ c.total }}</span></div>
+              <div class="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">{{ c.purpose }} hashed</div>
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 text-center border border-slate-200 dark:border-slate-700">
+              <div class="text-2xl font-bold text-rose-600 dark:text-rose-400">{{ dedupStatus.pairs.pending }}</div>
+              <div class="text-xs font-medium text-slate-500 dark:text-slate-400">pending pairs</div>
+            </div>
+          </div>
+
+          <!-- Options -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Image type</label>
+              <USelect v-model="dedupPurpose" :items="dedupPurposeOptions" class="w-full" />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="flex items-center gap-2 text-sm"><input v-model="dedupWithinSubject" type="checkbox" class="rounded" /> only compare within the same subject (recommended)</label>
+              <label class="flex items-center gap-2 text-sm"><input v-model="dedupForce" type="checkbox" class="rounded" /> force re-hash already-hashed images</label>
+              <label class="flex items-center gap-2 text-sm">
+                <span>auto-dismiss different frames above</span>
+                <UInput v-model.number="dedupRefineThreshold" type="number" :min="0" :max="100" :step="0.5" size="xs" class="w-16" />
+                <span>% pixel diff</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Progress bars -->
+          <div v-if="dedupStatus?.hashing?.running || dedupStatus?.finding?.running || dedupStatus?.refining?.running" class="mb-4 space-y-3">
+            <div v-if="dedupStatus.hashing.running">
+              <div class="flex justify-between text-xs text-gray-500 mb-1"><span>Hashing…</span><span>{{ dedupStatus.hashing.processed }}/{{ dedupStatus.hashing.total }} ({{ dedupStatus.hashing.errors }} err)</span></div>
+              <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2"><div class="bg-amber-500 h-2 rounded-full transition-all" :style="{ width: pct(dedupStatus.hashing) }"></div></div>
+            </div>
+            <div v-if="dedupStatus.finding.running">
+              <div class="flex justify-between text-xs text-gray-500 mb-1"><span>Comparing…</span><span>{{ dedupStatus.finding.processed }}/{{ dedupStatus.finding.total }} groups</span></div>
+              <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2"><div class="bg-purple-500 h-2 rounded-full transition-all" :style="{ width: pct(dedupStatus.finding) }"></div></div>
+            </div>
+            <div v-if="dedupStatus.refining.running">
+              <div class="flex justify-between text-xs text-gray-500 mb-1"><span>Refining (pixel diff)…</span><span>{{ dedupStatus.refining.processed }}/{{ dedupStatus.refining.total }} images</span></div>
+              <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2"><div class="bg-cyan-500 h-2 rounded-full transition-all" :style="{ width: pct(dedupStatus.refining) }"></div></div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap justify-end gap-3">
+            <UButton :loading="isComputingHashes" :disabled="isComputingHashes || dedupStatus?.hashing?.running" color="warning" variant="soft" size="lg" @click="computeDedupHashes">
+              <UIcon name="i-heroicons-finger-print" class="mr-2" /> 1. Compute Hashes
+            </UButton>
+            <UButton :loading="isFindingPairs" :disabled="isFindingPairs || dedupStatus?.finding?.running" color="primary" size="lg" @click="findDedupPairs">
+              <UIcon name="i-heroicons-magnifying-glass" class="mr-2" /> 2. Find Pairs
+            </UButton>
+            <UButton :loading="isRefining" :disabled="isRefining || dedupStatus?.refining?.running" color="info" variant="soft" size="lg" @click="refineDedup">
+              <UIcon name="i-heroicons-funnel" class="mr-2" /> 3. Refine ({{ dedupRefineThreshold }}%)
+            </UButton>
+            <UButton :to="'/duplicates'" color="error" variant="soft" size="lg">
+              <UIcon name="i-heroicons-square-2-stack" class="mr-2" /> Review {{ dedupStatus?.pairs?.pending ?? 0 }} →
+            </UButton>
+          </div>
+
+          <div v-if="lastDedupResult" class="mt-4 p-3 rounded-md" :class="lastDedupResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+            <p class="text-sm">{{ lastDedupResult.message }}</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -267,9 +345,33 @@ const cleanupStatus = ref<{
   error: string | null
 } | null>(null)
 
+// Duplicate image finder state
+interface DedupProgress { running: boolean; processed: number; total: number; errors: number; message: string }
+const dedupStatus = ref<{
+  hashing: DedupProgress
+  finding: DedupProgress
+  refining: DedupProgress
+  coverage: { purpose: string; total: number; hashed: number }[]
+  pairs: { pending: number; dismissed: number; resolved: number }
+} | null>(null)
+const dedupPurpose = ref<string>('dest')
+const dedupPurposeOptions = [
+  { label: 'Dest images', value: 'dest' },
+  { label: 'Source images', value: 'source' }
+]
+const dedupWithinSubject = ref(true)
+const dedupForce = ref(false)
+const dedupRefineThreshold = ref(3)
+const isComputingHashes = ref(false)
+const isFindingPairs = ref(false)
+const isRefining = ref(false)
+const lastDedupResult = ref<{ success: boolean; message: string } | null>(null)
+const pct = (p: { processed: number; total: number }) => (p.total ? `${Math.round((p.processed / p.total) * 100)}%` : '0%')
+
 // Auto-refresh management
 let refreshInterval: NodeJS.Timeout | null = null
 let cleanupRefreshInterval: NodeJS.Timeout | null = null
+let dedupRefreshInterval: NodeJS.Timeout | null = null
 
 // Auto-refresh queue status every 2 seconds. `taggingPurpose` is passed as a
 // reactive query param so changing the dropdown auto-refetches the count.
@@ -318,6 +420,8 @@ onMounted(() => {
   // Initial cleanup status and orphan count fetch
   fetchCleanupStatus()
   fetchOrphanCount()
+  // Initial dedup status
+  fetchDedupStatus()
 })
 
 onUnmounted(() => {
@@ -329,7 +433,78 @@ onUnmounted(() => {
     clearInterval(cleanupRefreshInterval)
     cleanupRefreshInterval = null
   }
+  if (dedupRefreshInterval) {
+    clearInterval(dedupRefreshInterval)
+    dedupRefreshInterval = null
+  }
 })
+
+// Fetch dedup status; self-manages a poll interval while a job is running.
+const fetchDedupStatus = async () => {
+  try {
+    dedupStatus.value = await $fetch('/api/media/dedup/status')
+    const active = dedupStatus.value?.hashing?.running || dedupStatus.value?.finding?.running || dedupStatus.value?.refining?.running
+    if (active && !dedupRefreshInterval) {
+      dedupRefreshInterval = setInterval(fetchDedupStatus, 1500)
+    } else if (!active && dedupRefreshInterval) {
+      clearInterval(dedupRefreshInterval)
+      dedupRefreshInterval = null
+    }
+  } catch {
+    /* status is best-effort */
+  }
+}
+
+const computeDedupHashes = async () => {
+  isComputingHashes.value = true
+  lastDedupResult.value = null
+  try {
+    const res = await $fetch<{ success: boolean; message: string }>('/api/media/dedup/compute-hashes', {
+      method: 'POST',
+      body: { purposes: [dedupPurpose.value], force: dedupForce.value, batchSize: 4 }
+    })
+    lastDedupResult.value = { success: res.success, message: res.message }
+    fetchDedupStatus()
+  } catch (e: any) {
+    lastDedupResult.value = { success: false, message: e?.data?.statusMessage || e?.message || 'Failed to start hashing' }
+  } finally {
+    isComputingHashes.value = false
+  }
+}
+
+const findDedupPairs = async () => {
+  isFindingPairs.value = true
+  lastDedupResult.value = null
+  try {
+    const res = await $fetch<{ success: boolean; message: string }>('/api/media/dedup/find-pairs', {
+      method: 'POST',
+      body: { purposes: [dedupPurpose.value], withinSubject: dedupWithinSubject.value }
+    })
+    lastDedupResult.value = { success: res.success, message: res.message }
+    fetchDedupStatus()
+  } catch (e: any) {
+    lastDedupResult.value = { success: false, message: e?.data?.statusMessage || e?.message || 'Failed to start comparison' }
+  } finally {
+    isFindingPairs.value = false
+  }
+}
+
+const refineDedup = async () => {
+  isRefining.value = true
+  lastDedupResult.value = null
+  try {
+    const res = await $fetch<{ success: boolean; message: string }>('/api/media/dedup/refine', {
+      method: 'POST',
+      body: { purpose: dedupPurpose.value, action: 'compute', autoApplyThreshold: dedupRefineThreshold.value }
+    })
+    lastDedupResult.value = { success: res.success, message: res.message }
+    fetchDedupStatus()
+  } catch (e: any) {
+    lastDedupResult.value = { success: false, message: e?.data?.statusMessage || e?.message || 'Failed to start refine' }
+  } finally {
+    isRefining.value = false
+  }
+}
 
 // Fetch cleanup status
 const fetchCleanupStatus = async () => {

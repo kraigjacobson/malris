@@ -148,6 +148,11 @@ export const mediaRecords = pgTable("media_records", {
   encryptedData: bytea("encrypted_data"), // Binary data for encrypted content (nullable for LOB storage)
   checksum: varchar("checksum", { length: 64 }).notNull(), // SHA256 of ciphertext (legacy; not used for dedup)
   contentSha256: bytea("content_sha256"), // SHA256 of plaintext bytes; UNIQUE where not null. Used for idempotent upload dedup.
+  // Perceptual / near-duplicate fingerprints (see server/utils/perceptualHash.ts)
+  dhash: bytea("dhash"), // 8-byte whole-image difference hash
+  phash: bytea("phash"), // 8-byte whole-image DCT perceptual hash
+  tileHashes: jsonb("tile_hashes"), // array of per-tile dHash hex strings (crop matching)
+  perceptualHashedAt: timestamp("perceptual_hashed_at", { withTimezone: true }), // NULL = not yet hashed
   // Large object support columns
   storageType: varchar("storage_type", { length: 10 })
     .default("bytea")
@@ -168,6 +173,27 @@ export const mediaRecords = pgTable("media_records", {
   completions: integer("completions").default(0).notNull(), // for destination videos
   rating: integer("rating"), // user rating 1-5
   favorite: boolean("favorite").default(false).notNull(),
+});
+
+// Flagged near-duplicate pairs awaiting human review (see api/media/dedup/*).
+// media_a / media_b are stored ordered (media_a < media_b as text) so the
+// UNIQUE pair constraint dedupes regardless of discovery direction.
+export const mediaDuplicatePairs = pgTable("media_duplicate_pairs", {
+  id: serial("id").primaryKey(),
+  mediaA: uuid("media_a")
+    .notNull()
+    .references(() => mediaRecords.uuid, { onDelete: "cascade" }),
+  mediaB: uuid("media_b")
+    .notNull()
+    .references(() => mediaRecords.uuid, { onDelete: "cascade" }),
+  method: varchar("method", { length: 10 }).notNull(), // 'dhash' | 'phash' | 'tile'
+  distance: integer("distance").notNull(), // Hamming distance, or matched-tile count for 'tile'
+  status: varchar("status", { length: 12 }).default("pending").notNull(), // 'pending' | 'dismissed' | 'resolved'
+  refinedDiff: real("refined_diff"), // % pixels differing at 128x128 (pixel-level refine); NULL = not refined
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
 });
 
 // Categories Table
