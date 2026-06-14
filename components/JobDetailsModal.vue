@@ -10,7 +10,7 @@
     </template>
 
     <template #body>
-      <div v-if="job" class="relative h-[600px] flex flex-col">
+      <div v-if="job" class="relative flex flex-col" :class="isMobile ? 'h-full' : 'h-[600px]'">
         <!-- Tabs at top -->
         <UTabs v-model="currentTab" :items="tabItems" class="flex-shrink-0" />
 
@@ -311,11 +311,14 @@ const {
 } = useGesture({
   minSwipeDistance: 50,
   onSwipeLeft: () => {
+    // Don't navigate jobs while cropping — the crop drag's release reads as a swipe.
+    if (isCropping.value) return
     if (hasMultipleJobs.value) {
       goToNextJob()
     }
   },
   onSwipeRight: () => {
+    if (isCropping.value) return
     if (hasMultipleJobs.value) {
       goToPreviousJob()
     }

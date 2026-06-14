@@ -337,13 +337,9 @@ export default defineEventHandler(async event => {
       }
     }
 
-    // Get total jobs count for additional metadata (only if needed for pagination)
-    let totalJobsCount = filteredCount // Default to filtered count
-    if (offsetNum === 0) {
-      // Only get total count on first page
-      const totalJobsResult = await db.select({ count: count() }).from(jobs)
-      totalJobsCount = totalJobsResult[0].count
-    }
+    // Total count must reflect the active filters so pagination matches the
+    // current view (e.g. Queue with 5 jobs => 1 page, not the whole table).
+    const totalJobsCount = filteredCount
 
     const response: any = {
       results: filteredResults,
