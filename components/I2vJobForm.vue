@@ -205,7 +205,25 @@ const presets = ref<any[]>([])
 const showSavePreset = ref(false)
 const newPresetName = ref('')
 
-onMounted(() => fetchPresets())
+// Remembers the last preset the user actually applied/saved so a fresh i2v form
+// can prepop it (persisted in localStorage to survive reloads).
+const LAST_I2V_PRESET_KEY = 'malris:lastI2vPresetId'
+const rememberLastPreset = (id: string) => {
+  if (import.meta.client && id) localStorage.setItem(LAST_I2V_PRESET_KEY, id)
+}
+
+onMounted(async () => {
+  await fetchPresets()
+  // Prepop the last-used preset, but only on a truly fresh form — if the params
+  // already carry a preset identity (duplicate, preset-edit, prior selection in
+  // this session) we leave them untouched.
+  if (!props.modelValue?._preset_id && import.meta.client) {
+    const lastId = localStorage.getItem(LAST_I2V_PRESET_KEY)
+    if (lastId && presets.value.some(p => p.id === lastId)) {
+      loadPreset(lastId)
+    }
+  }
+})
 
 async function fetchPresets() {
   try {
@@ -286,6 +304,7 @@ function loadPreset(presetId: string) {
   if (preset.lora4LowStrengthOff) next[loraOffKey('lora_4_low_strength')] = true
   if (preset.lora5HighStrengthOff) next[loraOffKey('lora_5_high_strength')] = true
   if (preset.lora5LowStrengthOff) next[loraOffKey('lora_5_low_strength')] = true
+  rememberLastPreset(preset.id)
   emit('update:modelValue', next)
 }
 
@@ -345,6 +364,7 @@ async function savePreset() {
     await fetchPresets()
     if (newId) {
       selectedPresetId.value = newId
+      rememberLastPreset(newId)
       // Keep current params but tag them with the new preset identity
       emit('update:modelValue', {
         ...props.modelValue,

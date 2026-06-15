@@ -119,7 +119,11 @@ const props = defineProps({
   enableFavorite: { type: Boolean, default: false },
   // uuid -> version number. When a uuid's value changes, the src gets a cache-bust
   // query param so the browser refetches (used after rotation overwrites bytes).
-  cacheBusters: { type: Object, default: () => ({}) }
+  cacheBusters: { type: Object, default: () => ({}) },
+  // Cap the auto-computed column count. Half-width consumers (e.g. the i2v
+  // source picker, which sits in a 2-column layout) pass a small value here so
+  // tiles render larger instead of inheriting the full-viewport ladder.
+  maxColumns: { type: Number, default: null }
 })
 
 defineEmits(['click', 'rotate', 'favoriteToggle'])
@@ -180,6 +184,7 @@ const updateColumnCount = () => {
   else if (w >= 1024) columnCount.value = 5  // lg
   else if (w >= 640) columnCount.value = 4   // sm/md
   else columnCount.value = 3
+  if (props.maxColumns) columnCount.value = Math.min(columnCount.value, props.maxColumns)
 }
 
 const visibleImages = computed(() => props.images.slice(0, visibleCount.value))

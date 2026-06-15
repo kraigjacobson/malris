@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="isOpen" :dismissible="presetEditMode" :fullscreen="isMobile" :ui="{ content: 'fixed bg-default divide-y divide-default flex flex-col focus:outline-none w-full h-full sm:w-[95vw] sm:h-auto sm:max-w-7xl lg:w-[90vw]' }">
+  <UModal v-model:open="isOpen" :dismissible="presetEditMode" fullscreen>
     <template #header>
       <div class="flex items-center justify-between w-full">
         <div class="flex items-center gap-2 min-w-0">
@@ -13,7 +13,7 @@
     </template>
 
     <template #body>
-      <div class="flex flex-col h-[75vh] min-h-[600px]">
+      <div class="flex flex-col h-full">
         <!-- Job Type Selection -->
         <div v-if="!selectedJobType" class="flex-shrink-0">
           <div class="text-center">
@@ -72,9 +72,15 @@
           </div>
 
           <!-- Shared filter section (applies to both bulk and per-subject modes) -->
-          <div v-if="!presetEditMode" class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex items-center gap-2">
-            <span class="text-xs text-gray-400">Filter:</span>
-            <USelect v-model="i2vSourceJobTypeFilter" :items="i2vSourceJobTypeFilterOptions" size="xs" class="w-44" />
+          <div v-if="!presetEditMode" class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-400">Filter:</span>
+              <USelect v-model="i2vSourceJobTypeFilter" :items="i2vSourceJobTypeFilterOptions" size="xs" class="w-44" />
+            </div>
+            <div v-if="!bulkMode" class="flex items-center gap-2">
+              <span class="text-xs text-gray-400">Rating:</span>
+              <RatingFilter v-model="i2vSourceRatings" v-model:show-unrated="i2vSourceShowUnrated" />
+            </div>
           </div>
 
           <!-- Bulk Mode Toggle -->
@@ -102,6 +108,15 @@
           <!-- Step 1: Subject Selection -->
           <div v-if="!presetEditMode && !bulkMode && !i2vSelectedSubject" class="flex flex-col flex-1 min-h-0">
             <SubjectSearchFilters ref="i2vSubjectSearchFilters" @search="searchSubjects" @clear="clearSubjectFilters" class="flex-shrink-0 mb-2" />
+            <!-- Shortcut: skip subject selection and browse every subject's source images at once. -->
+            <button
+              type="button"
+              class="flex-shrink-0 mb-2 w-full p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-primary transition-colors flex items-center justify-center gap-2"
+              @click="selectI2vAllSubjects"
+            >
+              <UIcon name="i-heroicons-square-3-stack-3d" class="w-5 h-5 text-primary" />
+              <span class="text-sm font-medium">All source images (every subject)</span>
+            </button>
             <div v-if="subjectHasSearched || subjectLoading" class="flex-1 min-h-0 overflow-y-auto">
               <SubjectGrid :subjects="subjects" :loading="subjectLoading" :has-searched="subjectHasSearched" :error="subjectError" :selection-mode="true" :display-images="displayImages" @subject-click="handleI2vSubjectSelection" />
             </div>
@@ -123,23 +138,30 @@
             <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
               <!-- Left: Source images grid -->
               <div class="overflow-y-auto">
-                <div class="flex items-center gap-2 mb-2">
-                  <UCheckbox
-                    :model-value="i2vAllVisibleSelected"
-                    :disabled="i2vSubjectImages.length === 0"
-                    @update:model-value="toggleAllI2vVisible"
-                  />
-                  <span class="text-xs text-gray-400">
-                    Select all visible ({{ i2vSubjectImages.length }})
-                  </span>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+                  <div class="flex items-center gap-2">
+                    <UCheckbox
+                      :model-value="i2vAllVisibleSelected"
+                      :disabled="i2vVisibleImages.length === 0"
+                      @update:model-value="toggleAllI2vVisible"
+                    />
+                    <span class="text-xs text-gray-400">
+                      Select all visible ({{ i2vVisibleImages.length }})
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <UCheckbox v-model="i2vHideWithJobs" />
+                    <span class="text-xs text-gray-400">Hide images with an existing job</span>
+                  </div>
                 </div>
                 <SourceImageGrid
-                  :images="i2vSubjectImages"
+                  :images="i2vVisibleImages"
                   :loading="i2vSubjectImagesLoading"
                   :selected-uuids="i2vSelectedImages.map(s => s.uuid)"
                   :job-counts="i2vImageJobCounts"
                   :show-job-count="true"
-                  empty-message="No source images found for this subject"
+                  :max-columns="3"
+                  :empty-message="i2vSelectedSubject?.value === I2V_ALL_SUBJECTS ? 'No source images found' : 'No source images found for this subject'"
                   @click="toggleI2vImage"
                 />
               </div>
@@ -577,6 +599,13 @@ const i2vSourceJobTypeFilterOptions = [
 const i2vSourceJobTypeFilterLabel = computed(
   () => i2vSourceJobTypeFilterOptions.find(o => o.value === i2vSourceJobTypeFilter.value)?.label || ''
 )
+// Rating filter for the i2v source image picker. Empty ratings + showUnrated
+// false means "no rating filter" (show everything).
+const i2vSourceRatings = ref([])
+const i2vSourceShowUnrated = ref(false)
+// Hide source images that have already been used for a job (job count > 0).
+// On by default so the grid surfaces fresh candidates first.
+const i2vHideWithJobs = ref(true)
 const i2vParams = ref({
   prompt: '',
   negative_prompt: 'blurry, distorted, low quality, watermark, text, deformed',
@@ -815,17 +844,33 @@ const handleI2vSubjectSelection = (subject) => {
   loadI2vSubjectImages(subject.id)
 }
 
+// Sentinel subject for "browse every subject's source images at once".
+const I2V_ALL_SUBJECTS = '__all__'
+const selectI2vAllSubjects = () => {
+  i2vSelectedSubject.value = { value: I2V_ALL_SUBJECTS, label: 'All source images' }
+  i2vSelectedImages.value = []
+  loadI2vSubjectImages(I2V_ALL_SUBJECTS)
+}
+
 const loadI2vSubjectImages = async (subjectUuid) => {
   i2vSubjectImagesLoading.value = true
   try {
+    // 'all' mode browses every subject's source images, so we omit the
+    // subject_uuid filter and pull a larger batch since it spans the library.
+    const isAll = subjectUuid === I2V_ALL_SUBJECTS
     const params = new URLSearchParams({
-      subject_uuid: subjectUuid,
       purpose: 'source',
       media_type: 'image',
-      limit: '100'
+      limit: isAll ? '300' : '100'
     })
+    if (!isAll) params.append('subject_uuid', subjectUuid)
     if (i2vSourceJobTypeFilter.value && i2vSourceJobTypeFilter.value !== 'all') {
       params.append('source_job_type', i2vSourceJobTypeFilter.value)
+    }
+    if (i2vSourceShowUnrated.value) {
+      params.append('unrated_only', 'true')
+    } else if (i2vSourceRatings.value.length > 0) {
+      params.append('ratings', i2vSourceRatings.value.join(','))
     }
     const data = await useApiFetch(`media/search?${params.toString()}`)
     const images = data?.results || []
@@ -870,13 +915,21 @@ const toggleI2vImage = (img) => {
   }
 }
 
+// Images actually shown in the grid. When "hide existing" is on, drop any image
+// that has already been used as a source for at least one job (job count > 0).
+const i2vVisibleImages = computed(() => {
+  if (!i2vHideWithJobs.value) return i2vSubjectImages.value
+  return i2vSubjectImages.value.filter(img => !(i2vImageJobCounts.value[img.uuid] > 0))
+})
+
 // Checked when every currently-visible image is in the selection. Visible =
-// whatever the source-job-type filter loaded for this subject. Empty grid
-// reports false so the checkbox can't appear pre-checked with nothing to do.
+// whatever the filters loaded for this subject (minus already-jobbed images when
+// that toggle is on). Empty grid reports false so the checkbox can't appear
+// pre-checked with nothing to do.
 const i2vAllVisibleSelected = computed(() => {
-  if (i2vSubjectImages.value.length === 0) return false
+  if (i2vVisibleImages.value.length === 0) return false
   const selected = new Set(i2vSelectedImages.value.map(s => s.uuid))
-  return i2vSubjectImages.value.every(img => selected.has(img.uuid))
+  return i2vVisibleImages.value.every(img => selected.has(img.uuid))
 })
 
 const toggleAllI2vVisible = (checked) => {
@@ -884,7 +937,7 @@ const toggleAllI2vVisible = (checked) => {
     // Union of (already-selected items not in current view) ∪ (all visible).
     // Items selected under a previous filter that are now hidden stay selected.
     const have = new Set(i2vSelectedImages.value.map(s => s.uuid))
-    for (const img of i2vSubjectImages.value) {
+    for (const img of i2vVisibleImages.value) {
       if (!have.has(img.uuid)) {
         i2vSelectedImages.value.push(img)
         have.add(img.uuid)
@@ -892,7 +945,7 @@ const toggleAllI2vVisible = (checked) => {
     }
   } else {
     // Remove only the visible ones; keep hidden-but-selected from prior filters.
-    const visible = new Set(i2vSubjectImages.value.map(img => img.uuid))
+    const visible = new Set(i2vVisibleImages.value.map(img => img.uuid))
     i2vSelectedImages.value = i2vSelectedImages.value.filter(s => !visible.has(s.uuid))
   }
 }
@@ -1286,6 +1339,8 @@ const resetSelections = () => {
   i2vImageJobCounts.value = {}
   bulkMode.value = false
   i2vSourceJobTypeFilter.value = 'all'
+  i2vSourceRatings.value = []
+  i2vSourceShowUnrated.value = false
 
   // Clear fs workflow
   fsSelectedSubject.value = null
@@ -1819,10 +1874,15 @@ const createBatchJobs = async () => {
       // Create one i2v job per selected source image
       for (const img of i2vSelectedImages.value) {
         try {
+          // Prefer the image's own subject (required for the 'all subjects'
+          // view, where i2vSelectedSubject is the __all__ sentinel, not a real id).
+          const selectedSubjectUuid = i2vSelectedSubject.value?.value === I2V_ALL_SUBJECTS
+            ? null
+            : i2vSelectedSubject.value?.value
           const payload = {
             job_type: 'i2v',
             source_media_uuid: img.uuid,
-            subject_uuid: i2vSelectedSubject.value?.value || null,
+            subject_uuid: img.subject_uuid || selectedSubjectUuid || null,
             parameters: applyLoraDisableOverrides(i2vParams.value)
           }
 
@@ -2009,10 +2069,10 @@ onMounted(async () => {
   }
 })
 
-// When the source-job-type filter changes while a subject is selected in the
-// i2v flow, reload that subject's images so the grid matches the new filter.
-// Bulk mode pulls candidates server-side at submit time, so no reload there.
-watch(i2vSourceJobTypeFilter, () => {
+// When the source-job-type or rating filter changes while a subject is selected
+// in the i2v flow, reload that subject's images so the grid matches the new
+// filter. Bulk mode pulls candidates server-side at submit time, so no reload there.
+watch([i2vSourceJobTypeFilter, i2vSourceRatings, i2vSourceShowUnrated], () => {
   if (selectedJobType.value === 'i2v' && i2vSelectedSubject.value && !bulkMode.value) {
     i2vSelectedImages.value = []
     loadI2vSubjectImages(i2vSelectedSubject.value.value)
