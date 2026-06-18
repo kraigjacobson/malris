@@ -1,3 +1,24 @@
+// Shape of a media record as consumed by the display components (MediaItem,
+// CropModal). Only the fields those components actually read are required-ish;
+// the rest are optional since different endpoints hydrate different subsets.
+export interface MediaItemData {
+  uuid: string
+  type: string // 'image' | 'video'
+  purpose?: string // 'source' | 'dest' | 'output' | ...
+  filename?: string
+  width?: number | null
+  height?: number | null
+  duration?: number | null
+  favorite?: boolean
+  rating?: number | null
+  job_id?: string | null
+  thumbnail?: string | null // pre-resolved URL/base64 (server-provided)
+  thumbnail_uuid?: string | null
+  subject_thumbnail_uuid?: string | null
+  updated_at?: string
+  [key: string]: any // tolerate extra fields from search results
+}
+
 export interface Job {
   id: string
   status: string

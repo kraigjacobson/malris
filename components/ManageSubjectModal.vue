@@ -15,53 +15,8 @@
     </template>
 
     <template #body>
-      <!-- Crop view (takes over the entire modal body so the user has the full
-           modal space to work with — no scrolling required to reach the bottom
-           of a tall image). -->
-      <div v-if="isCropping && currentImage" class="h-full flex flex-col">
-        <div class="flex items-center justify-between pb-2">
-          <h4 class="text-base font-semibold text-gray-800 dark:text-gray-200">
-            Crop: {{ currentImage.filename }}
-          </h4>
-          <UButton size="sm" variant="ghost" icon="i-heroicons-x-mark"
-            :disabled="isSavingCrop" @click="cancelCrop">
-            Cancel
-          </UButton>
-        </div>
-        <div class="relative flex-1 min-h-0 bg-gray-900 rounded-lg overflow-hidden">
-          <Cropper
-            ref="cropperRef"
-            class="absolute inset-0"
-            :src="cropSrc"
-            :stencil-props="{ aspectRatio: null }"
-            :default-size="cropperDefaultSize"
-            :default-position="cropperDefaultPosition"
-            :default-visible-area="cropperDefaultVisibleArea"
-            image-restriction="fit-area"
-            @change="onCropChange"
-          />
-          <!-- Dimensions overlay -->
-          <div class="absolute top-2 left-2 bg-black/70 text-white text-xs font-mono rounded px-2 py-1 space-y-0.5 pointer-events-none z-10">
-            <div>Image: {{ cropImageSize.width || '—' }} × {{ cropImageSize.height || '—' }}</div>
-            <div>Crop: {{ cropCoordinates ? `${Math.round(cropCoordinates.width)} × ${Math.round(cropCoordinates.height)}` : '—' }}</div>
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-2 pt-2">
-          <UButton variant="ghost" color="neutral" size="sm"
-            :disabled="isSavingCrop" @click="cancelCrop">
-            Cancel
-          </UButton>
-          <UButton color="primary" size="sm" icon="i-heroicons-check"
-            :loading="isSavingCrop"
-            :disabled="!cropCoordinates || cropCoordinates.width <= 0 || cropCoordinates.height <= 0"
-            @click="saveCrop">
-            Save Crop
-          </UButton>
-        </div>
-      </div>
-
       <!-- Subject Picker view (replaces normal body when moving images) -->
-      <div v-else-if="isPickerOpen" class="h-full overflow-y-auto custom-scrollbar space-y-4">
+      <div v-if="isPickerOpen" class="h-full overflow-y-auto custom-scrollbar space-y-4">
         <div class="flex items-center justify-between sticky top-0 z-10 bg-white dark:bg-gray-900 pb-2">
           <h4 class="text-base font-semibold text-gray-800 dark:text-gray-200">
             Move {{ selectedImageUuids.size }} image{{ selectedImageUuids.size === 1 ? '' : 's' }} to:
@@ -268,7 +223,7 @@
               </div>
 
               <!-- Action Buttons -->
-              <div v-if="!isCropping" class="absolute top-2 right-2 flex gap-2">
+              <div class="absolute top-2 right-2 flex gap-2">
                 <!-- Set as Thumbnail Button (only show if not already the thumbnail) -->
                 <UButton v-if="isEditMode && currentImage && currentSubject?.thumbnail !== currentImage.uuid"
                   color="primary" variant="solid" size="sm" icon="i-heroicons-star" :loading="isSettingThumbnail"
@@ -276,7 +231,7 @@
                   title="Set as subject thumbnail" />
                 <!-- Crop/Edit Button -->
                 <UButton v-if="isEditMode && currentImage" color="primary" variant="solid" size="sm"
-                  icon="i-heroicons-scissors" @click="startCrop"
+                  icon="i-heroicons-scissors" @click="openCropModal"
                   class="opacity-80 hover:opacity-100 transition-opacity"
                   title="Crop image" />
                 <!-- Delete Button -->
@@ -581,14 +536,15 @@
       </div>
     </template>
   </UModal>
+
+  <!-- Full-size crop modal (image + video), opened from the crop button. -->
+  <CropModal v-model:open="cropModalOpen" :media="currentImage" @cropped="onImageCropped" />
 </template>
 
 <script setup>
 import { useSettingsStore } from '~/stores/settings'
 import { useGesture } from '~/composables/useGesture'
 import SourceImageGrid from '~/components/SourceImageGrid.vue'
-import { Cropper } from 'vue-advanced-cropper'
-import 'vue-advanced-cropper/dist/style.css'
 
 // Use Nuxt's device detection
 const { isMobile } = useDevice()
@@ -658,28 +614,8 @@ const isDetailsExpanded = ref(false)
 const rotatingImageUuids = ref(new Set())
 const imageCacheBusters = ref({})
 
-// Crop state: we show the vue-advanced-cropper on top of the main image when
-// isCropping is true. cropCoordinates tracks the user's current selection in the
-// image's native pixel space so we can POST it straight to the crop endpoint.
-// (The computed + watch that depend on currentImage live below, after currentImage
-// is declared, to avoid a temporal-dead-zone error during setup().)
-const isCropping = ref(false)
-const isSavingCrop = ref(false)
-const cropperRef = ref(null)
-const cropCoordinates = ref(null)
-const cropSrcVersion = ref(0)
-
-// Native image dimensions for the overlay — cropper exposes them via its image
-// prop after load; we also fall back to the size stored on the media record.
-const cropImageSize = computed(() => {
-  const imgSize = cropperRef.value?.image?.size
-  if (imgSize?.width && imgSize?.height) {
-    return { width: Math.round(imgSize.width), height: Math.round(imgSize.height) }
-  }
-  const cur = currentImage.value
-  if (cur?.width && cur?.height) return { width: cur.width, height: cur.height }
-  return { width: 0, height: 0 }
-})
+// Cropping is handled by the shared full-size <CropModal>; we just toggle it open.
+const cropModalOpen = ref(false)
 
 // Multi-select state for moving images between subjects
 const isSelectionMode = ref(false)
@@ -732,27 +668,6 @@ const canUpload = computed(() => {
 
 const currentImage = computed(() => {
   return subjectImages.value[currentImageIndex.value] || null
-})
-
-// Crop src + watcher live here (below currentImage) so they resolve the ref
-// without hitting the temporal dead zone.
-const cropSrc = computed(() => {
-  if (!currentImage.value) return ''
-  // Use 'full' (not 'lg') so we get the ORIGINAL image bytes. 'lg' on the
-  // server uses sharp's fit:'cover', position:'top' which pre-crops the image
-  // to a 3:4 portrait — cropping from there would be cropping a pre-cropped
-  // image. Bump the version so we always fetch the freshest bytes (post-rotate
-  // etc.) rather than a stale cached copy.
-  return `/api/media/${currentImage.value.uuid}/image?size=full&cv=${cropSrcVersion.value}`
-})
-
-// Leaving the current image while cropping would leave stale selection on a
-// different image — bail out cleanly.
-watch(() => currentImage.value?.uuid, (newUuid, oldUuid) => {
-  if (isCropping.value && newUuid !== oldUuid) {
-    isCropping.value = false
-    cropCoordinates.value = null
-  }
 })
 
 // Subjects visible in the picker — exclude the current subject since you'd never
@@ -823,103 +738,35 @@ const resetForm = () => {
   newSubjectCategory.value = null
   rotatingImageUuids.value = new Set()
   imageCacheBusters.value = {}
-  isCropping.value = false
-  isSavingCrop.value = false
-  cropCoordinates.value = null
+  cropModalOpen.value = false
   if (fileInput.value) {
     fileInput.value.value = ''
   }
 }
 
-// Thumbnail click — toggle selection in select mode, otherwise navigate to that image.
-const onCropChange = ({ coordinates }) => {
-  cropCoordinates.value = coordinates
-}
-
-// Force the initial visible area to be the ENTIRE image. This is what actually
-// controls what the user sees on open — image-restriction="fit-area" alone only
-// governs drag constraints, not the initial zoom level.
-const cropperDefaultVisibleArea = ({ imageSize }) => ({
-  width: imageSize.width,
-  height: imageSize.height,
-  left: 0,
-  top: 0
-})
-// Stencil matches the visible area so we don't force the cropper to zoom in to
-// accommodate a stencil bigger than what's shown.
-const cropperDefaultSize = ({ imageSize, visibleArea }) => {
-  const area = visibleArea || imageSize
-  return { width: area.width, height: area.height }
-}
-const cropperDefaultPosition = ({ visibleArea }) => {
-  if (visibleArea) return { left: visibleArea.left, top: visibleArea.top }
-  return { left: 0, top: 0 }
-}
-
-const startCrop = () => {
+const openCropModal = () => {
   if (!currentImage.value) return
-  cropCoordinates.value = null
-  cropSrcVersion.value = Date.now()
-  isCropping.value = true
+  cropModalOpen.value = true
 }
 
-const cancelCrop = () => {
-  isCropping.value = false
-  cropCoordinates.value = null
-}
-
-const saveCrop = async () => {
-  if (!currentImage.value || !cropCoordinates.value) return
-  const { left, top, width, height } = cropCoordinates.value
-  if (width <= 0 || height <= 0) return
-
-  isSavingCrop.value = true
-  try {
-    const res = await useApiFetch(`media/${currentImage.value.uuid}/crop`, {
-      method: 'POST',
-      body: { x: left, y: top, width, height }
-    })
-
-    // Update local dims so the grid tile reflects the new aspect ratio immediately,
-    // and bump the cache-buster so the main display + thumbnail refetch.
-    const uuid = currentImage.value.uuid
-    const idx = subjectImages.value.findIndex(i => i.uuid === uuid)
-    if (idx !== -1) {
-      const updated = { ...subjectImages.value[idx] }
-      if (typeof res?.width === 'number' && typeof res?.height === 'number') {
-        updated.width = res.width
-        updated.height = res.height
-      }
-      subjectImages.value = [
-        ...subjectImages.value.slice(0, idx),
-        updated,
-        ...subjectImages.value.slice(idx + 1)
-      ]
+// CropModal applied a crop — update local dims so the grid tile reflects the new
+// aspect ratio immediately, and bump the cache-buster so the display + thumbnail refetch.
+const onImageCropped = ({ uuid, width, height }) => {
+  if (!uuid) return
+  const idx = subjectImages.value.findIndex(i => i.uuid === uuid)
+  if (idx !== -1) {
+    const updated = { ...subjectImages.value[idx] }
+    if (typeof width === 'number' && typeof height === 'number') {
+      updated.width = width
+      updated.height = height
     }
-    imageCacheBusters.value = { ...imageCacheBusters.value, [uuid]: Date.now() }
-
-    isCropping.value = false
-    cropCoordinates.value = null
-
-    const toast = useToast()
-    toast.add({
-      title: 'Cropped',
-      description: 'Image saved',
-      color: 'success',
-      duration: 1500
-    })
-  } catch (error) {
-    console.error('Failed to crop image:', error)
-    const toast = useToast()
-    toast.add({
-      title: 'Crop Failed',
-      description: error.data?.statusMessage || error.message || 'Failed to crop image',
-      color: 'error',
-      duration: 4000
-    })
-  } finally {
-    isSavingCrop.value = false
+    subjectImages.value = [
+      ...subjectImages.value.slice(0, idx),
+      updated,
+      ...subjectImages.value.slice(idx + 1)
+    ]
   }
+  imageCacheBusters.value = { ...imageCacheBusters.value, [uuid]: Date.now() }
 }
 
 // Toggle the favorite flag on a source image. Optimistically updates the local

@@ -13,7 +13,7 @@
     <div v-else-if="excluded" class="absolute top-1 left-1 z-10 px-2 py-0.5 rounded-full bg-gray-600 text-white text-xs font-bold">excluded</div>
 
     <div class="flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-900 min-h-[160px]">
-      <img :src="`/api/media/${media.uuid}/image?size=md`" :alt="media.filename" class="max-h-[34vh] w-auto object-contain" loading="lazy" />
+      <MediaItem :media="{ ...media, type: 'image' }" image-size="md" max-height="34vh" :clickable="false" :rounded="false" />
     </div>
 
     <div class="px-2 py-2 bg-white dark:bg-gray-800">

@@ -18,12 +18,7 @@
     </div>
 
     <div class="flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-900 min-h-[300px]">
-      <img
-        :src="`/api/media/${media.uuid}/image?size=lg`"
-        :alt="media.filename"
-        class="max-h-[60vh] w-auto object-contain"
-        loading="lazy"
-      />
+      <MediaItem :media="{ ...media, type: 'image' }" image-size="lg" max-height="60vh" :clickable="false" :rounded="false" />
     </div>
 
     <div class="px-4 py-3">
