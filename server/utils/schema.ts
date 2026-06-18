@@ -153,6 +153,9 @@ export const mediaRecords = pgTable("media_records", {
   phash: bytea("phash"), // 8-byte whole-image DCT perceptual hash
   tileHashes: jsonb("tile_hashes"), // array of per-tile dHash hex strings (crop matching)
   perceptualHashedAt: timestamp("perceptual_hashed_at", { withTimezone: true }), // NULL = not yet hashed
+  // Face embedding for "sort by face similarity" (see server/utils/faceEmbedding.ts)
+  faceEmbedding: bytea("face_embedding"), // 512 LE float32s (L2-normalized); NULL = no face / not processed
+  faceEmbeddedAt: timestamp("face_embedded_at", { withTimezone: true }), // NULL = not yet processed
   // Large object support columns
   storageType: varchar("storage_type", { length: 10 })
     .default("bytea")

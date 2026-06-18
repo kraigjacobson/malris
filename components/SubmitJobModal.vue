@@ -380,6 +380,28 @@
                 <div class="flex-shrink-0 mb-2">
                   <VideoSearchFilters ref="fsDestImageSearchFilters" :loading="destImageLoading" title="Dest Image Filters" />
                 </div>
+                <!-- Similar-to-subject dest filter (uses face embeddings) -->
+                <div class="flex-shrink-0 mb-2 flex flex-wrap items-center gap-2 text-xs">
+                  <UCheckbox v-model="searchStore.videoSearch.similarToSubject" label="Similar to subject face" :disabled="destImageLoading" />
+                  <template v-if="searchStore.videoSearch.similarToSubject">
+                    <span class="text-gray-400">min</span>
+                    <USlider v-model="searchStore.videoSearch.similarityThreshold" :min="0.05" :max="0.2" :step="0.01"
+                      class="w-32" :disabled="destImageLoading" />
+                    <span class="w-8 tabular-nums text-gray-500">{{ Number(searchStore.videoSearch.similarityThreshold).toFixed(2) }}</span>
+                    <UButton size="xs" variant="soft" color="primary" :loading="destImageLoading" @click="searchDestImages">
+                      Apply
+                    </UButton>
+                    <span v-if="!fsSimilarityReferenceUuid" class="text-amber-500">pick a subject face first</span>
+                  </template>
+                </div>
+                <div class="flex-shrink-0 mb-2 flex items-center gap-2">
+                  <UCheckbox
+                    :model-value="fsAllDestVisibleSelected"
+                    :disabled="destImages.length === 0"
+                    @update:model-value="toggleAllFsDestVisible"
+                  />
+                  <span class="text-xs text-gray-400">Select all visible ({{ destImages.length }})</span>
+                </div>
                 <div class="flex-1 min-h-0 overflow-y-auto">
                   <div v-if="destImageError" class="text-center py-12">
                     <UAlert color="error" title="Error" :description="destImageError" variant="subtle" />
@@ -691,6 +713,13 @@ const destImageScrollSentinel = ref(null)
 const destImageSeed = ref(null)
 const fsDestImageSearchFilters = ref(null)
 
+// Dest "similar to subject" filter: rank dest images by face similarity to the
+// first selected subject face (falling back to the subject's first source image).
+// Toggle + threshold live in the search store so they persist across sessions.
+const fsSimilarityReferenceUuid = computed(
+  () => fsSelectedFaces.value[0]?.uuid || fsSubjectImages.value[0]?.uuid || null
+)
+
 // Tagging workflow state
 const taggingSelectedSubject = ref(null)
 const taggingSubjectImages = ref([])
@@ -958,19 +987,22 @@ const startFsWorkflow = () => {
   nextTick(() => searchSubjects())
 }
 
-const handleFsSubjectSelection = (subject) => {
+const handleFsSubjectSelection = async (subject) => {
   fsSelectedSubject.value = {
     value: subject.id,
     label: subject.name,
     tags: subject.tags
   }
   fsSelectedFaces.value = []
-  loadFsSubjectImages(subject.id)
   // Pre-fill dest-image filters with the subject's hair tags only — non-hair
   // tags are too sparse on dest images and surface an empty grid.
   const subjectTagList = subject.tags?.tags || []
   searchStore.videoSearch.selectedTags = filterHairTags(subjectTagList)
-  nextTick(() => searchDestImages())
+  // Load the subject's source images FIRST so the "similar to subject" filter has
+  // a reference image, then run a single dest search with everything applied
+  // (no second search just to add the similarity filter).
+  await loadFsSubjectImages(subject.id)
+  searchDestImages()
 }
 
 // Fetch every page of a subject's source images for a given origin. Both the
@@ -1079,6 +1111,29 @@ const toggleFsDestImage = (img) => {
   }
 }
 
+const fsAllDestVisibleSelected = computed(() => {
+  if (destImages.value.length === 0) return false
+  const selected = new Set(fsSelectedDestImages.value.map(s => s.uuid))
+  return destImages.value.every(img => selected.has(img.uuid))
+})
+
+const toggleAllFsDestVisible = (checked) => {
+  if (checked) {
+    // Add every currently-loaded dest image not already selected.
+    const have = new Set(fsSelectedDestImages.value.map(s => s.uuid))
+    for (const img of destImages.value) {
+      if (!have.has(img.uuid)) {
+        fsSelectedDestImages.value.push(img)
+        have.add(img.uuid)
+      }
+    }
+  } else {
+    // Remove only the loaded ones; keep any selected under a prior filter.
+    const visible = new Set(destImages.value.map(img => img.uuid))
+    fsSelectedDestImages.value = fsSelectedDestImages.value.filter(s => !visible.has(s.uuid))
+  }
+}
+
 const clearFsSubject = () => {
   fsSelectedSubject.value = null
   fsSelectedFaces.value = []
@@ -1110,6 +1165,12 @@ const reshuffleDestImages = () => {
   destImageCurrentPage.value = 1
   loadDestImages(true)
 }
+
+// Re-run the dest search when the "similar to subject" toggle flips (threshold
+// changes are applied via the Apply button / Enter to avoid searching per keystroke).
+watch(() => searchStore.videoSearch.similarToSubject, () => {
+  if (fsSelectedSubject.value) searchDestImages()
+})
 
 const clearDestImageFilters = () => {
   searchStore.resetVideoFilters()
@@ -1154,6 +1215,14 @@ const loadDestImages = async (reset = false) => {
     if (sortType === 'random') {
       if (!destImageSeed.value) rerollDestImageSeed()
       params.append('seed', destImageSeed.value)
+    }
+
+    // "Similar to subject": rank dest images by face similarity to the reference
+    // subject image. Overrides the sort ranking on the server; other filters
+    // (tags/ratings/hide-used) still narrow the candidate pool first.
+    if (searchStore.videoSearch.similarToSubject && fsSimilarityReferenceUuid.value) {
+      params.append('similar_to_uuid', fsSimilarityReferenceUuid.value)
+      params.append('similarity_threshold', String(searchStore.videoSearch.similarityThreshold ?? 0))
     }
 
     if (searchStore.videoSearch.selectedTags.length > 0) {

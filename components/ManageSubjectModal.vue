@@ -72,6 +72,34 @@
           </UButton>
         </div>
 
+        <!-- Suggested matches (by face similarity) -->
+        <div v-if="!showNewSubjectInput && (suggestionsLoading || suggestedSubjectCards.length > 0)"
+          class="space-y-2 pb-2 border-b border-gray-200 dark:border-gray-800">
+          <div class="flex items-center gap-2 text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400">
+            <UIcon name="i-heroicons-sparkles" class="w-4 h-4" />
+            <span>Suggested matches</span>
+            <UIcon v-if="suggestionsLoading" name="i-heroicons-arrow-path" class="w-3 h-3 animate-spin" />
+          </div>
+          <div v-if="suggestedSubjectCards.length > 0" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+            <div v-for="subject in suggestedSubjectCards" :key="`sug-${subject.id}`"
+              class="aspect-square rounded-lg overflow-hidden cursor-pointer border-2 border-fuchsia-400 hover:border-fuchsia-500 transition-all bg-gray-100 dark:bg-gray-700 relative"
+              :class="{ 'opacity-50 pointer-events-none': isMovingImages }"
+              @click="moveImagesToSubject(subject.id, subject.name)">
+              <img v-if="subject.thumbnail_url" :src="subject.thumbnail_url" :alt="subject.name"
+                class="w-full h-full object-cover object-top" loading="lazy" />
+              <div v-else class="w-full h-full flex items-center justify-center">
+                <UIcon name="i-heroicons-user-circle" class="w-10 h-10 text-gray-400" />
+              </div>
+              <div class="absolute top-1 right-1 bg-fuchsia-600 text-white text-[10px] font-semibold px-1 py-0.5 rounded">
+                {{ Math.round(subject.score * 100) }}%
+              </div>
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
+                <div class="text-xs text-white truncate">{{ subject.name }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- New Subject inline creator -->
         <div v-if="!showNewSubjectInput" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
           <div
@@ -432,6 +460,8 @@
                     <span v-if="isSelectionMode && selectedImageUuids.size > 0" class="text-xs text-gray-500">
                       {{ selectedImageUuids.size }} selected
                     </span>
+                    <USelect v-model="imageSortBy" :items="imageSortOptions" size="xs" class="w-40"
+                      :disabled="isLoadingImages" @update:model-value="onSortChange" />
                     <UButton size="xs" :variant="isSelectionMode ? 'solid' : 'outline'"
                       :color="isSelectionMode ? 'primary' : 'neutral'"
                       :icon="isSelectionMode ? 'i-heroicons-check-circle' : 'i-heroicons-squares-plus'"
@@ -618,6 +648,7 @@ const thumbnailRefs = ref({})
 const createdSubject = ref(null)
 const imageJobCounts = ref({})
 const isSettingThumbnail = ref(false)
+const autoThumbedSubjectId = ref(null) // guard so we auto-pick a thumbnail at most once per subject/session
 
 // Image details collapsible (closed by default — frees up vertical space)
 const isDetailsExpanded = ref(false)
@@ -652,10 +683,19 @@ const cropImageSize = computed(() => {
 
 // Multi-select state for moving images between subjects
 const isSelectionMode = ref(false)
+const imageSortBy = ref('face_similarity')
+const imageSortOptions = [
+  { label: 'Oldest first', value: 'created_at' },
+  { label: 'Filename', value: 'filename' },
+  { label: 'Face similarity', value: 'face_similarity' }
+]
 const selectedImageUuids = ref(new Set())
 const isPickerOpen = ref(false)
 const pickerSubjects = ref([])
 const pickerLoading = ref(false)
+const pickerSuggestions = ref([]) // [{ subject_uuid, score, matchCount }] by face similarity
+const suggestionsLoading = ref(false)
+const suggestionsQueried = ref(0) // how many selected images actually had a face embedding
 const showNewSubjectInput = ref(false)
 const newSubjectName = ref('')
 const newSubjectCategory = ref(null)
@@ -720,6 +760,18 @@ watch(() => currentImage.value?.uuid, (newUuid, oldUuid) => {
 const pickerVisibleSubjects = computed(() => {
   const currentId = currentSubject.value?.id
   return pickerSubjects.value.filter(s => s.id !== currentId)
+})
+
+// Face-similarity suggestions resolved to full subject objects (so we can show
+// the same thumbnail/name cards), each tagged with its match score.
+const suggestedSubjectCards = computed(() => {
+  const byId = new Map(pickerSubjects.value.map(s => [s.id, s]))
+  return pickerSuggestions.value
+    .map(sug => {
+      const subject = byId.get(sug.subject_uuid)
+      return subject ? { ...subject, score: sug.score } : null
+    })
+    .filter(Boolean)
 })
 
 const imageTransformStyle = computed(() => {
@@ -1080,6 +1132,35 @@ const openSubjectPicker = async () => {
   } finally {
     pickerLoading.value = false
   }
+
+  // Fetch face-similarity suggestions for the selected images (best-effort).
+  loadSubjectSuggestions()
+}
+
+// Ask the backend which subjects the selected images most likely belong to,
+// by face similarity. Best-effort: silently no-ops if nothing has embeddings.
+const loadSubjectSuggestions = async () => {
+  pickerSuggestions.value = []
+  suggestionsQueried.value = 0
+  const media_uuids = Array.from(selectedImageUuids.value)
+  if (media_uuids.length === 0) return
+
+  suggestionsLoading.value = true
+  try {
+    const res = await useApiFetch('media/faces/suggest-subjects', {
+      method: 'POST',
+      body: {
+        mediaUuids: media_uuids,
+        excludeSubjectUuid: currentSubject.value?.id
+      }
+    })
+    pickerSuggestions.value = res?.suggestions || []
+    suggestionsQueried.value = res?.queried ?? 0
+  } catch (e) {
+    console.error('Failed to load subject suggestions:', e)
+  } finally {
+    suggestionsLoading.value = false
+  }
 }
 
 const closeSubjectPicker = () => {
@@ -1087,6 +1168,8 @@ const closeSubjectPicker = () => {
   showNewSubjectInput.value = false
   newSubjectName.value = ''
   newSubjectCategory.value = null
+  pickerSuggestions.value = []
+  suggestionsQueried.value = 0
 }
 
 const moveImagesToSubject = async (targetSubjectId, targetSubjectName) => {
@@ -1187,7 +1270,7 @@ const loadSubjectImages = async () => {
         purpose: 'source',
         media_type: 'image',
         limit: 1000,
-        sort_by: 'created_at',
+        sort_by: imageSortBy.value,
         sort_order: 'asc'
       }
     })
@@ -1197,12 +1280,25 @@ const loadSubjectImages = async () => {
 
     // Fetch job counts for the loaded images
     await fetchImageJobCounts()
+
+    // New/blank subjects: auto-pick the first image as the main thumbnail so the
+    // card isn't blank until manually chosen.
+    await ensureSubjectThumbnail()
   } catch (error) {
     console.error('Failed to load subject images:', error)
     subjectImages.value = []
   } finally {
     isLoadingImages.value = false
   }
+}
+
+// Re-fetch with the new sort when the dropdown changes. We set the value
+// explicitly from the event payload (rather than relying on v-model timing) so
+// loadSubjectImages always reads the freshly-selected sort.
+const onSortChange = (value) => {
+  if (value == null) return
+  imageSortBy.value = value
+  loadSubjectImages()
 }
 
 const handleFileSelection = async (event) => {
@@ -1548,6 +1644,30 @@ const fetchImageJobCounts = async () => {
   } catch (error) {
     console.error('Failed to fetch image job counts:', error)
     // Don't show error to user as this is supplementary information
+  }
+}
+
+// If a subject has no main image yet, set the first loaded image as its
+// thumbnail. Runs after loadSubjectImages; guarded so it fires at most once per
+// subject per session.
+const ensureSubjectThumbnail = async () => {
+  const subj = currentSubject.value
+  if (!subj?.id || subj.thumbnail) return
+  if (autoThumbedSubjectId.value === subj.id) return
+  const first = subjectImages.value[0]
+  if (!first?.uuid) return
+
+  autoThumbedSubjectId.value = subj.id
+  try {
+    await useApiFetch(`subjects/${subj.id}/thumbnail`, {
+      method: 'PUT',
+      body: { thumbnail_uuid: first.uuid }
+    })
+    if (createdSubject.value) createdSubject.value.thumbnail = first.uuid
+    emit('subjectUpdated', { ...subj, thumbnail: first.uuid })
+  } catch (e) {
+    console.error('Failed to auto-set subject thumbnail:', e)
+    autoThumbedSubjectId.value = null // allow a retry next load
   }
 }
 

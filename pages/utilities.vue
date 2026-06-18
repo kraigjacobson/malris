@@ -276,6 +276,59 @@
             <p class="text-sm">{{ lastDedupResult.message }}</p>
           </div>
         </div>
+
+        <!-- Face Similarity Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+          <div class="flex items-center mb-4">
+            <UIcon name="i-heroicons-user-circle" class="w-8 h-8 text-fuchsia-500 mr-3" />
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Face Similarity</h2>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400 mb-6">
+            Computes a face embedding for each image (CPU InsightFace) so the "manage subject" grid can be sorted
+            so lookalikes sit next to each other — making it fast to multiselect a whole person out of the
+            <em>unknown</em> dump. Run this once after adding images; pick the <strong>Face similarity</strong> sort
+            inside a subject afterwards.
+          </p>
+
+          <!-- Coverage -->
+          <div v-if="faceStatus" class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+            <div v-for="c in faceStatus.coverage.filter(c => c.purpose === 'source' || c.purpose === 'dest')" :key="c.purpose"
+              class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 text-center border border-slate-200 dark:border-slate-700">
+              <div class="text-2xl font-bold text-fuchsia-600 dark:text-fuchsia-400">{{ c.embedded }}<span class="text-sm text-slate-400">/{{ c.total }}</span></div>
+              <div class="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">{{ c.purpose }} embedded</div>
+            </div>
+          </div>
+
+          <!-- Options -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Image type</label>
+              <USelect v-model="facePurpose" :items="dedupPurposeOptions" class="w-full" />
+            </div>
+            <div class="flex flex-col gap-2 justify-center">
+              <label class="flex items-center gap-2 text-sm"><input v-model="faceForce" type="checkbox" class="rounded" /> force re-embed already-processed images</label>
+            </div>
+          </div>
+
+          <!-- Progress bar -->
+          <div v-if="faceStatus?.embedding?.running" class="mb-4">
+            <div class="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Embedding…</span>
+              <span>{{ faceStatus.embedding.processed }}/{{ faceStatus.embedding.total }} ({{ faceStatus.embedding.noFace }} no-face, {{ faceStatus.embedding.errors }} err)</span>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2"><div class="bg-fuchsia-500 h-2 rounded-full transition-all" :style="{ width: pct(faceStatus.embedding) }"></div></div>
+          </div>
+
+          <div class="flex flex-wrap justify-end gap-3">
+            <UButton :loading="isComputingFaceEmbeddings" :disabled="isComputingFaceEmbeddings || faceStatus?.embedding?.running" color="primary" variant="soft" size="lg" @click="computeFaceEmbeddings">
+              <UIcon name="i-heroicons-sparkles" class="mr-2" /> Compute Face Embeddings
+            </UButton>
+          </div>
+
+          <div v-if="lastFaceResult" class="mt-4 p-3 rounded-md" :class="lastFaceResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+            <p class="text-sm">{{ lastFaceResult.message }}</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -368,10 +421,22 @@ const isRefining = ref(false)
 const lastDedupResult = ref<{ success: boolean; message: string } | null>(null)
 const pct = (p: { processed: number; total: number }) => (p.total ? `${Math.round((p.processed / p.total) * 100)}%` : '0%')
 
+// Face similarity state
+interface FaceEmbedProgress { running: boolean; processed: number; total: number; errors: number; noFace: number; message: string }
+const faceStatus = ref<{
+  embedding: FaceEmbedProgress
+  coverage: { purpose: string; total: number; processed: number; embedded: number }[]
+} | null>(null)
+const facePurpose = ref<string>('source')
+const faceForce = ref(false)
+const isComputingFaceEmbeddings = ref(false)
+const lastFaceResult = ref<{ success: boolean; message: string } | null>(null)
+
 // Auto-refresh management
 let refreshInterval: NodeJS.Timeout | null = null
 let cleanupRefreshInterval: NodeJS.Timeout | null = null
 let dedupRefreshInterval: NodeJS.Timeout | null = null
+let faceRefreshInterval: NodeJS.Timeout | null = null
 
 // Auto-refresh queue status every 2 seconds. `taggingPurpose` is passed as a
 // reactive query param so changing the dropdown auto-refetches the count.
@@ -422,6 +487,8 @@ onMounted(() => {
   fetchOrphanCount()
   // Initial dedup status
   fetchDedupStatus()
+  // Initial face-embedding status
+  fetchFaceStatus()
 })
 
 onUnmounted(() => {
@@ -437,7 +504,44 @@ onUnmounted(() => {
     clearInterval(dedupRefreshInterval)
     dedupRefreshInterval = null
   }
+  if (faceRefreshInterval) {
+    clearInterval(faceRefreshInterval)
+    faceRefreshInterval = null
+  }
 })
+
+// Fetch face-embedding status; self-manages a poll interval while running.
+const fetchFaceStatus = async () => {
+  try {
+    faceStatus.value = await $fetch('/api/media/faces/status')
+    const active = faceStatus.value?.embedding?.running
+    if (active && !faceRefreshInterval) {
+      faceRefreshInterval = setInterval(fetchFaceStatus, 1500)
+    } else if (!active && faceRefreshInterval) {
+      clearInterval(faceRefreshInterval)
+      faceRefreshInterval = null
+    }
+  } catch {
+    /* status is best-effort */
+  }
+}
+
+const computeFaceEmbeddings = async () => {
+  isComputingFaceEmbeddings.value = true
+  lastFaceResult.value = null
+  try {
+    const res = await $fetch<{ success: boolean; message: string }>('/api/media/faces/compute-embeddings', {
+      method: 'POST',
+      body: { purposes: [facePurpose.value], force: faceForce.value }
+    })
+    lastFaceResult.value = { success: res.success, message: res.message }
+    fetchFaceStatus()
+  } catch (e: any) {
+    lastFaceResult.value = { success: false, message: e?.data?.statusMessage || e?.message || 'Failed to start embedding' }
+  } finally {
+    isComputingFaceEmbeddings.value = false
+  }
+}
 
 // Fetch dedup status; self-manages a poll interval while a job is running.
 const fetchDedupStatus = async () => {

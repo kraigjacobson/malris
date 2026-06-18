@@ -10,20 +10,6 @@
 
     <template #content>
       <div class="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-        <!-- Subject Name Search -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Search by Subject Name
-          </label>
-          <SubjectSearch
-            :model-value="selectedSubject"
-            placeholder="Search by subject name..."
-            :disabled="loading"
-            @update:model-value="$emit('subjectSelect', $event)"
-            @select="$emit('subjectSelect', $event)"
-          />
-        </div>
-
         <!-- Name Category Filters -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -111,7 +97,6 @@
 
 <script setup>
 import { useSearchStore } from '~/stores/search'
-import SubjectSearch from '~/components/SubjectSearch.vue'
 
 defineProps({
   loading: {

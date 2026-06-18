@@ -6,6 +6,19 @@
         Subjects
       </h1>
       <div class="flex items-center gap-2">
+        <UInput
+          v-model="nameQuery"
+          icon="i-heroicons-magnifying-glass"
+          placeholder="Search by name..."
+          size="sm"
+          class="w-40 sm:w-56"
+          :ui="{ trailing: 'pe-1' }"
+        >
+          <template v-if="nameQuery" #trailing>
+            <UButton color="neutral" variant="link" size="xs" icon="i-heroicons-x-mark"
+              aria-label="Clear name search" @click="nameQuery = ''" />
+          </template>
+        </UInput>
         <UButton
           @click="openManageSubjectModal()"
           color="primary"
@@ -30,10 +43,8 @@
     <div class="space-y-6">
         <!-- Search Filters -->
         <SubjectSearchFilters
-          :selected-subject="selectedSearchSubject"
           @search="searchSubjects"
           @clear="clearFilters"
-          @subject-select="handleSubjectSelection"
           :loading="isLoading"
         />
 
@@ -47,7 +58,7 @@
       <!-- Results Header -->
       <div class="flex justify-between items-center mb-3 sm:mb-4">
         <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-          Found {{ pagination.total }} subjects
+          Found {{ displayedSubjects.length }} subjects
         </p>
         <div class="flex gap-1 sm:gap-2">
           <UButton
@@ -70,7 +81,7 @@
       <!-- Grid View -->
       <div v-if="viewMode === 'grid'">
         <SubjectGrid
-          :subjects="subjectResults"
+          :subjects="displayedSubjects"
           :loading="false"
           :loading-more="false"
           :has-searched="hasSearched"
@@ -86,7 +97,7 @@
       <!-- List View -->
       <div v-else class="space-y-1 sm:space-y-2">
         <div
-          v-for="subject in subjectResults"
+          v-for="subject in displayedSubjects"
           :key="subject.id"
           class="bg-neutral-800 rounded-lg p-2 sm:p-4 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
           @click="openManageSubjectModal(subject)"
@@ -215,6 +226,20 @@ const handleImageError = (event) => {
 
 // Reactive data
 const selectedSearchSubject = ref(null)
+const nameQuery = ref('')
+
+// Live view of the grid: partial name filter + "unknown" pinned first.
+const displayedSubjects = computed(() => {
+  const q = nameQuery.value.trim().toLowerCase()
+  const list = q
+    ? subjectResults.value.filter(s => s.name?.toLowerCase().includes(q))
+    : subjectResults.value
+  return [...list].sort((a, b) => {
+    const au = a.name?.toLowerCase() === 'unknown' ? 0 : 1
+    const bu = b.name?.toLowerCase() === 'unknown' ? 0 : 1
+    return au - bu
+  })
+})
 
 // Subject search using composable
 const { getSubjects } = useSubjects()
@@ -271,7 +296,7 @@ const searchSubjects = async () => {
     }
 
     subjectResults.value = finalSubjects
-    
+
     // Update pagination info
     pagination.value = {
       ...pagination.value,

@@ -53,6 +53,8 @@ export const useSearchStore = defineStore('search', () => {
     },
     selectedRatings: [] as number[],
     showUnrated: false,
+    similarToSubject: false, // dest "similar to subject face" filter (FS submit-job)
+    similarityThreshold: 0.05, // cosine cutoff for the above
     sortType: sortTypeItems[0], // Default to 'Random'
     sortOrder: sortOrderItems[0], // Default to 'Asc'
     limitOptions: limitOptionsItems[1] // Default to '48'
@@ -195,6 +197,8 @@ export const useSearchStore = defineStore('search', () => {
       },
       selectedRatings: [],
       showUnrated: false,
+      similarToSubject: false,
+      similarityThreshold: 0.05,
       sortType: sortTypeItems[0], // Random
       sortOrder: sortOrderItems[0], // Asc
       limitOptions: limitOptionsItems[1] // 48

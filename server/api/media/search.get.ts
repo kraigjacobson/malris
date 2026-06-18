@@ -3,12 +3,13 @@ import { mediaRecords, jobs, subjects } from '~/server/utils/schema'
 import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, notInArray, notExists, inArray, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { logger } from '~/server/utils/logger'
+import { bufToVec, nearestNeighborTour, dot } from '~/server/utils/faceEmbedding'
 
 export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, exclude_dest_for_subject, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false } = query
+    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, exclude_dest_for_subject, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false, similar_to_uuid, similarity_threshold } = query
 
     // Debug logging for include_thumbnails parameter
     logger.info('🔍 Media search parameters:', {
@@ -190,7 +191,24 @@ export default defineEventHandler(async event => {
     }
 
     // Validate sort parameters
-    const validMediaSortFields = ['filename', 'type', 'purpose', 'status', 'file_size', 'original_size', 'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random']
+    const validMediaSortFields = ['filename', 'type', 'purpose', 'status', 'file_size', 'original_size', 'width', 'height', 'duration', 'created_at', 'updated_at', 'last_accessed', 'access_count', 'random', 'face_similarity']
+
+    // Face-similarity sort reorders rows in JS via a nearest-neighbour tour over
+    // stored face embeddings — it can't be expressed as a SQL ORDER BY. We fetch
+    // the (capped) matching set in a stable base order, reorder, then slice.
+    const faceSimilarity = sort_by === 'face_similarity'
+    const FACE_TOUR_CAP = 2000
+
+    // "Similar to a reference image" filter: rank candidates by face-embedding
+    // cosine similarity to similar_to_uuid and drop anything below the threshold.
+    // Used by the submit-job dest picker to surface dest images whose face looks
+    // like the selected subject. Like face_similarity, this is done in JS over a
+    // (capped) candidate pool, then sliced for pagination.
+    const similarToRef = typeof similar_to_uuid === 'string' && similar_to_uuid.length > 0
+    const similarityThreshold = Number.isFinite(Number(similarity_threshold))
+      ? Math.max(0, Math.min(1, Number(similarity_threshold)))
+      : 0
+    const SIMILAR_POOL_CAP = 6000
 
     if (!validMediaSortFields.includes(sort_by as string)) {
       throw createError({
@@ -623,6 +641,8 @@ export default defineEventHandler(async event => {
         access_count: mediaRecords.accessCount,
         completions: mediaRecords.completions,
         tags_confirmed: mediaRecords.tagsConfirmed,
+        // Only hydrate the embedding for similarity modes (keeps normal responses small).
+        face_embedding: (faceSimilarity || similarToRef) ? mediaRecords.faceEmbedding : sql`NULL`,
         subject_thumbnail_uuid: subjects.thumbnail,
         // Only include encrypted data if thumbnails are requested to avoid massive response
         video_thumbnail_data: shouldIncludeThumbnails ? videoThumbnailMedia.encryptedData : sql`NULL`,
@@ -638,20 +658,77 @@ export default defineEventHandler(async event => {
       queryBuilder = queryBuilder.leftJoin(videoThumbnailMedia, eq(mediaRecords.thumbnailUuid, videoThumbnailMedia.uuid)).leftJoin(subjectThumbnailMedia, eq(subjects.thumbnail, subjectThumbnailMedia.uuid))
     }
 
-    // Execute the query
-    const results = await queryBuilder
+    // Execute the query. For face-similarity we pull the whole (capped) matching
+    // set in the base order, then reorder + slice in JS below; otherwise we let
+    // SQL do the LIMIT/OFFSET as usual.
+    const baseQuery = queryBuilder
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(orderByClause)
-      .limit(limitNum)
-      .offset(offsetNum)
+
+    let results: any[]
+    let totalCountOverride: number | null = null
+
+    if (similarToRef) {
+      // Rank candidates by cosine similarity to the reference image's face.
+      const refRow = await db
+        .select({ faceEmbedding: mediaRecords.faceEmbedding })
+        .from(mediaRecords)
+        .where(eq(mediaRecords.uuid, similar_to_uuid as string))
+        .limit(1)
+      const refVec = bufToVec(refRow[0]?.faceEmbedding as unknown as Buffer)
+      if (!refVec) {
+        // Reference image has no face embedding — can't rank by similarity.
+        return {
+          results: [],
+          count: 0,
+          limit: limitNum,
+          offset: offsetNum,
+          total_count: 0,
+          similarity_unavailable: true
+        }
+      }
+      const pool = await baseQuery.limit(SIMILAR_POOL_CAP)
+      const scored: any[] = []
+      for (const r of pool) {
+        const v = bufToVec(r.face_embedding as unknown as Buffer)
+        if (!v) continue
+        const sim = dot(refVec, v)
+        if (sim >= similarityThreshold) {
+          r.similarity = sim
+          scored.push(r)
+        }
+      }
+      scored.sort((a, b) => b.similarity - a.similarity)
+      totalCountOverride = scored.length
+      results = scored.slice(offsetNum, offsetNum + limitNum)
+    } else if (faceSimilarity) {
+      // Split embedded vs not; tour the embedded ones so lookalikes are adjacent,
+      // then append un-embedded images (kept in the base order) at the end.
+      const pool = await baseQuery.limit(FACE_TOUR_CAP)
+      const withVec: { vec: Float32Array; row: any }[] = []
+      const withoutVec: any[] = []
+      for (const r of pool) {
+        const vec = bufToVec(r.face_embedding as unknown as Buffer)
+        if (vec) withVec.push({ vec, row: r })
+        else withoutVec.push(r)
+      }
+      const toured = nearestNeighborTour(withVec).map((x) => x.row)
+      results = [...toured, ...withoutVec].slice(offsetNum, offsetNum + limitNum)
+    } else {
+      results = await baseQuery.limit(limitNum).offset(offsetNum)
+    }
 
     // Get total count for pagination info
-    const totalCountResult = await db
-      .select({ count: count() })
-      .from(mediaRecords)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-
-    const totalCount = totalCountResult[0].count
+    let totalCount: number
+    if (totalCountOverride !== null) {
+      totalCount = totalCountOverride
+    } else {
+      const totalCountResult = await db
+        .select({ count: count() })
+        .from(mediaRecords)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+      totalCount = totalCountResult[0].count
+    }
 
     // Transform results to match expected format
     const transformedResults = results.map(result => ({
@@ -683,6 +760,8 @@ export default defineEventHandler(async event => {
       access_count: result.access_count,
       completions: result.completions,
       tags_confirmed: result.tags_confirmed,
+      // Face-similarity score (0–1) when ranked against a reference image; else null.
+      similarity: result.similarity ?? null,
       // Add thumbnail processing flags - prioritize output thumbnail for output videos, subject thumbnail for others
       has_thumbnail: result.type === 'video' ? (result.purpose === 'output' ? !!result.thumbnail_uuid : !!result.subject_thumbnail_uuid) : !!result.thumbnail_uuid,
       thumbnail: null as string | null,

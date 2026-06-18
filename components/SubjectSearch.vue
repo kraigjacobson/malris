@@ -1,5 +1,6 @@
 <template>
-  <USelect v-model="selectedSubjects" :items="subjectItems" multiple :placeholder="placeholder" :class="inputClass"
+  <USelectMenu v-model="selectedSubjects" :items="subjectItems" value-key="value" multiple
+    :placeholder="placeholder" :search-input="{ placeholder: 'Type to filter…' }" :class="inputClass"
     :disabled="disabled" @update:model-value="handleSelection" />
 </template>
 
