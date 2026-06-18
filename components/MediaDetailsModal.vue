@@ -1,6 +1,6 @@
 <template>
   <!-- Media Detail Modal -->
-  <UModal :open="isOpen" :dismissible="false" :fullscreen="isMobile" @update:open="$emit('update:isOpen', $event)">
+  <UModal :open="isOpen" :dismissible="!isCropping && currentMode !== 'crop' && currentMode !== 'trim'" :fullscreen="isMobile" @update:open="onOpenChange">
     <template #header>
       <div v-if="media" class="flex justify-between items-center w-full gap-3">
         <div class="flex items-center gap-2 sm:gap-3">
@@ -136,24 +136,31 @@
           <!-- Normal/Edit Mode Layout -->
           <div v-else :class="currentMode === 'crop' ? 'h-full' : 'space-y-4'">
             <!-- Image Display -->
-            <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" :class="currentMode === 'crop' ? 'w-full h-full relative flex items-center justify-center' : 'w-full relative'">
-              <!-- Previous Button (only in none mode) -->
-              <UButton v-if="currentMode === 'none' && currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
+            <div v-if="media.type === 'image'" :key="`image-${media.uuid}`" :class="isCropping ? 'w-full' : 'w-full relative'">
+              <!-- Crop panel takes over the media area when cropping (same overlay-button flow as Job Details) -->
+              <div v-if="isCropping" style="height: 70vh; min-height: 400px">
+                <ImageCropper :uuid="media.uuid" :filename="media.filename" :width="media.width || 0" :height="media.height || 0" @cancel="isCropping = false" @cropped="onCropped" />
+              </div>
 
-              <img v-if="settingsStore.displayImages" :src="media.thumbnail ? media.thumbnail : `/api/media/${media.uuid}/image?size=lg`" :alt="media.type" :class="currentMode === 'crop' ? 'max-w-full max-h-full object-contain rounded' : 'w-full object-contain rounded'" @error="handleImageError" @load="onImageLoaded" />
-              <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
-                <div class="text-center">
-                  <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
+              <template v-else>
+                <!-- Previous Button (only in none mode) -->
+                <UButton v-if="currentMode === 'none' && currentIndex > 0" variant="solid" color="white" icon="i-heroicons-chevron-left" class="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', -1)" />
+
+                <img v-if="settingsStore.displayImages" :src="imageSrc" :alt="media.type" class="w-full object-contain rounded" @error="handleImageError" @load="onImageLoaded" />
+                <div v-else class="w-full bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center min-h-96">
+                  <div class="text-center">
+                    <UIcon name="i-heroicons-photo" class="text-6xl text-gray-400 mb-2" />
+                  </div>
                 </div>
-              </div>
 
-              <!-- Next Button (only in none mode) -->
-              <UButton v-if="currentMode === 'none' && currentIndex < totalCount - 1" variant="solid" color="white" icon="i-heroicons-chevron-right" class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', 1)" />
+                <!-- Next Button (only in none mode) -->
+                <UButton v-if="currentMode === 'none' && currentIndex < totalCount - 1" variant="solid" color="white" icon="i-heroicons-chevron-right" class="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 shadow-lg" @click="$emit('navigate', 1)" />
 
-              <!-- Cropper overlay for images (only visible in crop mode) -->
-              <div v-if="currentMode === 'crop'" class="absolute inset-0 z-20">
-                <Cropper v-if="cropFrameSource" ref="cropperRef" :class="['w-full h-full', cropperVisible ? '' : 'opacity-0 pointer-events-none']" :src="cropFrameSource" :default-size="cropperDefaultSize" :default-position="cropperDefaultPosition" @ready="onCropperReady" @change="onCropperChange" />
-              </div>
+                <!-- Crop button — scissors overlay (only in view mode) -->
+                <div v-if="currentMode === 'none' && settingsStore.displayImages" class="absolute bottom-2 right-2 z-40">
+                  <UButton color="primary" variant="solid" size="sm" icon="i-heroicons-scissors" class="opacity-80 hover:opacity-100 transition-opacity" title="Crop image" @click="isCropping = true" />
+                </div>
+              </template>
             </div>
 
             <!-- Video Display -->
@@ -412,7 +419,8 @@ const cropPreviewVideo = ref(null)
 const currentMode = ref('none')
 const modeTabItems = computed(() => [
   { label: 'View', value: 'none' },
-  { label: 'Crop', value: 'crop' },
+  // Images crop via the scissors overlay button (ImageCropper); the inline crop tab is video-only.
+  { label: 'Crop', value: 'crop', disabled: props.media?.type !== 'video' },
   { label: 'Trim', value: 'trim', disabled: props.media?.type !== 'video' },
   { label: 'Tag', value: 'tag' }
 ])
@@ -494,6 +502,28 @@ const handleGestureTouchMoveWrapper = e => {
 const handleGestureTouchEndWrapper = e => {
   if (currentMode.value === 'crop' || currentMode.value === 'trim') return
   handleGestureTouchEnd(e)
+}
+
+// Image crop overlay state (ImageCropper panel, same flow as Job Details)
+const isCropping = ref(false)
+// uuid -> version, bumped after a crop so the main image refetches fresh bytes.
+const imageCacheBusters = ref({})
+
+// Image source — always the ORIGINAL full-resolution bytes (size=full). The sized
+// variants (sm/md/lg) are cover-cropped to a 3:4 portrait, so they're only right
+// for the grid; opening a record should show the true full-res image.
+const imageSrc = computed(() => {
+  if (!props.media) return ''
+  const cb = imageCacheBusters.value[props.media.uuid]
+  return `/api/media/${props.media.uuid}/image?size=full${cb ? `&v=${cb}` : ''}`
+})
+
+// After a successful crop, force the main image to refetch and notify the gallery.
+const onCropped = ({ uuid, width, height, file_size }) => {
+  if (uuid) imageCacheBusters.value = { ...imageCacheBusters.value, [uuid]: Date.now() }
+  isCropping.value = false
+  // Clear the stale base64 thumbnail so the grid refetches the cropped bytes too.
+  emit('saveEdits', { uuid, width, height, file_size, thumbnail: null })
 }
 
 // Cropper state
@@ -618,8 +648,18 @@ const closeModal = () => {
   resetMode()
 }
 
+// UModal open-state changes (X button, Esc, or click-off when dismissible).
+const onOpenChange = open => {
+  emit('update:isOpen', open)
+  if (!open) {
+    emit('close')
+    resetMode()
+  }
+}
+
 const resetMode = () => {
   currentMode.value = 'none'
+  isCropping.value = false
   exitEditMode()
   resetTagState()
 }
@@ -1257,6 +1297,8 @@ const handleRatingUpdate = rating => {
 watch(
   () => props.media,
   newMedia => {
+    // A new media item means the crop overlay should close.
+    isCropping.value = false
     if (newMedia) {
       const tags = newMedia.tags?.tags || []
       selectedTags.value = [...tags]
@@ -1302,6 +1344,8 @@ watch(
 
 // Watch for mode changes
 watch(currentMode, (newMode, oldMode) => {
+  // Leaving view mode cancels any in-progress image crop overlay.
+  if (newMode !== 'none') isCropping.value = false
   if (oldMode === 'crop' || oldMode === 'trim') {
     exitEditMode()
   }
