@@ -252,7 +252,7 @@
             </UButton>
           </div>
         </div>
-        <div v-if="job && !isMobile" class="flex gap-2">
+        <div v-if="job" class="flex gap-2">
           <UButton v-if="job && ['queued', 'active', 'need_input'].includes(job.status)" color="error" variant="outline" icon="i-heroicons-x-mark" size="lg" @click="$emit('cancel-job')" class="h-12"><span class="hidden sm:inline">Cancel</span></UButton>
           <UButton v-if="job && ['canceled', 'failed', 'completed', 'need_input'].includes(job.status)" color="primary" variant="outline" icon="i-heroicons-arrow-path" size="lg" @click="$emit('retry-job')" class="h-12"><span class="hidden sm:inline">Retry</span></UButton>
         </div>

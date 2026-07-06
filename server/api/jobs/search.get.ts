@@ -75,7 +75,7 @@ export default defineEventHandler(async event => {
       } else if (source_type === 'source') {
         conditions.push(eq(jobs.jobType, 'vid_faceswap'))
         conditions.push(isNull(jobs.sourceMediaUuid))
-      } else if (source_type === 'vid_faceswap' || source_type === 'fs' || source_type === 'i2v' || source_type === 'tagging') {
+      } else if (source_type === 'vid_faceswap' || source_type === 'fs' || source_type === 'i2v' || source_type === 't2v' || source_type === 'tagging') {
         conditions.push(eq(jobs.jobType, source_type as string))
       }
       // 'all' case doesn't add any condition

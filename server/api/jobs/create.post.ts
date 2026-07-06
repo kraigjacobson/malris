@@ -50,8 +50,20 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    if (job_type === "t2v") {
+      // Pure text-to-video: no source/dest media, but a prompt is mandatory
+      // (either directly in parameters or via a preset that carries one).
+      const rawParams = typeof parameters === 'string' ? (() => { try { return JSON.parse(parameters) } catch { return {} } })() : (parameters || {})
+      if (!rawParams.prompt && !rawParams._preset_id) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: "t2v jobs require a prompt (or a preset) in parameters"
+        })
+      }
+    }
+
     // Validate job type
-    const validJobTypes = ["vid_faceswap", "i2v", "fs"]
+    const validJobTypes = ["vid_faceswap", "i2v", "fs", "t2v"]
     if (!validJobTypes.includes(job_type)) {
       throw createError({
         statusCode: 400,

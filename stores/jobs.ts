@@ -32,7 +32,7 @@ export const useJobsStore = defineStore('jobs', () => {
   const isProcessing = ref(false)
 
   // Processing state from jobProcessingService (source of truth)
-  const processingState = ref<{ mode: string; isActive: boolean; isContinuous: boolean; sourceType?: string; pickOrder?: 'chronological' | 'random'; presetFilter?: string | null; jobLimit?: number | null; jobsProcessedCount?: number } | null>(null)
+  const processingState = ref<{ mode: string; isActive: boolean; isContinuous: boolean; sourceType?: string; pickOrder?: 'chronological' | 'random'; presetFilter?: string | null; subjectFilter?: string | null; jobLimit?: number | null; jobsProcessedCount?: number } | null>(null)
 
   // Manual processing state
   const isManualProcessing = ref(false)

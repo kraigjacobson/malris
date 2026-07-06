@@ -18,7 +18,7 @@
         <div v-if="!selectedJobType" class="flex-shrink-0">
           <div class="text-center">
             <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Choose job type:</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
               <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="selectedJobType = 'vid_faceswap'">
                 <UIcon name="i-heroicons-face-smile-20-solid" class="w-4 h-4" />
                 <span class="text-xs font-medium leading-tight">Faceswap I2V Legacy</span>
@@ -33,6 +33,11 @@
                 <UIcon name="i-heroicons-video-camera-20-solid" class="w-4 h-4" />
                 <span class="text-xs font-medium leading-tight">Wan I2V</span>
                 <span class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">src image · wan presets</span>
+              </UButton>
+              <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="startT2vWorkflow">
+                <UIcon name="i-heroicons-sparkles-20-solid" class="w-4 h-4" />
+                <span class="text-xs font-medium leading-tight">Wan T2V</span>
+                <span class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">text only · wan presets</span>
               </UButton>
               <UButton variant="outline" size="sm" class="h-14 flex flex-col items-center justify-center space-y-0.5 text-center" @click="startTaggingWorkflow">
                 <UIcon name="i-heroicons-tag-20-solid" class="w-4 h-4" />
@@ -172,6 +177,25 @@
                 <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- T2V Workflow: pure text-to-video — no subject/image selection, just
+             generation params. Each submit creates N identical queued jobs
+             (seed is randomized per job on the worker). -->
+        <div v-if="selectedJobType === 't2v'" class="flex flex-col flex-1 min-h-0">
+          <div class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-400">Resolution:</span>
+              <USelect v-model="t2vResolution" :items="t2vResolutionOptions" size="xs" class="w-40" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-400">Jobs to queue:</span>
+              <UInput v-model.number="t2vJobCount" type="number" min="1" max="100" size="xs" class="w-20" />
+            </div>
+          </div>
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <I2vJobForm v-model="t2vParams" :loras="availableLoras" job-type="t2v" />
           </div>
         </div>
 
@@ -337,54 +361,70 @@
           <!-- Step 2: Face multi-pick + Dest image multi-pick -->
           <div v-if="fsSelectedSubject" class="flex flex-col flex-1 min-h-0">
             <!-- Selected subject header -->
-            <div class="flex-shrink-0 mb-2 flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-              <UIcon name="i-heroicons-user-20-solid" class="w-4 h-4 text-primary" />
-              <span class="text-sm font-medium">{{ fsSelectedSubject.label }}</span>
-              <UButton variant="ghost" size="xs" icon="i-heroicons-x-mark" @click="clearFsSubject" />
-              <div class="flex items-center gap-3 ml-2">
-                <UCheckbox v-model="fsShowSubjectImages" label="Subject images" size="xs" />
-                <UCheckbox v-model="fsShowOutputImages" label="Output images" size="xs" />
+            <div class="flex-shrink-0 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 bg-gray-800 rounded-lg">
+              <UButton variant="ghost" size="xs" icon="i-heroicons-arrow-left-20-solid" @click="clearFsSubject"> Back </UButton>
+              <div class="flex items-center gap-3 ml-auto">
+                <UCheckbox v-model="fsShowSubjectImages" label="Subject" size="xs" />
+                <UCheckbox v-model="fsShowOutputImages" label="Output" size="xs" />
                 <UCheckbox v-model="fsShowFavoritesOnly" label="Favorites" size="xs" />
               </div>
-              <span class="ml-auto text-xs text-gray-400">
-                {{ fsSelectedFaces.length }} face{{ fsSelectedFaces.length !== 1 ? 's' : '' }} × {{ fsSelectedDestImages.length }} dest = {{ fsSelectedFaces.length * fsSelectedDestImages.length }} job{{ fsSelectedFaces.length * fsSelectedDestImages.length !== 1 ? 's' : '' }}
-              </span>
             </div>
 
-            <!-- Two-column layout: faces (left) + dest images (right) -->
-            <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3 overflow-hidden">
+            <!-- Two-column layout (lg+); below lg the two panels stack and are
+                 individually collapsible so either can take the full height. -->
+            <div class="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-2 gap-3 overflow-hidden">
               <!-- Left: Source face multi-pick -->
-              <div class="overflow-y-auto">
-                <div class="flex items-center justify-between mb-2 gap-2">
-                  <p class="text-xs text-gray-400">Select source face(s) — identity to swap IN:</p>
-                  <UCheckbox
-                    :model-value="allVisibleFacesSelected"
-                    :disabled="fsDisplayedImages.length === 0"
-                    label="Select all"
-                    size="xs"
-                    @update:model-value="toggleSelectAllVisibleFaces"
-                  />
+              <div class="flex flex-col min-h-0" :class="fsFacesOpen ? 'flex-1' : 'flex-shrink-0'">
+                <!-- Collapse header (mobile/tablet only — hidden on lg where it's a column) -->
+                <button
+                  type="button"
+                  class="lg:hidden flex-shrink-0 mb-2 flex items-center justify-between w-full p-2 bg-gray-800 rounded-lg"
+                  @click="fsFacesOpen = !fsFacesOpen"
+                >
+                  <span class="text-sm font-medium">Source faces ({{ fsSelectedFaces.length }} selected)</span>
+                  <UIcon :name="fsFacesOpen ? 'i-heroicons-chevron-up-20-solid' : 'i-heroicons-chevron-down-20-solid'" class="w-4 h-4 text-gray-400" />
+                </button>
+                <div v-show="fsFacesOpen || isDesktop" class="flex-1 min-h-0 flex flex-col">
+                  <div class="flex items-center justify-end mb-2 gap-2 flex-shrink-0">
+                    <UCheckbox
+                      :model-value="allVisibleFacesSelected"
+                      :disabled="fsDisplayedImages.length === 0"
+                      label="Select all"
+                      size="xs"
+                      @update:model-value="toggleSelectAllVisibleFaces"
+                    />
+                  </div>
+                  <div class="flex-1 min-h-0 overflow-y-auto">
+                    <SourceImageGrid
+                      :images="fsDisplayedImages"
+                      :loading="fsSubjectImagesLoading"
+                      :selected-uuids="fsSelectedFaces.map(s => s.uuid)"
+                      empty-message="No source images found for this subject"
+                      @click="toggleFsFace"
+                    />
+                  </div>
                 </div>
-                <SourceImageGrid
-                  :images="fsDisplayedImages"
-                  :loading="fsSubjectImagesLoading"
-                  :selected-uuids="fsSelectedFaces.map(s => s.uuid)"
-                  empty-message="No source images found for this subject"
-                  @click="toggleFsFace"
-                />
               </div>
 
               <!-- Right: Dest image multi-pick -->
-              <div class="flex flex-col min-h-0">
-                <p class="text-xs text-gray-400 mb-2 flex-shrink-0">Select dest image(s) — target to swap face ONTO:</p>
+              <div class="flex flex-col min-h-0" :class="fsDestOpen ? 'flex-1' : 'flex-shrink-0'">
+                <!-- Collapse header (mobile/tablet only — hidden on lg where it's a column) -->
+                <button
+                  type="button"
+                  class="lg:hidden flex-shrink-0 mb-2 flex items-center justify-between w-full p-2 bg-gray-800 rounded-lg"
+                  @click="fsDestOpen = !fsDestOpen"
+                >
+                  <span class="text-sm font-medium">Dest images ({{ fsSelectedDestImages.length }} selected)</span>
+                  <UIcon :name="fsDestOpen ? 'i-heroicons-chevron-up-20-solid' : 'i-heroicons-chevron-down-20-solid'" class="w-4 h-4 text-gray-400" />
+                </button>
+                <div v-show="fsDestOpen || isDesktop" class="flex-1 min-h-0 flex flex-col">
                 <div class="flex-shrink-0 mb-2">
                   <VideoSearchFilters ref="fsDestImageSearchFilters" :loading="destImageLoading" title="Dest Image Filters" />
                 </div>
-                <!-- Similar-to-subject dest filter (uses face embeddings) -->
-                <div class="flex-shrink-0 mb-2 flex flex-wrap items-center gap-2 text-xs">
+                <!-- Similar-to-subject dest filter + select-all on one row to save vertical space -->
+                <div class="flex-shrink-0 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                   <UCheckbox v-model="searchStore.videoSearch.similarToSubject" label="Similar to subject face" :disabled="destImageLoading" />
                   <template v-if="searchStore.videoSearch.similarToSubject">
-                    <span class="text-gray-400">min</span>
                     <USlider v-model="searchStore.videoSearch.similarityThreshold" :min="0.05" :max="0.2" :step="0.01"
                       class="w-32" :disabled="destImageLoading" />
                     <span class="w-8 tabular-nums text-gray-500">{{ Number(searchStore.videoSearch.similarityThreshold).toFixed(2) }}</span>
@@ -393,14 +433,14 @@
                     </UButton>
                     <span v-if="!fsSimilarityReferenceUuid" class="text-amber-500">pick a subject face first</span>
                   </template>
-                </div>
-                <div class="flex-shrink-0 mb-2 flex items-center gap-2">
-                  <UCheckbox
-                    :model-value="fsAllDestVisibleSelected"
-                    :disabled="destImages.length === 0"
-                    @update:model-value="toggleAllFsDestVisible"
-                  />
-                  <span class="text-xs text-gray-400">Select all visible ({{ destImages.length }})</span>
+                  <div class="flex items-center gap-2">
+                    <UCheckbox
+                      :model-value="fsAllDestVisibleSelected"
+                      :disabled="destImages.length === 0"
+                      @update:model-value="toggleAllFsDestVisible"
+                    />
+                    <span class="text-gray-400">Select all visible ({{ destImages.length }})</span>
+                  </div>
                 </div>
                 <div class="flex-1 min-h-0 overflow-y-auto">
                   <div v-if="destImageError" class="text-center py-12">
@@ -417,6 +457,7 @@
                   <div v-if="!destImageHasMoreResults && destImageHasSearched && destImages.length > 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
                     <p class="text-sm">End of results</p>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
@@ -479,7 +520,7 @@
     <template #footer>
       <div class="flex flex-col gap-3 w-full">
         <!-- Controls Row -->
-        <div class="flex justify-between items-center w-full">
+        <div class="flex flex-wrap justify-between items-center gap-2 w-full">
           <!-- Left side: Close and Back buttons -->
           <div class="flex gap-2">
             <UButton variant="outline" @click="closeModal" :disabled="isSubmitting"> Close </UButton>
@@ -487,7 +528,7 @@
           </div>
 
           <!-- Right side: Search Actions and Create Jobs -->
-          <div class="flex gap-2">
+          <div class="flex flex-wrap justify-end gap-2">
             <!-- Search Actions for Subject First workflow -->
             <template v-if="workflowMode === 'subject-first' && !selectedSubject">
               <UButton v-if="subjectHasSearched || searchStore.subjectSearch.selectedTags.length > 0" color="gray" variant="outline" size="sm" icon="i-heroicons-x-mark" @click="clearSubjectFilters" :disabled="isSubmitting"> Clear </UButton>
@@ -514,13 +555,13 @@
 
             <!-- Search Actions for FS workflow (dest-image selection) -->
             <template v-else-if="selectedJobType === 'fs' && fsSelectedSubject">
-              <UButton v-if="destImageHasSearched || searchStore.videoSearch.selectedTags.length > 0" color="gray" variant="outline" size="sm" icon="i-heroicons-x-mark" @click="clearDestImageFilters" :disabled="isSubmitting"> Clear </UButton>
-              <UButton v-if="destImageHasSearched" color="gray" variant="outline" size="sm" icon="i-heroicons-arrow-path" @click="reshuffleDestImages" :disabled="isSubmitting || destImageLoading"> Shuffle </UButton>
-              <UButton color="primary" size="sm" icon="i-heroicons-magnifying-glass" @click="searchDestImages" :disabled="isSubmitting"> Search Dest Images </UButton>
+              <UButton v-if="destImageHasSearched || searchStore.videoSearch.selectedTags.length > 0" color="gray" variant="outline" size="sm" icon="i-heroicons-x-mark" class="whitespace-nowrap" @click="clearDestImageFilters" :disabled="isSubmitting"> Clear </UButton>
+              <UButton v-if="destImageHasSearched" color="gray" variant="outline" size="sm" icon="i-heroicons-arrow-path" class="whitespace-nowrap" @click="reshuffleDestImages" :disabled="isSubmitting || destImageLoading"> Shuffle </UButton>
+              <UButton color="primary" size="sm" icon="i-heroicons-magnifying-glass" class="whitespace-nowrap" @click="searchDestImages" :disabled="isSubmitting"> Search </UButton>
             </template>
 
             <!-- Create Jobs Action -->
-            <UButton v-if="!presetEditMode && (workflowMode || selectedJobType === 'i2v' || selectedJobType === 'fs' || selectedJobType === 'tagging') && canCreateJobs" type="button" :loading="isSubmitting" :disabled="!canCreateJobs" size="sm" color="primary" @click="createBatchJobs">
+            <UButton v-if="!presetEditMode && (workflowMode || selectedJobType === 'i2v' || selectedJobType === 't2v' || selectedJobType === 'fs' || selectedJobType === 'tagging') && canCreateJobs" type="button" :loading="isSubmitting" :disabled="!canCreateJobs" size="sm" color="primary" @click="createBatchJobs">
               {{ submitButtonLabel }}
             </UButton>
           </div>
@@ -540,7 +581,7 @@ import SubjectSearchFilters from '~/components/SubjectSearchFilters.vue'
 import SourceImageGrid from '~/components/SourceImageGrid.vue'
 
 // Use our responsive breakpoints composable
-const { isMobile } = useBreakpoints()
+const { isDesktop } = useBreakpoints()
 
 // Props
 const props = defineProps({
@@ -655,6 +696,42 @@ const i2vParams = ref({
 })
 const isSubmitting = ref(false)
 
+// T2V workflow state. Same param shape as i2v (I2vJobForm edits both); width/
+// height ride alongside since the wan T2V workflow starts from an empty latent.
+const t2vParams = ref({
+  prompt: '',
+  negative_prompt: 'blurry, distorted, low quality, watermark, text, deformed',
+  length: 81,
+  lora_1_high: null,
+  lora_1_low: null,
+  lora_1_high_strength: 1,
+  lora_1_low_strength: 1,
+  lora_2_high: null,
+  lora_2_low: null,
+  lora_2_high_strength: 1,
+  lora_2_low_strength: 1,
+  lora_3_high: null,
+  lora_3_low: null,
+  lora_3_high_strength: 1,
+  lora_3_low_strength: 1,
+  lora_4_high: null,
+  lora_4_low: null,
+  lora_4_high_strength: 1,
+  lora_4_low_strength: 1,
+  lora_5_high: null,
+  lora_5_low: null,
+  lora_5_high_strength: 1,
+  lora_5_low_strength: 1,
+})
+const t2vResolution = ref('832x480')
+const t2vResolutionOptions = [
+  { label: '832 × 480 (landscape)', value: '832x480' },
+  { label: '480 × 832 (portrait)', value: '480x832' },
+  { label: '1280 × 720 (landscape HD)', value: '1280x720' },
+  { label: '720 × 1280 (portrait HD)', value: '720x1280' },
+]
+const t2vJobCount = ref(1)
+
 // When true, the modal is in "edit preset" mode: subject/image selection is
 // skipped, only the i2v form is shown, and the only meaningful action is the
 // Update button inside the form (which PUTs to /api/presets/{id}).
@@ -707,6 +784,11 @@ const destImageHasMoreResults = ref(false)
 const destImageIsLoadingMore = ref(false)
 const destImageScrollObserver = ref(null)
 const destImageScrollSentinel = ref(null)
+// Mobile/tablet (<lg) collapse state for the two stacked panels in FS step 2.
+// Collapsing one lets the other expand to the full available height. Ignored on
+// lg+ where the panels sit side-by-side in a grid.
+const fsFacesOpen = ref(true)
+const fsDestOpen = ref(true)
 // Stable random seed for paginated dest-image search — pinned per filter-change
 // so `ORDER BY hashtext(uuid || seed)` is consistent across pages and doesn't
 // surface duplicates as the user scrolls.
@@ -769,6 +851,9 @@ const canCreateJobs = computed(() => {
     }
     return i2vSelectedImages.value.length > 0 && i2vParams.value.prompt.trim() !== ''
   }
+  if (selectedJobType.value === 't2v') {
+    return t2vParams.value.prompt.trim() !== '' && t2vJobCount.value >= 1
+  }
   if (selectedJobType.value === 'fs') {
     return fsSelectedSubject.value && fsSelectedFaces.value.length > 0 && fsSelectedDestImages.value.length > 0
   }
@@ -788,6 +873,9 @@ const canCreateJobs = computed(() => {
 const jobCount = computed(() => {
   if (selectedJobType.value === 'i2v') {
     return i2vSelectedImages.value.length
+  }
+  if (selectedJobType.value === 't2v') {
+    return t2vJobCount.value || 0
   }
   if (selectedJobType.value === 'fs') {
     return fsSelectedFaces.value.length * fsSelectedDestImages.value.length
@@ -851,6 +939,13 @@ const startI2vWorkflow = () => {
   resetSelections()
   fetchLoras()
   nextTick(() => searchSubjects())
+}
+
+const startT2vWorkflow = () => {
+  selectedJobType.value = 't2v'
+  form.value.job_type = 't2v'
+  resetSelections()
+  fetchLoras()
 }
 
 const fetchLoras = async () => {
@@ -1411,6 +1506,9 @@ const resetSelections = () => {
   i2vSourceRatings.value = []
   i2vSourceShowUnrated.value = false
 
+  // Clear t2v workflow (params keep their defaults; count resets to 1)
+  t2vJobCount.value = 1
+
   // Clear fs workflow
   fsSelectedSubject.value = null
   fsSelectedFaces.value = []
@@ -1965,6 +2063,31 @@ const createBatchJobs = async () => {
         } catch (error) {
           errorCount++
           errors.push(`${img.filename || img.uuid}: ${error.message}`)
+        }
+      }
+    } else if (selectedJobType.value === 't2v') {
+      // Create N identical t2v jobs (no source media). Width/height come from
+      // the resolution picker; the worker randomizes the seed per job.
+      const [width, height] = t2vResolution.value.split('x').map(Number)
+      const t2vParameters = {
+        ...applyLoraDisableOverrides(t2vParams.value),
+        width,
+        height,
+      }
+      for (let i = 0; i < t2vJobCount.value; i++) {
+        try {
+          await useApiFetch('jobs/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: {
+              job_type: 't2v',
+              parameters: t2vParameters
+            }
+          })
+          successCount++
+        } catch (error) {
+          errorCount++
+          errors.push(error?.data?.statusMessage || error?.message || 'Unknown error')
         }
       }
     } else if (selectedJobType.value === 'tagging') {

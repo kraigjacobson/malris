@@ -7,8 +7,23 @@
           <div class="flex items-center justify-between">
             <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
             <div class="flex items-center gap-1 sm:gap-2">
-              <!-- Preset Filter for continuous processing (left of pick order toggle) -->
-              <div class="hidden sm:block w-44" title="Limit continuous processing to a single preset">
+              <!-- Subject Filter for continuous processing (scopes Process All / Process N to one subject across all job types) -->
+              <div class="hidden sm:block w-48" title="Limit continuous processing to a single subject">
+                <UInputMenu
+                  v-model="processingSubject"
+                  v-model:search-term="processingSubjectSearch"
+                  :items="processingSubjectItemsWithAll"
+                  placeholder="All subjects"
+                  class="w-full"
+                  by="value"
+                  option-attribute="label"
+                  searchable
+                  @update:model-value="onProcessingSubjectSelect"
+                />
+              </div>
+
+              <!-- Preset Filter for continuous processing (i2v only — left of pick order toggle) -->
+              <div v-if="processingJobType === 'i2v'" class="hidden sm:block w-44" title="Limit continuous processing to a single preset">
                 <PresetFilter
                   v-model="presetFilterValue"
                   job-type="i2v"
@@ -108,9 +123,22 @@
             </div>
           </div>
 
-          <!-- Mobile-only second row: Preset filter + Pick order toggle -->
+          <!-- Mobile-only second row: Subject filter + Preset filter + Pick order toggle -->
           <div class="flex sm:hidden items-center gap-2">
-            <div class="flex-1 min-w-0" title="Limit continuous processing to a single preset">
+            <div class="flex-1 min-w-0" title="Limit continuous processing to a single subject">
+              <UInputMenu
+                v-model="processingSubject"
+                v-model:search-term="processingSubjectSearch"
+                :items="processingSubjectItemsWithAll"
+                placeholder="All subjects"
+                class="w-full"
+                by="value"
+                option-attribute="label"
+                searchable
+                @update:model-value="onProcessingSubjectSelect"
+              />
+            </div>
+            <div v-if="processingJobType === 'i2v'" class="flex-1 min-w-0" title="Limit continuous processing to a single preset">
               <PresetFilter
                 v-model="presetFilterValue"
                 job-type="i2v"
@@ -731,6 +759,7 @@ const sourceTypeOptions = [
   { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' },
   { value: 'fs', label: 'Faceswap I2I' },
   { value: 'i2v', label: 'Wan I2V' },
+  { value: 't2v', label: 'Wan T2V' },
   { value: 'tagging', label: 'Tagging' },
   { value: 'vid', label: '— Legacy: video sub-jobs' },
   { value: 'source', label: '— Legacy: source sub-jobs' }
@@ -751,13 +780,73 @@ const processingJobType = ref('all')
 const processingJobTypeOptions = [
   { value: 'all', label: 'All job types' },
   { value: 'i2v', label: 'Wan I2V' },
+  { value: 't2v', label: 'Wan T2V' },
   { value: 'fs', label: 'Faceswap I2I' },
-  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' }
+  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' },
+  // train_lora rides the same picker but dispatches to the ktrain trainer and
+  // skips the ComfyUI health gate (see jobProcessingService: 'train_lora' scope).
+  { value: 'train_lora', label: 'LoRA Training' }
 ]
 // Effective source_type sent to the picker: explicit header choice wins,
 // otherwise inherit whatever the subject-card filter is set to.
 const effectiveProcessingSourceType = () =>
   processingJobType.value !== 'all' ? processingJobType.value : selectedSourceTypeFilter.value
+
+// The i2v preset filter only makes sense for Wan I2V jobs, so the dropdown is
+// only shown when that job type is selected. Clear any pinned preset when the
+// user switches away so a hidden filter can't keep silently scoping the picker.
+watch(processingJobType, (jt) => {
+  if (jt !== 'i2v' && presetFilterValue.value) {
+    presetFilterValue.value = null
+  }
+})
+
+// Processing subject filter — pins continuous processing (Process All / Process
+// N) to a single subject across ALL job types. Backed by the same WebSocket-
+// driven state as pickOrder/presetFilter, so it syncs across tabs/devices.
+// Independent of the Subject Filter card below (which only filters the list).
+const { selectedSubject: processingSubject, searchQuery: processingSubjectSearch, subjectItems: processingSubjectItems } = useSubjects()
+
+// Prepend an explicit "All subjects" entry so the filter can be cleared from
+// the dropdown itself (selecting it sends subject_filter: 'all'). Without this
+// there's no in-menu way to un-pin a subject. Hidden while the user is actively
+// searching so it doesn't clutter typed results.
+const processingSubjectItemsWithAll = computed(() => {
+  const base = processingSubjectItems.value
+  if (processingSubjectSearch.value && processingSubjectSearch.value.trim()) return base
+  return [{ value: 'all', label: 'All subjects' }, ...base]
+})
+
+// Keep the dropdown selection in sync with the backend subjectFilter uuid
+// (initial sync + cross-tab changes). Re-resolves the label once the subject
+// cache has loaded.
+watch(
+  () => [jobsStore.processingState?.subjectFilter, processingSubjectItems.value.length],
+  ([uuid]) => {
+    if (!uuid) {
+      if (processingSubject.value) processingSubject.value = null
+      return
+    }
+    if (processingSubject.value?.value === uuid) return
+    const match = processingSubjectItems.value.find(i => i.value === uuid)
+    processingSubject.value = match || { value: uuid, label: '…' }
+  },
+  { immediate: true }
+)
+
+const onProcessingSubjectSelect = (selected) => {
+  const next = selected?.value ?? 'all'
+  if (!jobsStore.wsConnection || !jobsStore.wsConnected) {
+    useToast().add({
+      title: 'Not connected',
+      description: 'WebSocket is disconnected — cannot change subject filter',
+      color: 'warning',
+      duration: 3000,
+    })
+    return
+  }
+  jobsStore.wsConnection.send(JSON.stringify({ type: 'set_subject_filter', subject_filter: next }))
+}
 
 // Star rating filter state - default to empty (show only unrated)
 const selectedRatings = ref([])
