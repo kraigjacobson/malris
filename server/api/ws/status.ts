@@ -5,7 +5,7 @@
  */
 import { logger } from '~/server/utils/logger'
 import { addWebSocketClient, getCurrentStatus } from '~/server/services/systemStatusManager'
-import { startSingleJob, startContinuousProcessing, stopAllProcessing, getProcessingStatus, setPickOrder, setPresetFilter } from '~/server/services/jobProcessingService'
+import { startSingleJob, startContinuousProcessing, stopAllProcessing, getProcessingStatus, setPickOrder, setPresetFilter, setSubjectFilter } from '~/server/services/jobProcessingService'
 
 export default defineWebSocketHandler({
   open(peer) {
@@ -29,6 +29,7 @@ export default defineWebSocketHandler({
           sourceType: processingStatus.sourceType,
           pickOrder: processingStatus.pickOrder,
           presetFilter: processingStatus.presetFilter,
+          subjectFilter: processingStatus.subjectFilter,
           jobLimit: processingStatus.jobLimit,
           jobsProcessedCount: processingStatus.jobsProcessedCount
         }
@@ -85,6 +86,10 @@ export default defineWebSocketHandler({
           await handleSetPresetFilter(peer, command.preset_filter)
           break
 
+        case 'set_subject_filter':
+          await handleSetSubjectFilter(peer, command.subject_filter)
+          break
+
         default:
           logger.warn('⚠️ Unknown WebSocket command type:', command.type)
           peer.send(JSON.stringify({
@@ -114,7 +119,7 @@ export default defineWebSocketHandler({
 })
 
 // Command Handlers
-async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' = 'all', jobLimit: number | null = null) {
+async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' | 't2v' = 'all', jobLimit: number | null = null) {
   try {
     const result = startContinuousProcessing(sourceType, jobLimit)
 
@@ -157,7 +162,7 @@ async function handleStartContinuous(peer: any, sourceType: 'all' | 'source' | '
   }
 }
 
-async function handleStartSingle(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' = 'all') {
+async function handleStartSingle(peer: any, sourceType: 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' | 't2v' = 'all') {
   try {
     // Note: startSingleJob is async, but we acknowledge immediately
     // The actual job processing happens in background
@@ -304,6 +309,33 @@ async function handleSetPresetFilter(peer: any, presetFilter: unknown) {
   }
 }
 
+async function handleSetSubjectFilter(peer: any, subjectFilter: unknown) {
+  try {
+    // Accept null/undefined/'all' as "no filter"; otherwise expect a UUID string.
+    let next: string | null = null
+    if (subjectFilter && subjectFilter !== 'all') {
+      if (typeof subjectFilter !== 'string') {
+        throw new Error(`Invalid subject_filter: ${subjectFilter}`)
+      }
+      next = subjectFilter
+    }
+    setSubjectFilter(next)
+    peer.send(JSON.stringify({
+      type: 'command_ack',
+      data: { command: 'set_subject_filter', success: true, subjectFilter: next },
+      timestamp: new Date().toISOString()
+    }))
+    logger.info(`✅ subjectFilter set to ${next ?? 'all'} via WebSocket`)
+  } catch (error: any) {
+    logger.error('❌ Failed to set subjectFilter:', error)
+    peer.send(JSON.stringify({
+      type: 'command_error',
+      data: { command: 'set_subject_filter', success: false, error: error.message || 'Failed to set subject filter' },
+      timestamp: new Date().toISOString()
+    }))
+  }
+}
+
 async function handleRequestStateSync(peer: any) {
   try {
     const currentStatus = getCurrentStatus()
@@ -320,6 +352,7 @@ async function handleRequestStateSync(peer: any) {
           sourceType: processingStatus.sourceType,
           pickOrder: processingStatus.pickOrder,
           presetFilter: processingStatus.presetFilter,
+          subjectFilter: processingStatus.subjectFilter,
           jobLimit: processingStatus.jobLimit,
           jobsProcessedCount: processingStatus.jobsProcessedCount
         }

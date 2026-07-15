@@ -212,6 +212,22 @@
                       <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Length:</span>
                       <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.parameters.length }} frames (~{{ (job.parameters.length / 16).toFixed(1) }}s)</span>
                     </div>
+                    <!-- Output dimensions. Editable for a queued t2v job so the size
+                         can be switched before it runs; read-only otherwise. -->
+                    <div v-if="job.job_type === 't2v' && job.status === 'queued'" class="flex flex-col space-y-1">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution</span>
+                      <USelect
+                        :model-value="currentResolution"
+                        :items="t2vResolutionOptions"
+                        :loading="savingDimensions"
+                        class="w-56"
+                        @update:model-value="saveDimensions"
+                      />
+                    </div>
+                    <div v-else-if="job.parameters.width && job.parameters.height" class="flex gap-2">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution:</span>
+                      <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.parameters.width }} × {{ job.parameters.height }}</span>
+                    </div>
                     <div v-for="slot in 3" :key="slot">
                       <div v-if="job.parameters[`lora_${slot}_high`] || job.parameters[`lora_${slot}_low`]" class="flex flex-col space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded">
                         <span class="text-xs font-medium text-gray-700 dark:text-gray-300">LoRA {{ slot }}</span>
@@ -252,7 +268,7 @@
             </UButton>
           </div>
         </div>
-        <div v-if="job && !isMobile" class="flex gap-2">
+        <div v-if="job" class="flex gap-2">
           <UButton v-if="job && ['queued', 'active', 'need_input'].includes(job.status)" color="error" variant="outline" icon="i-heroicons-x-mark" size="lg" @click="$emit('cancel-job')" class="h-12"><span class="hidden sm:inline">Cancel</span></UButton>
           <UButton v-if="job && ['canceled', 'failed', 'completed', 'need_input'].includes(job.status)" color="primary" variant="outline" icon="i-heroicons-arrow-path" size="lg" @click="$emit('retry-job')" class="h-12"><span class="hidden sm:inline">Retry</span></UButton>
         </div>
@@ -457,6 +473,46 @@ const tabItems = computed(() => [
   { label: 'Details', value: 'details' }
 ])
 
+// --- Editable output dimensions for a queued t2v job ------------------------
+// t2v width/height live on the job's own parameters, so a single queued job can
+// be re-dimensioned before it runs without touching its preset or siblings.
+const t2vResolutionOptions = [
+  { label: '832 × 480 (landscape)', value: '832x480' },
+  { label: '480 × 832 (portrait)', value: '480x832' },
+  { label: '1280 × 720 (landscape HD)', value: '1280x720' },
+  { label: '720 × 1280 (portrait HD)', value: '720x1280' }
+]
+const savingDimensions = ref(false)
+const currentResolution = computed(() => {
+  const w = props.job?.parameters?.width ?? 832
+  const h = props.job?.parameters?.height ?? 480
+  return `${w}x${h}`
+})
+const saveDimensions = async value => {
+  if (!props.job?.id || savingDimensions.value) return
+  const [width, height] = String(value).split('x').map(Number)
+  if (!width || !height) return
+  savingDimensions.value = true
+  try {
+    await useApiFetch(`jobs/${props.job.id}/dimensions`, {
+      method: 'POST',
+      body: { width, height }
+    })
+    // Refetch this job so the resolved parameters (and the picker) reflect it.
+    emit('job-changed', props.job)
+    useToast().add({ title: 'Dimensions updated', description: `${width} × ${height}`, color: 'success', duration: 2000 })
+  } catch (error) {
+    useToast().add({
+      title: 'Dimensions update failed',
+      description: error.data?.statusMessage || error.message || 'Could not update dimensions',
+      color: 'error',
+      duration: 3000
+    })
+  } finally {
+    savingDimensions.value = false
+  }
+}
+
 // Status color helper
 const getStatusColor = status => {
   switch (status?.toLowerCase()) {
@@ -570,7 +626,13 @@ onUnmounted(() => {
 
 // Reset video states when modal opens/closes
 watch(isOpen, newValue => {
-  if (!newValue) {
+  if (newValue) {
+    // On open, pick a sensible default tab. Queued jobs have no output/dest media
+    // yet — the media tab would just show the subject image — so start on Details.
+    currentTab.value = props.job?.status === 'queued'
+      ? 'details'
+      : (displayImages.value ? 'media' : 'details')
+  } else {
     showingOutputVideo.value = true
     selectedSlotKey.value = null
     isCropping.value = false

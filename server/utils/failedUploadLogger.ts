@@ -6,6 +6,11 @@ import { logger } from './logger'
  * Files are stored in /app/logs/failed-uploads/ which is accessible on the host via volume mount
  */
 export async function logFailedUpload(filename: string, error: string): Promise<void> {
+  // File logging is opt-in (LOG_TO_FILE=1) — by default nothing is persisted to disk.
+  if (process.env.LOG_TO_FILE !== '1') {
+    logger.warn(`Failed upload (not persisted, file logging disabled): ${filename} - ${error}`)
+    return
+  }
   try {
     logger.info(`🔍 logFailedUpload called with filename: "${filename}", error: "${error}"`)
     

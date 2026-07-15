@@ -66,7 +66,6 @@ export default defineEventHandler(async event => {
     if (contentType.includes('application/json')) {
       // Handle JSON body for tagging jobs
       const body = await readBody(event)
-      logger.info(`🏷️ JSON body received: ${JSON.stringify(body)}`)
 
       jobType = body.job_type
       purpose = body.purpose || 'output'

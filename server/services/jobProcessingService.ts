@@ -26,13 +26,15 @@ let jobsProcessedCount = 0
 
 // Preferred source type for job processing
 // What the continuous picker considers eligible.
-// 'all':          any job (test → vid → fs → i2v priority chain)
+// 'all':          any job (test → vid → fs → i2v → t2v priority chain)
 // 'source':       vid_faceswap sub-mode where sourceMediaUuid IS NULL
 // 'vid':          vid_faceswap sub-mode where sourceMediaUuid IS NOT NULL
 // 'vid_faceswap': any vid_faceswap job (source or vid sub-mode)
 // 'fs':           single-image face-swap jobs only
 // 'i2v':          wan i2v jobs only
-type PreferredSourceType = 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v'
+// 't2v':          wan t2v (text-to-video, no input image) jobs only
+// 'train_lora':   LoRA training runs only (dispatched to the ktrain trainer)
+type PreferredSourceType = 'all' | 'source' | 'vid' | 'vid_faceswap' | 'fs' | 'i2v' | 't2v' | 'train_lora'
 let preferredSourceType: PreferredSourceType = 'all'
 
 // Pick order for i2v jobs.
@@ -48,6 +50,16 @@ let pickOrder: 'chronological' | 'random' = 'random'
 //       the queue empties — continuous mode just stops, same as if there
 //       were no jobs of any type.
 let presetFilter: string | null = null
+
+// Optional subject filter for continuous processing. Unlike presetFilter
+// (i2v-only), this scopes EVERY job type — only queued jobs whose subject_uuid
+// matches are eligible. null: any subject (current behavior). No fallback when
+// the scoped queue empties — continuous mode just stops.
+let subjectFilter: string | null = null
+
+// Extra WHERE conditions for the subject scope, spread into each picker's
+// and(...). Returns [] when no subject is pinned so the queries are unchanged.
+const subjectConds = () => (subjectFilter ? [eq(jobs.subjectUuid, subjectFilter)] : [])
 
 // In-memory priority queue. Jobs in this list (in order) are checked first by
 // the picker — they jump the normal source-type ordering. Stale IDs (completed,
@@ -104,6 +116,19 @@ export function setPresetFilter(filter: string | null) {
   broadcastProcessingStateChange()
 }
 
+export function getSubjectFilter() {
+  return subjectFilter
+}
+
+export function setSubjectFilter(filter: string | null) {
+  // Accept null/empty/'all' as "no filter".
+  const next = filter && filter !== 'all' ? filter : null
+  if (subjectFilter === next) return
+  subjectFilter = next
+  logger.info(`👤 [PROCESSING] subjectFilter set to ${subjectFilter ?? 'all'}`)
+  broadcastProcessingStateChange()
+}
+
 // Helper to broadcast processing state changes to WebSocket clients
 function broadcastProcessingStateChange() {
   const isActive = continuousMode || isCurrentlyProcessing
@@ -116,12 +141,13 @@ function broadcastProcessingStateChange() {
       sourceType: preferredSourceType,
       pickOrder,
       presetFilter,
+      subjectFilter,
       jobLimit,
       jobsProcessedCount
     },
     timestamp: new Date().toISOString()
   })
-  logger.info(`📢 [PROCESSING] Broadcasted state change: continuousMode=${continuousMode}, isActive=${isActive}, sourceType=${preferredSourceType}, pickOrder=${pickOrder}, presetFilter=${presetFilter ?? 'all'}, jobLimit=${jobLimit}, processed=${jobsProcessedCount}`)
+  logger.info(`📢 [PROCESSING] Broadcasted state change: continuousMode=${continuousMode}, isActive=${isActive}, sourceType=${preferredSourceType}, pickOrder=${pickOrder}, presetFilter=${presetFilter ?? 'all'}, subjectFilter=${subjectFilter ?? 'all'}, jobLimit=${jobLimit}, processed=${jobsProcessedCount}`)
 }
 
 export interface ProcessNextJobResult {
@@ -169,6 +195,7 @@ export function getProcessingStatus() {
     sourceType: preferredSourceType,
     pickOrder,
     presetFilter,
+    subjectFilter,
     jobLimit,
     jobsProcessedCount
   }
@@ -191,14 +218,14 @@ export function getCachedWorkerHealth() {
 // We're now importing checkWorkerHealth from systemStatusManager.ts
 // The zombie cleanup is handled by marking all other active jobs as failed
 
-// Pick the next i2v job to run.
-// chronological: most recently-updated queued i2v job (legacy behavior).
-// random: prefer a queued i2v job that shares a preset with the most recently
-// run i2v job (active/completed) so LoRAs don't have to reload; otherwise
-// fall back to any random queued i2v job.
+// Pick the next wan job (i2v or t2v) to run.
+// chronological: most recently-updated queued job (legacy behavior).
+// random: prefer a queued job that shares a preset with the most recently
+// run job of the same type (active/completed) so LoRAs don't have to reload;
+// otherwise fall back to any random queued job of that type.
 // presetFilter pins the pool to a single preset and short-circuits the
 // carryover/fallback logic — when that preset's queue is empty, return empty.
-async function pickI2vJob(db: ReturnType<typeof getDb>, order: 'chronological' | 'random') {
+async function pickWanJob(db: ReturnType<typeof getDb>, order: 'chronological' | 'random', wanJobType: 'i2v' | 't2v' = 'i2v') {
   const selectCols = {
     id: jobs.id,
     jobType: jobs.jobType,
@@ -214,37 +241,38 @@ async function pickI2vJob(db: ReturnType<typeof getDb>, order: 'chronological' |
   // Preset filter pinned: only consider jobs in that preset, no fallback.
   if (presetFilter) {
     const orderBy = order === 'chronological' ? desc(jobs.updatedAt) : sql`RANDOM()`
-    logger.info(`🎬 Processing i2v job (${order}, preset-filtered=${presetFilter})`)
+    logger.info(`🎬 Processing ${wanJobType} job (${order}, preset-filtered=${presetFilter})`)
     return db
       .select(selectCols)
       .from(jobs)
       .where(and(
         eq(jobs.status, 'queued'),
-        eq(jobs.jobType, 'i2v'),
+        eq(jobs.jobType, wanJobType),
         eq(jobs.presetId, presetFilter),
+        ...subjectConds(),
       ))
       .orderBy(orderBy)
       .limit(1)
   }
 
   if (order === 'chronological') {
-    logger.info('🎬 Processing i2v job (chronological)')
+    logger.info(`🎬 Processing ${wanJobType} job (chronological)`)
     return db
       .select(selectCols)
       .from(jobs)
-      .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'i2v')))
+      .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, wanJobType), ...subjectConds()))
       .orderBy(desc(jobs.updatedAt))
       .limit(1)
   }
 
-  // Random mode: find the preset_id of the most recent non-queued i2v job (the
-  // one currently loaded on the worker, or the last thing it ran) so we can
-  // prefer jobs that reuse the same LoRAs.
+  // Random mode: find the preset_id of the most recent non-queued job of this
+  // type (the one currently loaded on the worker, or the last thing it ran) so
+  // we can prefer jobs that reuse the same LoRAs.
   const recentRun = await db
     .select({ presetId: jobs.presetId })
     .from(jobs)
     .where(and(
-      eq(jobs.jobType, 'i2v'),
+      eq(jobs.jobType, wanJobType),
       sql`${jobs.status} IN ('active', 'completed')`,
       sql`${jobs.presetId} IS NOT NULL`,
     ))
@@ -259,31 +287,34 @@ async function pickI2vJob(db: ReturnType<typeof getDb>, order: 'chronological' |
       .from(jobs)
       .where(and(
         eq(jobs.status, 'queued'),
-        eq(jobs.jobType, 'i2v'),
+        eq(jobs.jobType, wanJobType),
         eq(jobs.presetId, lastPresetId),
+        ...subjectConds(),
       ))
       .orderBy(sql`RANDOM()`)
       .limit(1)
 
     if (matchingJobs.length > 0) {
-      logger.info(`🎬 Processing i2v job (random, reusing preset ${lastPresetId})`)
+      logger.info(`🎬 Processing ${wanJobType} job (random, reusing preset ${lastPresetId})`)
       return matchingJobs
     }
   }
 
-  logger.info('🎬 Processing i2v job (random, no preset carryover)')
+  logger.info(`🎬 Processing ${wanJobType} job (random, no preset carryover)`)
   return db
     .select(selectCols)
     .from(jobs)
-    .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'i2v')))
+    .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, wanJobType), ...subjectConds()))
     .orderBy(sql`RANDOM()`)
     .limit(1)
 }
 
-// Pick the next fs (single-image face-swap) job to run. fs jobs are quick and
-// have no preset/LoRA carryover concerns, so this is plain FIFO by created_at.
-async function pickFsJob(db: ReturnType<typeof getDb>) {
-  logger.info('🎭 Processing fs job (FIFO)')
+// Pick the next fs (single-image face-swap) job to run. fs jobs have no
+// preset/LoRA carryover concerns, so ordering is just chronological by
+// created_at or random, per the pickOrder toggle.
+async function pickFsJob(db: ReturnType<typeof getDb>, order: 'chronological' | 'random') {
+  const orderBy = order === 'chronological' ? jobs.createdAt : sql`RANDOM()`
+  logger.info(`🎭 Processing fs job (${order})`)
   return db
     .select({
       id: jobs.id,
@@ -297,8 +328,8 @@ async function pickFsJob(db: ReturnType<typeof getDb>) {
       updatedAt: jobs.updatedAt,
     })
     .from(jobs)
-    .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'fs')))
-    .orderBy(jobs.createdAt)
+    .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'fs'), ...subjectConds()))
+    .orderBy(orderBy)
     .limit(1)
 }
 
@@ -318,25 +349,30 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
   try {
     const db = getDb()
 
-    // Real-time health check
-    const realTimeHealth = await checkWorkerHealth()
-    if (!realTimeHealth.healthy) {
-      return {
-        success: false,
-        message: 'ComfyUI worker is not healthy',
-        skip: true
+    // Real-time health check. Training jobs go to the ktrain trainer, not the
+    // ComfyUI workers, so the train_lora scope skips this gate (the trainer's
+    // own reachability is enforced at dispatch — unreachable leaves the job
+    // queued, same as the other workers).
+    if (preferredSourceType !== 'train_lora') {
+      const realTimeHealth = await checkWorkerHealth()
+      if (!realTimeHealth.healthy) {
+        return {
+          success: false,
+          message: 'ComfyUI worker is not healthy',
+          skip: true
+        }
       }
-    }
 
-    if (!realTimeHealth.available) {
-      return {
-        success: false,
-        message: 'ComfyUI worker queue is busy',
-        skip: true
+      if (!realTimeHealth.available) {
+        return {
+          success: false,
+          message: 'ComfyUI worker queue is busy',
+          skip: true
+        }
       }
-    }
 
-    logger.info(`✅ ComfyUI worker is healthy and idle - proceeding with job processing (preferredSourceType: ${preferredSourceType})`)
+      logger.info(`✅ ComfyUI worker is healthy and idle - proceeding with job processing (preferredSourceType: ${preferredSourceType})`)
+    }
 
     // SINGLE-ACTIVE GUARD: never start a new job while one is already active.
     // We hold the isCurrentlyProcessing lock for the whole function and this is
@@ -364,15 +400,16 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     if (presetFilter) {
       i2vConditions.push(eq(jobs.presetId, presetFilter))
     }
-    const [testJobCount, videoJobCount, i2vJobCount, fsJobCount] = await Promise.all([
+    i2vConditions.push(...subjectConds())
+    const [testJobCount, videoJobCount, i2vJobCount, fsJobCount, t2vJobCount, trainLoraJobCount] = await Promise.all([
       db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`)),
+        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`, ...subjectConds())),
       db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`)),
+        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`, ...subjectConds())),
       db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
@@ -380,13 +417,23 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
-        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'fs')))
+        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'fs'), ...subjectConds())),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 't2v'), ...subjectConds())),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'train_lora'), ...subjectConds()))
     ])
 
     const testCount = testJobCount[0]?.count || 0
     const videoCount = videoJobCount[0]?.count || 0
     const i2vCount = i2vJobCount[0]?.count || 0
     const fsCount = fsJobCount[0]?.count || 0
+    const t2vCount = t2vJobCount[0]?.count || 0
+    const trainLoraCount = trainLoraJobCount[0]?.count || 0
 
     // Compute the scope-aware "remaining" count so continuous mode stops when
     // the *scoped* queue empties — not when ALL queues happen to be empty.
@@ -398,7 +445,9 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       case 'vid_faceswap': scopedRemaining = testCount + videoCount; break
       case 'fs':           scopedRemaining = fsCount; break
       case 'i2v':          scopedRemaining = i2vCount; break
-      default:             scopedRemaining = testCount + videoCount + i2vCount + fsCount
+      case 't2v':          scopedRemaining = t2vCount; break
+      case 'train_lora':   scopedRemaining = trainLoraCount; break
+      default:             scopedRemaining = testCount + videoCount + i2vCount + fsCount + t2vCount + trainLoraCount
     }
 
     if (scopedRemaining === 0) {
@@ -432,6 +481,8 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           case 'vid_faceswap': return jobType === 'vid_faceswap'
           case 'fs':           return jobType === 'fs'
           case 'i2v':          return jobType === 'i2v'
+          case 't2v':          return jobType === 't2v'
+          case 'train_lora':   return jobType === 'train_lora'
           default:             return true
         }
       }
@@ -475,6 +526,11 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           keep.push(id)
           continue
         }
+        if (subjectFilter && c.subjectUuid !== subjectFilter) {
+          // Out of the pinned subject scope — keep for later (filter might change)
+          keep.push(id)
+          continue
+        }
 
         logger.info(`⭐ PRIORITY pick ${id} (jobType=${c.jobType})`)
         // Strip the status column before handing off — downstream code expects
@@ -514,7 +570,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`, ...subjectConds()))
           .orderBy(desc(jobs.updatedAt))
           .limit(1)
         actualType = 'source'
@@ -535,7 +591,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`, ...subjectConds()))
           .orderBy(orderBy)
           .limit(1)
         actualType = 'vid'
@@ -558,7 +614,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`, ...subjectConds()))
           .orderBy(orderBy)
           .limit(1)
         actualType = 'vid'
@@ -578,7 +634,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`, ...subjectConds()))
           .orderBy(desc(jobs.updatedAt))
           .limit(1)
         actualType = 'source'
@@ -601,7 +657,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`, ...subjectConds()))
           .orderBy(desc(jobs.updatedAt))
           .limit(1)
         actualType = 'source'
@@ -621,7 +677,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`, ...subjectConds()))
           .orderBy(orderBy)
           .limit(1)
         actualType = 'vid'
@@ -630,17 +686,89 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       // Scoped to single-image face-swap (i2i) jobs only.
       if (fsCount > 0) {
         logger.info(`🎭 fs scope: processing fs job (${fsCount} available)`)
-        queuedJobs = await pickFsJob(db)
+        queuedJobs = await pickFsJob(db, pickOrder)
       }
     } else if (preferredSourceType === 'i2v') {
-      // Scoped to wan i2v jobs only (honors the existing presetFilter inside pickI2vJob).
+      // Scoped to wan i2v jobs only (honors the existing presetFilter inside pickWanJob).
       if (i2vCount > 0) {
         logger.info(`🎬 i2v scope: processing i2v job (${i2vCount} available)`)
-        queuedJobs = await pickI2vJob(db, pickOrder)
+        queuedJobs = await pickWanJob(db, pickOrder, 'i2v')
+      }
+    } else if (preferredSourceType === 't2v') {
+      // Scoped to wan t2v (text-to-video) jobs only.
+      if (t2vCount > 0) {
+        logger.info(`🎬 t2v scope: processing t2v job (${t2vCount} available)`)
+        queuedJobs = await pickWanJob(db, pickOrder, 't2v')
+      }
+    } else if (preferredSourceType === 'train_lora') {
+      // Scoped to LoRA training runs only — oldest first (FIFO; trainings are
+      // multi-hour, so "most recently touched first" would invert intent).
+      if (trainLoraCount > 0) {
+        logger.info(`🎓 train_lora scope: processing training job (${trainLoraCount} available)`)
+        queuedJobs = await db
+          .select({
+            id: jobs.id,
+            jobType: jobs.jobType,
+            subjectUuid: jobs.subjectUuid,
+            destMediaUuid: jobs.destMediaUuid,
+            sourceMediaUuid: jobs.sourceMediaUuid,
+            presetId: jobs.presetId,
+            parameters: jobs.parameters,
+            createdAt: jobs.createdAt,
+            updatedAt: jobs.updatedAt
+          })
+          .from(jobs)
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'train_lora'), ...subjectConds()))
+          .orderBy(jobs.createdAt)
+          .limit(1)
       }
     } else {
-      // 'all' mode - prioritize test jobs, then video jobs, then i2v jobs
-      if (testCount > 0) {
+      // 'all' mode — no job type selected.
+      if (pickOrder === 'chronological') {
+        // Chronological + no type selected: one true global newest-first pick
+        // across every generation type. Without this, 'all' runs a fixed
+        // type-priority chain (vid_faceswap → fs → i2v → t2v) with the vid path
+        // forced random, so the Chrono toggle was silently ignored unless a
+        // concrete type was chosen. train_lora is handled last (as below) so
+        // multi-hour trainings still drain after all generation work.
+        logger.info(`🕒 all scope: chronological global pick across generation types`)
+        queuedJobs = await db
+          .select({
+            id: jobs.id,
+            jobType: jobs.jobType,
+            subjectUuid: jobs.subjectUuid,
+            destMediaUuid: jobs.destMediaUuid,
+            sourceMediaUuid: jobs.sourceMediaUuid,
+            presetId: jobs.presetId,
+            parameters: jobs.parameters,
+            createdAt: jobs.createdAt,
+            updatedAt: jobs.updatedAt
+          })
+          .from(jobs)
+          .where(and(eq(jobs.status, 'queued'), sql`${jobs.jobType} IN ('vid_faceswap', 'fs', 'i2v', 't2v')`, ...subjectConds()))
+          .orderBy(desc(jobs.updatedAt))
+          .limit(1)
+        // If no generation jobs remain, let a queued training drain last.
+        if ((!queuedJobs || queuedJobs.length === 0) && trainLoraCount > 0) {
+          logger.info(`🎓 Processing LoRA training job (${trainLoraCount} available)`)
+          queuedJobs = await db
+            .select({
+              id: jobs.id,
+              jobType: jobs.jobType,
+              subjectUuid: jobs.subjectUuid,
+              destMediaUuid: jobs.destMediaUuid,
+              sourceMediaUuid: jobs.sourceMediaUuid,
+              presetId: jobs.presetId,
+              parameters: jobs.parameters,
+              createdAt: jobs.createdAt,
+              updatedAt: jobs.updatedAt
+            })
+            .from(jobs)
+            .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'train_lora'), ...subjectConds()))
+            .orderBy(jobs.createdAt)
+            .limit(1)
+        }
+      } else if (testCount > 0) {
         logger.info(`📋 Processing source job (${testCount} available, ${videoCount} video, ${i2vCount} i2v also available)`)
         queuedJobs = await db
           .select({
@@ -655,7 +783,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NULL`, ...subjectConds()))
           .orderBy(desc(jobs.updatedAt))
           .limit(1)
         actualType = 'source'
@@ -675,15 +803,37 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
             updatedAt: jobs.updatedAt
           })
           .from(jobs)
-          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`))
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'vid_faceswap'), sql`${jobs.sourceMediaUuid} IS NOT NULL`, ...subjectConds()))
           .orderBy(orderBy)
           .limit(1)
         actualType = 'vid'
       } else if (fsCount > 0) {
-        logger.info(`🎭 Processing fs job (${fsCount} available, ${i2vCount} i2v also available)`)
-        queuedJobs = await pickFsJob(db)
+        logger.info(`🎭 Processing fs job (${fsCount} available, ${i2vCount} i2v, ${t2vCount} t2v also available)`)
+        queuedJobs = await pickFsJob(db, pickOrder)
       } else if (i2vCount > 0) {
-        queuedJobs = await pickI2vJob(db, pickOrder)
+        queuedJobs = await pickWanJob(db, pickOrder, 'i2v')
+      } else if (t2vCount > 0) {
+        queuedJobs = await pickWanJob(db, pickOrder, 't2v')
+      } else if (trainLoraCount > 0) {
+        // Trainings last in 'all' mode: they hold the single GPU slot for
+        // hours, so all queued generation work drains first.
+        logger.info(`🎓 Processing LoRA training job (${trainLoraCount} available)`)
+        queuedJobs = await db
+          .select({
+            id: jobs.id,
+            jobType: jobs.jobType,
+            subjectUuid: jobs.subjectUuid,
+            destMediaUuid: jobs.destMediaUuid,
+            sourceMediaUuid: jobs.sourceMediaUuid,
+            presetId: jobs.presetId,
+            parameters: jobs.parameters,
+            createdAt: jobs.createdAt,
+            updatedAt: jobs.updatedAt
+          })
+          .from(jobs)
+          .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'train_lora'), ...subjectConds()))
+          .orderBy(jobs.createdAt)
+          .limit(1)
       }
     }
     } // close: if (!queuedJobs)
@@ -736,7 +886,44 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     try {
       const { getMediaFileData } = await import('./mediaService')
 
-      if (job.jobType === 'i2v') {
+      if (job.jobType === 'train_lora') {
+        // ---- LORA TRAINING (ktrain trainer, not a ComfyUI worker) ----
+        workerUrl = process.env.TRAINER_URL || 'http://ktrain:8000'
+
+        const { loraTrainings } = await import('~/server/utils/schema')
+        const trainingRows = await db
+          .select()
+          .from(loraTrainings)
+          .where(eq(loraTrainings.jobId, job.id))
+          .limit(1)
+        if (trainingRows.length === 0) {
+          throw new Error(`No lora_trainings row for train_lora job ${job.id}`)
+        }
+        const training = trainingRows[0]
+
+        // Training needs (nearly) the whole 24 GB. Force-restart the wan
+        // worker so its cached models are evicted from VRAM before the
+        // deepspeed run starts. Best-effort: if it's already down, fine.
+        const wanWorkerUrl = process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000'
+        try {
+          await fetch(`${wanWorkerUrl}/interrupt`, { method: 'POST' })
+          logger.info('🎓 Asked wan worker to restart (VRAM eviction before training)')
+        } catch {
+          logger.info('🎓 Wan worker unreachable for VRAM eviction (probably already down) - continuing')
+        }
+
+        formData.append('job_id', job.id)
+        formData.append('run_id', training.id)
+        formData.append('lora_name', training.loraName)
+
+        await db
+          .update(loraTrainings)
+          .set({ status: 'training', startedAt: training.startedAt || new Date(), updatedAt: new Date() })
+          .where(eq(loraTrainings.id, training.id))
+
+        logger.info(`🎓 TRAIN_LORA job ${job.id}: run ${training.id} (${training.loraName}) → ${workerUrl}`)
+
+      } else if (job.jobType === 'i2v') {
         // ---- I2V WORKFLOW ----
         workerUrl = process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000'
 
@@ -749,8 +936,8 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         formData.append('negative_prompt', params.negative_prompt || 'blurry, distorted, low quality, watermark, text, deformed')
         formData.append('length', (params.length || 81).toString())
 
-        // LoRA params (3 slots)
-        for (const slot of [1, 2, 3]) {
+        // LoRA params (5 slots)
+        for (const slot of [1, 2, 3, 4, 5]) {
           for (const key of ['high', 'low', 'high_strength', 'low_strength']) {
             const paramKey = `lora_${slot}_${key}`
             if (params[paramKey] != null) {
@@ -771,6 +958,36 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         formData.append('input_image', inputImageBlob, `input_${job.sourceMediaUuid}.jpg`)
 
         logger.info(`🎬 I2V job ${job.id}: prompt="${(params.prompt || '').substring(0, 60)}...", ${params.length || 81} frames`)
+
+      } else if (job.jobType === 't2v') {
+        // ---- T2V WORKFLOW (pure text-to-video, no input image) ----
+        workerUrl = process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000'
+
+        formData.append('job_id', job.id)
+        formData.append('job_type', 't2v')
+        formData.append('workflow_type', 't2v')
+
+        // Prompt params
+        formData.append('prompt', params.prompt || '')
+        formData.append('negative_prompt', params.negative_prompt || 'blurry, distorted, low quality, watermark, text, deformed')
+        formData.append('length', (params.length || 81).toString())
+        if (params.width != null) formData.append('width', params.width.toString())
+        if (params.height != null) formData.append('height', params.height.toString())
+        if (params.steps != null) formData.append('steps', params.steps.toString())
+        if (params.cfg != null) formData.append('cfg', params.cfg.toString())
+        if (params.seed != null) formData.append('seed', params.seed.toString())
+
+        // LoRA params (5 slots)
+        for (const slot of [1, 2, 3, 4, 5]) {
+          for (const key of ['high', 'low', 'high_strength', 'low_strength']) {
+            const paramKey = `lora_${slot}_${key}`
+            if (params[paramKey] != null) {
+              formData.append(paramKey, params[paramKey].toString())
+            }
+          }
+        }
+
+        logger.info(`🎬 T2V job ${job.id}: prompt="${(params.prompt || '').substring(0, 60)}...", ${params.length || 81} frames`)
 
       } else if (job.jobType === 'fs') {
         // ---- FS (single-image ReActor face swap) WORKFLOW ----
@@ -1020,6 +1237,25 @@ export async function startSingleJob(sourceType: PreferredSourceType = 'all') {
   }
 }
 
+// Auto-start processing for a freshly-queued LoRA training so creating or
+// resuming a run actually kicks it off, without a separate "process one" click.
+// No-op when something is already processing: a running continuous loop will
+// pick the queued train_lora job up on its own, and we must not flip it out of
+// continuous mode. Fire-and-forget from the trainings endpoints — startSingleJob
+// waits 10s before dispatching, so callers should NOT await it.
+export async function autoStartTraining(): Promise<void> {
+  if (continuousMode || isCurrentlyProcessing) {
+    logger.info('🎓 auto-start skipped — processing already active; the running loop will pick up the queued train_lora job')
+    return
+  }
+  logger.info('🎓 auto-starting single-job processing for the queued training')
+  try {
+    await startSingleJob('train_lora')
+  } catch (error: any) {
+    logger.error('🎓 auto-start training processing failed:', error)
+  }
+}
+
 // Function to start continuous processing
 export function startContinuousProcessing(sourceType: PreferredSourceType = 'all', limit: number | null = null) {
   if (continuousMode) {
@@ -1192,6 +1428,9 @@ export async function stopAllProcessing(opts: { forceRestart?: boolean } = {}) {
   const workers = [
     { name: 'faceswap', url: process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000' },
     { name: 'wan', url: process.env.I2V_WORKER_URL || 'http://comfyui-wan-worker:8000' },
+    // ktrain trainer: /stop and /interrupt are equivalent (SIGTERM the deepspeed
+    // run; it checkpoints every 30 min and resumes on re-dispatch)
+    { name: 'trainer', url: process.env.TRAINER_URL || 'http://ktrain:8000' },
   ]
 
   const results = await Promise.allSettled(

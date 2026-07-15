@@ -22,7 +22,8 @@ export default defineEventHandler(async (event) => {
     // First check if job exists and can be canceled
     const existingJob = await db.select({
       id: jobs.id,
-      status: jobs.status
+      status: jobs.status,
+      jobType: jobs.jobType
     }).from(jobs).where(eq(jobs.id, jobId)).limit(1)
     
     if (existingJob.length === 0) {
@@ -43,12 +44,16 @@ export default defineEventHandler(async (event) => {
     }
 
     // If job is currently active, try to interrupt ALL jobs via rp_handler
+    // (train_lora jobs run on the ktrain trainer instead — its /interrupt
+    // SIGTERMs the deepspeed run; checkpoints keep it resumable)
     if (job.status === 'active') {
       logger.info(`🛑 Canceling active job ${jobId} - attempting to interrupt ALL jobs via rp_handler`)
-      
+
       try {
         // Use rp_handler interrupt endpoint - use Docker network service name and internal port
-        const rpHandlerUrl = process.env.RP_HANDLER_URL || process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000'
+        const rpHandlerUrl = job.jobType === 'train_lora'
+          ? (process.env.TRAINER_URL || 'http://ktrain:8000')
+          : (process.env.RP_HANDLER_URL || process.env.COMFYUI_WORKER_URL || 'http://comfyui-runpod-worker:8000')
         
         // Send interrupt signal to rp_handler to interrupt ALL jobs and clear the queue
         const response = await fetch(`${rpHandlerUrl}/interrupt`, {

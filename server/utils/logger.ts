@@ -18,20 +18,29 @@ import pinoPretty from 'pino-pretty'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
-// Ensure logs directory exists at the project root (next to package.json).
-const logsDir = path.join(process.cwd(), 'logs')
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true })
-}
+// File logging is OPT-IN (disabled by default since 2026-07-04): set LOG_TO_FILE=1
+// to restore the rotating logs/app.log. By default nothing is persisted to disk —
+// only console/stdout output (and container stdout is discarded via
+// `logging: driver: none` in docker-compose.yml).
+const logToFile = process.env.LOG_TO_FILE === '1'
 
-// Rotating file: 10MB or daily, keep last 10, gzip rotated.
-const rotatingStream = createStream('app.log', {
-  size: '10M',
-  interval: '1d',
-  maxFiles: 10,
-  compress: 'gzip',
-  path: logsDir
-})
+let rotatingStream: ReturnType<typeof createStream> | null = null
+if (logToFile) {
+  // Ensure logs directory exists at the project root (next to package.json).
+  const logsDir = path.join(process.cwd(), 'logs')
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true })
+  }
+
+  // Rotating file: 10MB or daily, keep last 10, gzip rotated.
+  rotatingStream = createStream('app.log', {
+    size: '10M',
+    interval: '1d',
+    maxFiles: 10,
+    compress: 'gzip',
+    path: logsDir
+  })
+}
 
 const loggerOptions = {
   level: isProduction ? 'info' : 'debug',
@@ -54,7 +63,7 @@ if (!isProduction) {
     loggerOptions,
     pino.multistream([
       { level: 'debug', stream: prettyStream },
-      { level: 'debug', stream: rotatingStream }
+      ...(rotatingStream ? [{ level: 'debug' as const, stream: rotatingStream }] : [])
     ])
   )
 } else {
@@ -62,7 +71,7 @@ if (!isProduction) {
     loggerOptions,
     pino.multistream([
       { level: 'info', stream: process.stdout },
-      { level: 'info', stream: rotatingStream }
+      ...(rotatingStream ? [{ level: 'info' as const, stream: rotatingStream }] : [])
     ])
   )
 }

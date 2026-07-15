@@ -7,8 +7,23 @@
           <div class="flex items-center justify-between">
             <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
             <div class="flex items-center gap-1 sm:gap-2">
-              <!-- Preset Filter for continuous processing (left of pick order toggle) -->
-              <div class="hidden sm:block w-44" title="Limit continuous processing to a single preset">
+              <!-- Subject Filter for continuous processing (scopes Process All / Process N to one subject across all job types) -->
+              <div class="hidden sm:block w-48" title="Limit continuous processing to a single subject">
+                <UInputMenu
+                  v-model="processingSubject"
+                  v-model:search-term="processingSubjectSearch"
+                  :items="processingSubjectItemsWithAll"
+                  placeholder="All subjects"
+                  class="w-full"
+                  by="value"
+                  option-attribute="label"
+                  searchable
+                  @update:model-value="onProcessingSubjectSelect"
+                />
+              </div>
+
+              <!-- Preset Filter for continuous processing (i2v only — left of pick order toggle) -->
+              <div v-if="processingJobType === 'i2v'" class="hidden sm:block w-44" title="Limit continuous processing to a single preset">
                 <PresetFilter
                   v-model="presetFilterValue"
                   job-type="i2v"
@@ -58,7 +73,7 @@
 
               <!-- Processing Control Buttons -->
               <template v-if="!isAnyProcessingActive">
-                <!-- Split button: Process N (▶️) + caret to pick the count -->
+                <!-- Split control: Process N (▶️) + free number input for the count -->
                 <div class="flex">
                   <UButton
                     type="button"
@@ -72,18 +87,17 @@
                     <UIcon name="i-heroicons-play" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
                     <span class="hidden sm:inline">Process {{ selectedJobCount === 1 ? 'One' : selectedJobCount }}</span>
                   </UButton>
-                  <UDropdownMenu :items="jobCountDropdownItems" :ui="{ content: 'w-28 max-h-72 overflow-y-auto' }">
-                    <UButton
-                      type="button"
-                      size="lg"
-                      variant="outline"
-                      color="primary"
-                      class="rounded-l-none border-l-0 px-1.5 sm:px-2"
-                      aria-label="Select number of jobs to process"
-                    >
-                      <UIcon name="i-heroicons-chevron-down" class="w-3 h-3 sm:w-4 sm:h-4" />
-                    </UButton>
-                  </UDropdownMenu>
+                  <UInput
+                    v-model.number="selectedJobCount"
+                    type="number"
+                    :min="1"
+                    size="lg"
+                    class="w-16"
+                    :ui="{ base: 'rounded-l-none border-l-0 text-center' }"
+                    aria-label="Number of jobs to process"
+                    title="How many jobs to process before stopping"
+                    @keyup.enter="startProcessNJobs()"
+                  />
                 </div>
 
                 <!-- Continuous Processing Button (🔄) -->
@@ -108,9 +122,22 @@
             </div>
           </div>
 
-          <!-- Mobile-only second row: Preset filter + Pick order toggle -->
+          <!-- Mobile-only second row: Subject filter + Preset filter + Pick order toggle -->
           <div class="flex sm:hidden items-center gap-2">
-            <div class="flex-1 min-w-0" title="Limit continuous processing to a single preset">
+            <div class="flex-1 min-w-0" title="Limit continuous processing to a single subject">
+              <UInputMenu
+                v-model="processingSubject"
+                v-model:search-term="processingSubjectSearch"
+                :items="processingSubjectItemsWithAll"
+                placeholder="All subjects"
+                class="w-full"
+                by="value"
+                option-attribute="label"
+                searchable
+                @update:model-value="onProcessingSubjectSelect"
+              />
+            </div>
+            <div v-if="processingJobType === 'i2v'" class="flex-1 min-w-0" title="Limit continuous processing to a single preset">
               <PresetFilter
                 v-model="presetFilterValue"
                 job-type="i2v"
@@ -360,7 +387,7 @@
         </div>
 
         <div>
-          <PresetFilter v-model="selectedPresetFilter" job-type="i2v" placeholder="Filter by i2v preset..." />
+          <PresetFilter v-model="selectedPresetFilter" placeholder="Filter by preset..." />
         </div>
 
         <div class="flex items-end gap-2">
@@ -706,18 +733,11 @@ const processingModeBadgeColor = computed(() => {
   if (state?.isActive && state.jobLimit) return 'primary'
   return processingMode.value === 'single' ? 'primary' : 'neutral'
 })
-const jobCountDropdownItems = computed(() => [
-  Array.from({ length: 15 }, (_, i) => {
-    const n = i + 1
-    return {
-      label: `Process ${n}`,
-      icon: n === selectedJobCount.value ? 'i-heroicons-check' : undefined,
-      onSelect: () => {
-        selectedJobCount.value = n
-      }
-    }
-  })
-])
+// Normalize the free-form count input to a positive integer (blank/NaN → 1).
+const normalizedJobCount = () => {
+  const n = Math.floor(Number(selectedJobCount.value))
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
 
 // Subject filtering using composable
 const { selectedSubject: selectedSubjectFilter, searchQuery: subjectSearchQuery, subjectItems: subjectFilterItems, handleSubjectSelection, clearSubject } = useSubjects()
@@ -731,6 +751,7 @@ const sourceTypeOptions = [
   { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' },
   { value: 'fs', label: 'Faceswap I2I' },
   { value: 'i2v', label: 'Wan I2V' },
+  { value: 't2v', label: 'Wan T2V' },
   { value: 'tagging', label: 'Tagging' },
   { value: 'vid', label: '— Legacy: video sub-jobs' },
   { value: 'source', label: '— Legacy: source sub-jobs' }
@@ -751,13 +772,73 @@ const processingJobType = ref('all')
 const processingJobTypeOptions = [
   { value: 'all', label: 'All job types' },
   { value: 'i2v', label: 'Wan I2V' },
+  { value: 't2v', label: 'Wan T2V' },
   { value: 'fs', label: 'Faceswap I2I' },
-  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' }
+  { value: 'vid_faceswap', label: 'Faceswap I2V Legacy' },
+  // train_lora rides the same picker but dispatches to the ktrain trainer and
+  // skips the ComfyUI health gate (see jobProcessingService: 'train_lora' scope).
+  { value: 'train_lora', label: 'LoRA Training' }
 ]
 // Effective source_type sent to the picker: explicit header choice wins,
 // otherwise inherit whatever the subject-card filter is set to.
 const effectiveProcessingSourceType = () =>
   processingJobType.value !== 'all' ? processingJobType.value : selectedSourceTypeFilter.value
+
+// The i2v preset filter only makes sense for Wan I2V jobs, so the dropdown is
+// only shown when that job type is selected. Clear any pinned preset when the
+// user switches away so a hidden filter can't keep silently scoping the picker.
+watch(processingJobType, (jt) => {
+  if (jt !== 'i2v' && presetFilterValue.value) {
+    presetFilterValue.value = null
+  }
+})
+
+// Processing subject filter — pins continuous processing (Process All / Process
+// N) to a single subject across ALL job types. Backed by the same WebSocket-
+// driven state as pickOrder/presetFilter, so it syncs across tabs/devices.
+// Independent of the Subject Filter card below (which only filters the list).
+const { selectedSubject: processingSubject, searchQuery: processingSubjectSearch, subjectItems: processingSubjectItems } = useSubjects()
+
+// Prepend an explicit "All subjects" entry so the filter can be cleared from
+// the dropdown itself (selecting it sends subject_filter: 'all'). Without this
+// there's no in-menu way to un-pin a subject. Hidden while the user is actively
+// searching so it doesn't clutter typed results.
+const processingSubjectItemsWithAll = computed(() => {
+  const base = processingSubjectItems.value
+  if (processingSubjectSearch.value && processingSubjectSearch.value.trim()) return base
+  return [{ value: 'all', label: 'All subjects' }, ...base]
+})
+
+// Keep the dropdown selection in sync with the backend subjectFilter uuid
+// (initial sync + cross-tab changes). Re-resolves the label once the subject
+// cache has loaded.
+watch(
+  () => [jobsStore.processingState?.subjectFilter, processingSubjectItems.value.length],
+  ([uuid]) => {
+    if (!uuid) {
+      if (processingSubject.value) processingSubject.value = null
+      return
+    }
+    if (processingSubject.value?.value === uuid) return
+    const match = processingSubjectItems.value.find(i => i.value === uuid)
+    processingSubject.value = match || { value: uuid, label: '…' }
+  },
+  { immediate: true }
+)
+
+const onProcessingSubjectSelect = (selected) => {
+  const next = selected?.value ?? 'all'
+  if (!jobsStore.wsConnection || !jobsStore.wsConnected) {
+    useToast().add({
+      title: 'Not connected',
+      description: 'WebSocket is disconnected — cannot change subject filter',
+      color: 'warning',
+      duration: 3000,
+    })
+    return
+  }
+  jobsStore.wsConnection.send(JSON.stringify({ type: 'set_subject_filter', subject_filter: next }))
+}
 
 // Star rating filter state - default to empty (show only unrated)
 const selectedRatings = ref([])
@@ -1142,10 +1223,13 @@ const handleWebSocketAck = ackData => {
 // Entry point for the split "Process N" button — routes to single mode for N=1
 // (preserves the existing 10-second idle wait) or to continuous-with-limit for N>1.
 const startProcessNJobs = async () => {
-  if (selectedJobCount.value <= 1) {
+  const count = normalizedJobCount()
+  // Snap the input back to the sanitized value so the button label matches.
+  if (selectedJobCount.value !== count) selectedJobCount.value = count
+  if (count <= 1) {
     await startSingleProcessing()
   } else {
-    await startContinuousProcessing({ jobLimit: selectedJobCount.value })
+    await startContinuousProcessing({ jobLimit: count })
   }
 }
 

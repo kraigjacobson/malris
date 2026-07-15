@@ -287,6 +287,11 @@ const navigationItems = ref<NavigationMenuItem[]>([
         label: 'Job Queue',
         icon: 'i-heroicons-queue-list',
         to: '/jobs'
+      },
+      {
+        label: 'Training',
+        icon: 'i-heroicons-academic-cap',
+        to: '/training'
       }
     ]
   },

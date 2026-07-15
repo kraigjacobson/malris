@@ -191,10 +191,15 @@ interface LoraInfo {
   trigger_words: string | null
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: Record<string, any>
   loras: LoraInfo[]
-}>()
+  // Which wan job type this form edits. Presets are fetched/saved under this
+  // type, and the last-used-preset memory is kept separate per type.
+  jobType?: 'i2v' | 't2v'
+}>(), {
+  jobType: 'i2v'
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: Record<string, any>]
@@ -205,11 +210,13 @@ const presets = ref<any[]>([])
 const showSavePreset = ref(false)
 const newPresetName = ref('')
 
-// Remembers the last preset the user actually applied/saved so a fresh i2v form
-// can prepop it (persisted in localStorage to survive reloads).
-const LAST_I2V_PRESET_KEY = 'malris:lastI2vPresetId'
+// Remembers the last preset the user actually applied/saved so a fresh form
+// can prepop it (persisted in localStorage to survive reloads). Keyed per job
+// type so i2v and t2v don't clobber each other ('malris:lastI2vPresetId' is
+// kept as-is for i2v backward compatibility).
+const LAST_PRESET_KEY = props.jobType === 't2v' ? 'malris:lastT2vPresetId' : 'malris:lastI2vPresetId'
 const rememberLastPreset = (id: string) => {
-  if (import.meta.client && id) localStorage.setItem(LAST_I2V_PRESET_KEY, id)
+  if (import.meta.client && id) localStorage.setItem(LAST_PRESET_KEY, id)
 }
 
 onMounted(async () => {
@@ -218,7 +225,7 @@ onMounted(async () => {
   // already carry a preset identity (duplicate, preset-edit, prior selection in
   // this session) we leave them untouched.
   if (!props.modelValue?._preset_id && import.meta.client) {
-    const lastId = localStorage.getItem(LAST_I2V_PRESET_KEY)
+    const lastId = localStorage.getItem(LAST_PRESET_KEY)
     if (lastId && presets.value.some(p => p.id === lastId)) {
       loadPreset(lastId)
     }
@@ -227,7 +234,7 @@ onMounted(async () => {
 
 async function fetchPresets() {
   try {
-    const data = await $fetch<any>('/api/presets?job_type=i2v')
+    const data = await $fetch<any>(`/api/presets?job_type=${props.jobType}`)
     presets.value = data?.presets || []
   } catch (e) {
     console.error('Failed to fetch presets:', e)
@@ -270,6 +277,10 @@ function loadPreset(presetId: string) {
     prompt: preset.prompt || '',
     negative_prompt: preset.negativePrompt || props.modelValue.negative_prompt,
     length: preset.length || 81,
+    // t2v output size (NULL on i2v presets — harmless, i2v ignores it). The
+    // modal resolution picker reads these back off the params.
+    width: preset.width ?? null,
+    height: preset.height ?? null,
     lora_1_high: preset.lora1High || null,
     lora_1_low: preset.lora1Low || null,
     lora_1_high_strength: preset.lora1HighStrength ?? 1,
@@ -312,10 +323,12 @@ function currentParamsPayload(name: string) {
   const mv = props.modelValue
   return {
     name,
-    job_type: 'i2v',
+    job_type: props.jobType,
     prompt: mv.prompt,
     negative_prompt: mv.negative_prompt,
     length: mv.length,
+    width: mv.width ?? null,
+    height: mv.height ?? null,
     lora_1_high: mv.lora_1_high,
     lora_1_low: mv.lora_1_low,
     lora_1_high_strength: mv.lora_1_high_strength,

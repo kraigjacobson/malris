@@ -1,11 +1,12 @@
+
 {
   "name": "nuxt-app",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "nuxt build",
-    "dev": "node scripts/dev-with-logs.mjs",
-    "dev:raw": "nuxt dev --port 3003",
+    "dev": "nuxt dev --port 3003",
+    "dev:logs": "node scripts/dev-with-logs.mjs",
     "dev:mobile": "nuxt dev --host 0.0.0.0 --port 3003",
     "generate": "nuxt generate",
     "preview": "nuxt preview",

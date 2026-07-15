@@ -64,6 +64,11 @@ export const jobPresets = pgTable("job_presets", {
   prompt: text("prompt"),
   negativePrompt: text("negative_prompt"),
   length: integer("length"),
+  // t2v output dimensions (NULL for i2v presets, which derive size from the
+  // source image). Saved defaults the form pre-fills; the running job keeps its
+  // own width/height in jobs.parameters.
+  width: integer("width"),
+  height: integer("height"),
   lora1High: varchar("lora_1_high", { length: 255 }),
   lora1Low: varchar("lora_1_low", { length: 255 }),
   lora1HighStrength: real("lora_1_high_strength"),
@@ -115,6 +120,30 @@ export const jobs = pgTable("jobs", {
   presetId: uuid("preset_id").references(() => jobPresets.id, { onDelete: "set null" }),
   parameters: jsonb("parameters"), // Snapshot of preset values + non-preset job params (frames_per_batch, etc.)
   progress: integer("progress").default(0).notNull(), // 0-100
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// LoRA Trainings Table (one row per Wan2.2 character-LoRA training run).
+// Rides the jobs queue via job_id (job_type='train_lora'); this table holds
+// what job rows don't: picked images, training config, published outputs.
+// The row id doubles as the filesystem run_id under /train (datasets/<id>,
+// runs/<id>) shared with the ktrain trainer container.
+export const loraTrainings = pgTable("lora_trainings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  subjectUuid: uuid("subject_uuid")
+    .references(() => subjects.id, { onDelete: "cascade" })
+    .notNull(),
+  loraName: varchar("lora_name", { length: 100 }).notNull().unique(),
+  triggerWord: varchar("trigger_word", { length: 100 }).notNull(),
+  status: varchar("status", { length: 20 }).default("queued").notNull(), // queued | training | paused | completed | failed | canceled
+  imageUuids: jsonb("image_uuids").default([]).notNull(), // media_records uuids in the training set
+  config: jsonb("config").default({}).notNull(), // { epochs, rank, lr, resolution, num_repeats }
+  outputLoras: jsonb("output_loras"), // { high: '<name>_high.safetensors', low: '<name>_low.safetensors' }
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   startedAt: timestamp("started_at"),
@@ -227,6 +256,8 @@ export type Subject = typeof subjects.$inferSelect;
 export type NewSubject = typeof subjects.$inferInsert;
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
+export type LoraTraining = typeof loraTrainings.$inferSelect;
+export type NewLoraTraining = typeof loraTrainings.$inferInsert;
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type MediaRecordCategory = typeof mediaRecordCategories.$inferSelect;
