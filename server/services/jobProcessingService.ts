@@ -723,8 +723,52 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           .limit(1)
       }
     } else {
-      // 'all' mode - prioritize test jobs, then video jobs, then i2v jobs
-      if (testCount > 0) {
+      // 'all' mode — no job type selected.
+      if (pickOrder === 'chronological') {
+        // Chronological + no type selected: one true global newest-first pick
+        // across every generation type. Without this, 'all' runs a fixed
+        // type-priority chain (vid_faceswap → fs → i2v → t2v) with the vid path
+        // forced random, so the Chrono toggle was silently ignored unless a
+        // concrete type was chosen. train_lora is handled last (as below) so
+        // multi-hour trainings still drain after all generation work.
+        logger.info(`🕒 all scope: chronological global pick across generation types`)
+        queuedJobs = await db
+          .select({
+            id: jobs.id,
+            jobType: jobs.jobType,
+            subjectUuid: jobs.subjectUuid,
+            destMediaUuid: jobs.destMediaUuid,
+            sourceMediaUuid: jobs.sourceMediaUuid,
+            presetId: jobs.presetId,
+            parameters: jobs.parameters,
+            createdAt: jobs.createdAt,
+            updatedAt: jobs.updatedAt
+          })
+          .from(jobs)
+          .where(and(eq(jobs.status, 'queued'), sql`${jobs.jobType} IN ('vid_faceswap', 'fs', 'i2v', 't2v')`, ...subjectConds()))
+          .orderBy(desc(jobs.updatedAt))
+          .limit(1)
+        // If no generation jobs remain, let a queued training drain last.
+        if ((!queuedJobs || queuedJobs.length === 0) && trainLoraCount > 0) {
+          logger.info(`🎓 Processing LoRA training job (${trainLoraCount} available)`)
+          queuedJobs = await db
+            .select({
+              id: jobs.id,
+              jobType: jobs.jobType,
+              subjectUuid: jobs.subjectUuid,
+              destMediaUuid: jobs.destMediaUuid,
+              sourceMediaUuid: jobs.sourceMediaUuid,
+              presetId: jobs.presetId,
+              parameters: jobs.parameters,
+              createdAt: jobs.createdAt,
+              updatedAt: jobs.updatedAt
+            })
+            .from(jobs)
+            .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, 'train_lora'), ...subjectConds()))
+            .orderBy(jobs.createdAt)
+            .limit(1)
+        }
+      } else if (testCount > 0) {
         logger.info(`📋 Processing source job (${testCount} available, ${videoCount} video, ${i2vCount} i2v also available)`)
         queuedJobs = await db
           .select({

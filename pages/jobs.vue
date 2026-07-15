@@ -73,7 +73,7 @@
 
               <!-- Processing Control Buttons -->
               <template v-if="!isAnyProcessingActive">
-                <!-- Split button: Process N (▶️) + caret to pick the count -->
+                <!-- Split control: Process N (▶️) + free number input for the count -->
                 <div class="flex">
                   <UButton
                     type="button"
@@ -87,18 +87,17 @@
                     <UIcon name="i-heroicons-play" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
                     <span class="hidden sm:inline">Process {{ selectedJobCount === 1 ? 'One' : selectedJobCount }}</span>
                   </UButton>
-                  <UDropdownMenu :items="jobCountDropdownItems" :ui="{ content: 'w-28 max-h-72 overflow-y-auto' }">
-                    <UButton
-                      type="button"
-                      size="lg"
-                      variant="outline"
-                      color="primary"
-                      class="rounded-l-none border-l-0 px-1.5 sm:px-2"
-                      aria-label="Select number of jobs to process"
-                    >
-                      <UIcon name="i-heroicons-chevron-down" class="w-3 h-3 sm:w-4 sm:h-4" />
-                    </UButton>
-                  </UDropdownMenu>
+                  <UInput
+                    v-model.number="selectedJobCount"
+                    type="number"
+                    :min="1"
+                    size="lg"
+                    class="w-16"
+                    :ui="{ base: 'rounded-l-none border-l-0 text-center' }"
+                    aria-label="Number of jobs to process"
+                    title="How many jobs to process before stopping"
+                    @keyup.enter="startProcessNJobs()"
+                  />
                 </div>
 
                 <!-- Continuous Processing Button (🔄) -->
@@ -388,7 +387,7 @@
         </div>
 
         <div>
-          <PresetFilter v-model="selectedPresetFilter" job-type="i2v" placeholder="Filter by i2v preset..." />
+          <PresetFilter v-model="selectedPresetFilter" placeholder="Filter by preset..." />
         </div>
 
         <div class="flex items-end gap-2">
@@ -734,18 +733,11 @@ const processingModeBadgeColor = computed(() => {
   if (state?.isActive && state.jobLimit) return 'primary'
   return processingMode.value === 'single' ? 'primary' : 'neutral'
 })
-const jobCountDropdownItems = computed(() => [
-  Array.from({ length: 15 }, (_, i) => {
-    const n = i + 1
-    return {
-      label: `Process ${n}`,
-      icon: n === selectedJobCount.value ? 'i-heroicons-check' : undefined,
-      onSelect: () => {
-        selectedJobCount.value = n
-      }
-    }
-  })
-])
+// Normalize the free-form count input to a positive integer (blank/NaN → 1).
+const normalizedJobCount = () => {
+  const n = Math.floor(Number(selectedJobCount.value))
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
 
 // Subject filtering using composable
 const { selectedSubject: selectedSubjectFilter, searchQuery: subjectSearchQuery, subjectItems: subjectFilterItems, handleSubjectSelection, clearSubject } = useSubjects()
@@ -1231,10 +1223,13 @@ const handleWebSocketAck = ackData => {
 // Entry point for the split "Process N" button — routes to single mode for N=1
 // (preserves the existing 10-second idle wait) or to continuous-with-limit for N>1.
 const startProcessNJobs = async () => {
-  if (selectedJobCount.value <= 1) {
+  const count = normalizedJobCount()
+  // Snap the input back to the sanitized value so the button label matches.
+  if (selectedJobCount.value !== count) selectedJobCount.value = count
+  if (count <= 1) {
     await startSingleProcessing()
   } else {
-    await startContinuousProcessing({ jobLimit: selectedJobCount.value })
+    await startContinuousProcessing({ jobLimit: count })
   }
 }
 

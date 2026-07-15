@@ -17,6 +17,8 @@ export default defineEventHandler(async (event) => {
     prompt: body.prompt || null,
     negativePrompt: body.negative_prompt || null,
     length: body.length || null,
+    width: body.width ?? null,
+    height: body.height ?? null,
     lora1High: body.lora_1_high || null,
     lora1Low: body.lora_1_low || null,
     lora1HighStrength: body.lora_1_high_strength ?? null,

@@ -702,6 +702,10 @@ const t2vParams = ref({
   prompt: '',
   negative_prompt: 'blurry, distorted, low quality, watermark, text, deformed',
   length: 81,
+  // Output dimensions live on the params so they save to / load from the t2v
+  // preset (via I2vJobForm) and bake onto each queued job for per-job editing.
+  width: 832,
+  height: 480,
   lora_1_high: null,
   lora_1_low: null,
   lora_1_high_strength: 1,
@@ -723,13 +727,25 @@ const t2vParams = ref({
   lora_5_high_strength: 1,
   lora_5_low_strength: 1,
 })
-const t2vResolution = ref('832x480')
 const t2vResolutionOptions = [
   { label: '832 × 480 (landscape)', value: '832x480' },
   { label: '480 × 832 (portrait)', value: '480x832' },
   { label: '1280 × 720 (landscape HD)', value: '1280x720' },
   { label: '720 × 1280 (portrait HD)', value: '720x1280' },
 ]
+// Resolution picker is a view over the params' width/height so a loaded preset
+// pre-fills it and edits flow back into the preset payload. Falls back to the
+// default when a preset predates the width/height columns (NULL).
+const t2vResolution = computed({
+  get: () => {
+    const { width, height } = t2vParams.value
+    return (width && height) ? `${width}x${height}` : '832x480'
+  },
+  set: (value) => {
+    const [width, height] = String(value).split('x').map(Number)
+    t2vParams.value = { ...t2vParams.value, width, height }
+  }
+})
 const t2vJobCount = ref(1)
 
 // When true, the modal is in "edit preset" mode: subject/image selection is
@@ -2066,13 +2082,15 @@ const createBatchJobs = async () => {
         }
       }
     } else if (selectedJobType.value === 't2v') {
-      // Create N identical t2v jobs (no source media). Width/height come from
-      // the resolution picker; the worker randomizes the seed per job.
-      const [width, height] = t2vResolution.value.split('x').map(Number)
-      const t2vParameters = {
-        ...applyLoraDisableOverrides(t2vParams.value),
-        width,
-        height,
+      // Create N identical t2v jobs (no source media). Width/height ride on the
+      // params (from the resolution picker / loaded preset); the worker
+      // randomizes the seed per job. Guard against a preset that predates the
+      // width/height columns so we never queue a job with missing dimensions.
+      const t2vParameters = applyLoraDisableOverrides(t2vParams.value)
+      if (!t2vParameters.width || !t2vParameters.height) {
+        const [width, height] = t2vResolution.value.split('x').map(Number)
+        t2vParameters.width = width
+        t2vParameters.height = height
       }
       for (let i = 0; i < t2vJobCount.value; i++) {
         try {

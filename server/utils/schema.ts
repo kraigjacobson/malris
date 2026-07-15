@@ -64,6 +64,11 @@ export const jobPresets = pgTable("job_presets", {
   prompt: text("prompt"),
   negativePrompt: text("negative_prompt"),
   length: integer("length"),
+  // t2v output dimensions (NULL for i2v presets, which derive size from the
+  // source image). Saved defaults the form pre-fills; the running job keeps its
+  // own width/height in jobs.parameters.
+  width: integer("width"),
+  height: integer("height"),
   lora1High: varchar("lora_1_high", { length: 255 }),
   lora1Low: varchar("lora_1_low", { length: 255 }),
   lora1HighStrength: real("lora_1_high_strength"),

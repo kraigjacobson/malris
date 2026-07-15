@@ -277,6 +277,10 @@ function loadPreset(presetId: string) {
     prompt: preset.prompt || '',
     negative_prompt: preset.negativePrompt || props.modelValue.negative_prompt,
     length: preset.length || 81,
+    // t2v output size (NULL on i2v presets — harmless, i2v ignores it). The
+    // modal resolution picker reads these back off the params.
+    width: preset.width ?? null,
+    height: preset.height ?? null,
     lora_1_high: preset.lora1High || null,
     lora_1_low: preset.lora1Low || null,
     lora_1_high_strength: preset.lora1HighStrength ?? 1,
@@ -323,6 +327,8 @@ function currentParamsPayload(name: string) {
     prompt: mv.prompt,
     negative_prompt: mv.negative_prompt,
     length: mv.length,
+    width: mv.width ?? null,
+    height: mv.height ?? null,
     lora_1_high: mv.lora_1_high,
     lora_1_low: mv.lora_1_low,
     lora_1_high_strength: mv.lora_1_high_strength,
