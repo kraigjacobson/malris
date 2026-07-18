@@ -1,6 +1,6 @@
 import { getDb } from '~/server/utils/database'
 import { jobs, jobPresets, subjects, mediaRecords } from '~/server/utils/schema'
-import { eq, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray, sql } from 'drizzle-orm'
+import { eq, ne, and, gte, lte, isNotNull, isNull, count, desc, asc, inArray, sql } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 import { resolveJobParameters } from '~/server/utils/presetSnapshot'
 
@@ -35,6 +35,12 @@ export default defineEventHandler(async event => {
 
     if (status) {
       conditions.push(eq(jobs.status, status as any))
+      // train_lora jobs parked in need_input are "paused" (a queue mechanic so
+      // the picker skips them), not faceswap jobs awaiting a source image. Keep
+      // them out of the Need Input tab so it lists only actionable jobs.
+      if (status === 'need_input') {
+        conditions.push(ne(jobs.jobType, 'train_lora'))
+      }
     }
 
     if (job_type) {

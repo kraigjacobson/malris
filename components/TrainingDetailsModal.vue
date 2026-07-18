@@ -44,7 +44,7 @@
           <div class="text-sm text-gray-600 dark:text-gray-300 space-y-1 pb-2">
             <p>Trigger word: <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">{{ training.triggerWord }}</code></p>
             <p>Images: {{ (training.imageUuids || []).length }}</p>
-            <p>Epochs: {{ training.config?.epochs ?? 40 }} · Rank: {{ training.config?.rank ?? 32 }}</p>
+            <p>Epochs: {{ training.config?.epochs ?? 40 }} · Rank: {{ training.config?.rank ?? 32 }} · Checkpoint: {{ training.config?.checkpoint_minutes ?? 30 }} min</p>
             <p class="text-xs text-gray-500">
               Base: Wan2.2-T2V-A14B fp16 (float8 transformer, block swap 32) — outputs load onto the I2V experts.
             </p>
@@ -77,6 +77,16 @@
 
     <template #footer>
       <div class="flex justify-end gap-2 w-full">
+        <UButton
+          v-if="training && ['training', 'paused', 'failed'].includes(training.status)"
+          color="primary"
+          variant="soft"
+          icon="i-heroicons-beaker"
+          :loading="publishing"
+          @click="publishLatest"
+        >
+          Save test LoRA
+        </UButton>
         <UButton
           v-if="training && ['training', 'queued'].includes(training.status)"
           color="warning"
@@ -120,6 +130,7 @@ const toast = useToast()
 
 const training = ref<any | null>(null)
 const logTail = ref<string | null>(null)
+const publishing = ref(false)
 
 const accordionItems = [
   { label: 'Progress', icon: 'i-heroicons-chart-bar', slot: 'progress', defaultOpen: true },
@@ -154,6 +165,26 @@ const fetchDetail = async () => {
     logTail.value = response.log_tail
   } catch (error: any) {
     toast.add({ title: 'Failed to load training', description: error?.message, color: 'error' })
+  }
+}
+
+// Snapshot the newest saved epoch(s) into the loras folder for mid-training
+// testing — filenames carry the epoch + date, so just load and try them.
+const publishLatest = async () => {
+  if (!props.trainingId) return
+  publishing.value = true
+  try {
+    const res = await $fetch<{ loras: Record<string, string> }>(`/api/trainings/${props.trainingId}/publish-latest`, { method: 'POST' })
+    const names = Object.values(res.loras || {})
+    toast.add({
+      title: 'Test LoRA saved',
+      description: names.length ? `Published to loras: ${names.join(', ')}` : 'Snapshot published to the loras folder.',
+      color: 'success'
+    })
+  } catch (error: any) {
+    toast.add({ title: 'Could not save test LoRA', description: error?.data?.statusMessage || error?.message, color: 'error' })
+  } finally {
+    publishing.value = false
   }
 }
 

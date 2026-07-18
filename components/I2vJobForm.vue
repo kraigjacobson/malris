@@ -1,41 +1,37 @@
 <template>
   <div class="space-y-4">
-    <!-- Preset Selector (sticky so New/Update/Delete stay reachable while scrolling params) -->
-    <div class="sticky top-0 z-20 bg-gray-900 pb-2 -mt-2 pt-2 pr-2 border-b border-gray-800">
-      <div class="flex gap-2 items-end">
-        <div class="flex-1 min-w-0">
-          <label class="block text-sm font-medium text-gray-300 mb-1">Preset</label>
-          <USelect
-            v-model="selectedPresetId"
-            :items="presetOptions"
-            placeholder="Select a preset..."
-            class="w-full"
-            :ui="{ content: 'min-w-[16rem] max-w-[90vw] w-max' }"
-            @update:model-value="loadPreset"
-          />
-        </div>
-        <UButton size="sm" icon="i-heroicons-bookmark" @click="showSavePreset = true" :disabled="!modelValue.prompt">
-          New
-        </UButton>
-        <UButton v-if="selectedPresetId" size="sm" icon="i-heroicons-pencil" variant="outline" @click="updateCurrentPreset">
-          Update
-        </UButton>
-        <UButton v-if="selectedPresetId" size="sm" icon="i-heroicons-trash" variant="outline" color="red" @click="deleteCurrentPreset" />
-      </div>
-
-      <!-- Save Preset Dialog -->
-      <div v-if="showSavePreset" class="mt-2 border border-primary/30 rounded-lg p-3 bg-gray-900">
-        <div class="flex gap-2">
-          <UInput v-model="newPresetName" placeholder="Preset name..." class="flex-1" @keyup.enter="savePreset" />
-          <UButton size="sm" @click="savePreset" :disabled="!newPresetName.trim()">Save</UButton>
-          <UButton size="sm" variant="ghost" @click="showSavePreset = false">Cancel</UButton>
-        </div>
-      </div>
-    </div>
-
     <!-- Prompt -->
     <div>
-      <label class="block text-sm font-medium text-gray-300 mb-1">Prompt</label>
+      <div class="flex items-center gap-1.5 mb-1">
+        <label class="block text-sm font-medium text-gray-300">Prompt</label>
+        <ClientOnly>
+          <UPopover :content="{ side: 'right', align: 'start', sideOffset: 8 }">
+            <UButton
+              variant="ghost"
+              size="xs"
+              color="neutral"
+              icon="i-heroicons-question-mark-circle"
+              class="p-0"
+              aria-label="Random prompt syntax help"
+            />
+            <template #content>
+              <div class="p-4 w-80 text-xs text-gray-200 space-y-2">
+                <p class="text-sm font-semibold text-white">Random prompt syntax</p>
+                <p class="text-gray-400">Pick from alternatives at generation time — resolved before the prompt reaches the model, reproducible per seed.</p>
+                <ul class="space-y-1.5">
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">{a|b|c}</code> — pick one at random</li>
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">{3::a|1::b}</code> — weighted pick (a is 3× as likely)</li>
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">{2$$a|b|c}</code> — pick N, joined by "<span class="text-gray-400">, </span>"</li>
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">{1-3$$a|b|c}</code> — pick a random count in range</li>
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">{2$$ + $$a|b|c}</code> — custom join separator</li>
+                  <li><code class="px-1 py-0.5 rounded bg-gray-800 text-primary font-mono">a {big {red|blue}|small}</code> — nesting works</li>
+                </ul>
+                <p class="pt-2 border-t border-gray-700 text-gray-400">Same seed → same picks. Plain text with no <code class="px-1 rounded bg-gray-800 font-mono">{ }</code> passes through unchanged. No <code class="px-1 rounded bg-gray-800 font-mono">__file__</code> wildcards.</p>
+              </div>
+            </template>
+          </UPopover>
+        </ClientOnly>
+      </div>
       <UTextarea
         :model-value="modelValue.prompt"
         @update:model-value="update('prompt', $event)"
@@ -71,7 +67,7 @@
     </div>
 
     <!-- LoRA Slots (drag the handle to reorder; swaps the stored values so the
-         new order persists when the preset is saved). -->
+         new order persists on the submitted job). -->
     <div
       v-for="slot in 5"
       :key="slot"
@@ -80,7 +76,7 @@
         dragSlot === slot ? 'opacity-40' : '',
         dragOverSlot === slot && dragSlot !== slot ? 'border-primary border-dashed' : 'border-gray-700'
       ]"
-      draggable="true"
+      :draggable="dragArmed"
       @dragstart="onSlotDragStart($event, slot)"
       @dragover.prevent="dragOverSlot = slot"
       @drop="onSlotDrop(slot)"
@@ -95,7 +91,7 @@
             @pointerdown="dragArmed = true"
             @pointerup="dragArmed = false"
           />
-          <span class="text-sm font-medium text-gray-300">LoRA {{ slot }}</span>
+          <span class="text-sm font-medium text-gray-300">{{ slot === 1 ? 'Character' : `LoRA ${slot}` }}</span>
         </div>
         <span v-if="hasLoraInSlot(slot)" class="text-xs text-green-400">Active</span>
       </div>
@@ -105,39 +101,40 @@
           <label class="block text-xs text-gray-400 mb-1">High Noise</label>
           <USelectMenu
             :model-value="modelValue[`lora_${slot}_high`] || 'none'"
-            @update:model-value="update(`lora_${slot}_high`, $event === 'none' ? null : $event)"
-            :items="highNoiseLoraOptions"
+            @update:model-value="setLoraInSlot(slot, 'high', $event)"
+            @update:open="onLoraMenuToggle"
+            :items="loraOptionsFor(slot, 'high')"
             value-key="value"
             placeholder="None"
             :search-input="{ placeholder: 'Search LoRAs...' }"
             class="w-full"
-          />
-          <TriggerWordsEditor
-            v-if="modelValue[`lora_${slot}_high`]"
-            :key="`trig-high-${modelValue[`lora_${slot}_high`]}`"
-            :model-value="triggerWordsFor(modelValue[`lora_${slot}_high`])"
-            :lora-name="modelValue[`lora_${slot}_high`]"
-            @update:model-value="setTriggerWords(modelValue[`lora_${slot}_high`], $event)"
-            class="mt-1"
           />
         </div>
         <div>
           <label class="block text-xs text-gray-400 mb-1">Low Noise</label>
           <USelectMenu
             :model-value="modelValue[`lora_${slot}_low`] || 'none'"
-            @update:model-value="update(`lora_${slot}_low`, $event === 'none' ? null : $event)"
-            :items="lowNoiseLoraOptions"
+            @update:model-value="setLoraInSlot(slot, 'low', $event)"
+            @update:open="onLoraMenuToggle"
+            :items="loraOptionsFor(slot, 'low')"
             value-key="value"
             placeholder="None"
             :search-input="{ placeholder: 'Search LoRAs...' }"
             class="w-full"
           />
+        </div>
+
+        <!-- One trigger/badge per slot (high & low are the same concept). -->
+        <div v-if="slotRep(slot)">
+          <span
+            v-if="loraBadge(slotRep(slot)!)"
+            class="inline-block text-[10px] uppercase tracking-wide text-primary/80"
+          >{{ loraBadge(slotRep(slot)!) }}</span>
           <TriggerWordsEditor
-            v-if="modelValue[`lora_${slot}_low`]"
-            :key="`trig-low-${modelValue[`lora_${slot}_low`]}`"
-            :model-value="triggerWordsFor(modelValue[`lora_${slot}_low`])"
-            :lora-name="modelValue[`lora_${slot}_low`]"
-            @update:model-value="setTriggerWords(modelValue[`lora_${slot}_low`], $event)"
+            :key="`trig-${slotRep(slot)}`"
+            :model-value="triggerWordsFor(slotRep(slot)!)"
+            :lora-name="slotRep(slot)!"
+            @update:model-value="setTriggerWords(slotRep(slot)!, $event)"
             class="mt-1"
           />
         </div>
@@ -189,13 +186,19 @@ import { loraOffKey } from '~/utils/loraDisable'
 interface LoraInfo {
   name: string
   trigger_words: string | null
+  prompt_template?: string | null
+  negative_prompt?: string | null
+  category?: string | null
+  prompt_fragment?: string | null
+  default_strength?: number | null
+  pair_key?: string | null
+  civitai_name?: string | null
 }
 
 const props = withDefaults(defineProps<{
   modelValue: Record<string, any>
   loras: LoraInfo[]
-  // Which wan job type this form edits. Presets are fetched/saved under this
-  // type, and the last-used-preset memory is kept separate per type.
+  // Which wan job type this form edits (t2v shows the curated t2v/ LoRA set).
   jobType?: 'i2v' | 't2v'
 }>(), {
   jobType: 'i2v'
@@ -203,242 +206,13 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: Record<string, any>]
+  // Fired when a LoRA picker is opened, so the parent can refresh the list and
+  // pick up LoRAs published since the form was first loaded (no reload needed).
+  'refresh-loras': []
 }>()
 
-const selectedPresetId = ref('')
-const presets = ref<any[]>([])
-const showSavePreset = ref(false)
-const newPresetName = ref('')
-
-// Remembers the last preset the user actually applied/saved so a fresh form
-// can prepop it (persisted in localStorage to survive reloads). Keyed per job
-// type so i2v and t2v don't clobber each other ('malris:lastI2vPresetId' is
-// kept as-is for i2v backward compatibility).
-const LAST_PRESET_KEY = props.jobType === 't2v' ? 'malris:lastT2vPresetId' : 'malris:lastI2vPresetId'
-const rememberLastPreset = (id: string) => {
-  if (import.meta.client && id) localStorage.setItem(LAST_PRESET_KEY, id)
-}
-
-onMounted(async () => {
-  await fetchPresets()
-  // Prepop the last-used preset, but only on a truly fresh form — if the params
-  // already carry a preset identity (duplicate, preset-edit, prior selection in
-  // this session) we leave them untouched.
-  if (!props.modelValue?._preset_id && import.meta.client) {
-    const lastId = localStorage.getItem(LAST_PRESET_KEY)
-    if (lastId && presets.value.some(p => p.id === lastId)) {
-      loadPreset(lastId)
-    }
-  }
-})
-
-async function fetchPresets() {
-  try {
-    const data = await $fetch<any>(`/api/presets?job_type=${props.jobType}`)
-    presets.value = data?.presets || []
-  } catch (e) {
-    console.error('Failed to fetch presets:', e)
-  }
-}
-
-// Sync the dropdown selection from an externally-provided _preset_id on modelValue
-// (e.g. the Duplicate action on the jobs list pre-fills the params with this stash).
-// Setting selectedPresetId programmatically does NOT trigger loadPreset, so we don't
-// clobber any tweaked params that came in with the duplicate.
-watch(
-  [() => props.modelValue?._preset_id, presets],
-  ([presetId]) => {
-    if (!presetId) return
-    const exists = presets.value.some(p => p.id === presetId)
-    if (exists && selectedPresetId.value !== presetId) {
-      selectedPresetId.value = presetId
-    }
-  },
-  { immediate: true }
-)
-
-const presetOptions = computed(() => [
-  { label: 'No preset', value: 'none' },
-  ...presets.value.map(p => ({ label: p.name, value: p.id }))
-])
-
-function loadPreset(presetId: string) {
-  if (!presetId || presetId === 'none') {
-    // Clear any stashed preset identity so this job won't carry a stale preset label
-    const { _preset_id, _preset_name, ...rest } = props.modelValue
-    void _preset_id; void _preset_name
-    emit('update:modelValue', rest)
-    return
-  }
-  const preset = presets.value.find(p => p.id === presetId)
-  if (!preset) return
-
-  const next: Record<string, any> = {
-    prompt: preset.prompt || '',
-    negative_prompt: preset.negativePrompt || props.modelValue.negative_prompt,
-    length: preset.length || 81,
-    // t2v output size (NULL on i2v presets — harmless, i2v ignores it). The
-    // modal resolution picker reads these back off the params.
-    width: preset.width ?? null,
-    height: preset.height ?? null,
-    lora_1_high: preset.lora1High || null,
-    lora_1_low: preset.lora1Low || null,
-    lora_1_high_strength: preset.lora1HighStrength ?? 1,
-    lora_1_low_strength: preset.lora1LowStrength ?? 1,
-    lora_2_high: preset.lora2High || null,
-    lora_2_low: preset.lora2Low || null,
-    lora_2_high_strength: preset.lora2HighStrength ?? 1,
-    lora_2_low_strength: preset.lora2LowStrength ?? 1,
-    lora_3_high: preset.lora3High || null,
-    lora_3_low: preset.lora3Low || null,
-    lora_3_high_strength: preset.lora3HighStrength ?? 1,
-    lora_3_low_strength: preset.lora3LowStrength ?? 1,
-    lora_4_high: preset.lora4High || null,
-    lora_4_low: preset.lora4Low || null,
-    lora_4_high_strength: preset.lora4HighStrength ?? 1,
-    lora_4_low_strength: preset.lora4LowStrength ?? 1,
-    lora_5_high: preset.lora5High || null,
-    lora_5_low: preset.lora5Low || null,
-    lora_5_high_strength: preset.lora5HighStrength ?? 1,
-    lora_5_low_strength: preset.lora5LowStrength ?? 1,
-    // Stash preset identity; stays on the job's parameters jsonb for list display
-    _preset_id: preset.id,
-    _preset_name: preset.name,
-  }
-  if (preset.lora1HighStrengthOff) next[loraOffKey('lora_1_high_strength')] = true
-  if (preset.lora1LowStrengthOff) next[loraOffKey('lora_1_low_strength')] = true
-  if (preset.lora2HighStrengthOff) next[loraOffKey('lora_2_high_strength')] = true
-  if (preset.lora2LowStrengthOff) next[loraOffKey('lora_2_low_strength')] = true
-  if (preset.lora3HighStrengthOff) next[loraOffKey('lora_3_high_strength')] = true
-  if (preset.lora3LowStrengthOff) next[loraOffKey('lora_3_low_strength')] = true
-  if (preset.lora4HighStrengthOff) next[loraOffKey('lora_4_high_strength')] = true
-  if (preset.lora4LowStrengthOff) next[loraOffKey('lora_4_low_strength')] = true
-  if (preset.lora5HighStrengthOff) next[loraOffKey('lora_5_high_strength')] = true
-  if (preset.lora5LowStrengthOff) next[loraOffKey('lora_5_low_strength')] = true
-  rememberLastPreset(preset.id)
-  emit('update:modelValue', next)
-}
-
-function currentParamsPayload(name: string) {
-  const mv = props.modelValue
-  return {
-    name,
-    job_type: props.jobType,
-    prompt: mv.prompt,
-    negative_prompt: mv.negative_prompt,
-    length: mv.length,
-    width: mv.width ?? null,
-    height: mv.height ?? null,
-    lora_1_high: mv.lora_1_high,
-    lora_1_low: mv.lora_1_low,
-    lora_1_high_strength: mv.lora_1_high_strength,
-    lora_1_low_strength: mv.lora_1_low_strength,
-    lora_1_high_strength_off: !!mv[loraOffKey('lora_1_high_strength')],
-    lora_1_low_strength_off: !!mv[loraOffKey('lora_1_low_strength')],
-    lora_2_high: mv.lora_2_high,
-    lora_2_low: mv.lora_2_low,
-    lora_2_high_strength: mv.lora_2_high_strength,
-    lora_2_low_strength: mv.lora_2_low_strength,
-    lora_2_high_strength_off: !!mv[loraOffKey('lora_2_high_strength')],
-    lora_2_low_strength_off: !!mv[loraOffKey('lora_2_low_strength')],
-    lora_3_high: mv.lora_3_high,
-    lora_3_low: mv.lora_3_low,
-    lora_3_high_strength: mv.lora_3_high_strength,
-    lora_3_low_strength: mv.lora_3_low_strength,
-    lora_3_high_strength_off: !!mv[loraOffKey('lora_3_high_strength')],
-    lora_3_low_strength_off: !!mv[loraOffKey('lora_3_low_strength')],
-    lora_4_high: mv.lora_4_high,
-    lora_4_low: mv.lora_4_low,
-    lora_4_high_strength: mv.lora_4_high_strength,
-    lora_4_low_strength: mv.lora_4_low_strength,
-    lora_4_high_strength_off: !!mv[loraOffKey('lora_4_high_strength')],
-    lora_4_low_strength_off: !!mv[loraOffKey('lora_4_low_strength')],
-    lora_5_high: mv.lora_5_high,
-    lora_5_low: mv.lora_5_low,
-    lora_5_high_strength: mv.lora_5_high_strength,
-    lora_5_low_strength: mv.lora_5_low_strength,
-    lora_5_high_strength_off: !!mv[loraOffKey('lora_5_high_strength')],
-    lora_5_low_strength_off: !!mv[loraOffKey('lora_5_low_strength')],
-  }
-}
-
-async function savePreset() {
-  if (!newPresetName.value.trim()) return
-  const toast = useToast()
-  try {
-    const res = await $fetch<any>('/api/presets', {
-      method: 'POST',
-      body: currentParamsPayload(newPresetName.value.trim())
-    })
-    const newId = res?.preset?.id
-    const savedName = newPresetName.value.trim()
-    showSavePreset.value = false
-    newPresetName.value = ''
-    await fetchPresets()
-    if (newId) {
-      selectedPresetId.value = newId
-      rememberLastPreset(newId)
-      // Keep current params but tag them with the new preset identity
-      emit('update:modelValue', {
-        ...props.modelValue,
-        _preset_id: newId,
-        _preset_name: savedName,
-      })
-    }
-    toast.add({
-      title: 'Preset Saved',
-      description: `"${savedName}" is now selected`,
-      color: 'success',
-      duration: 3000
-    })
-  } catch (e) {
-    console.error('Failed to save preset:', e)
-    toast.add({
-      title: 'Save Failed',
-      description: (e as any)?.data?.statusMessage || (e as any)?.message || 'Could not save preset',
-      color: 'error',
-      duration: 4000
-    })
-  }
-}
-
-async function updateCurrentPreset() {
-  if (!selectedPresetId.value) return
-  const preset = presets.value.find(p => p.id === selectedPresetId.value)
-  if (!preset) return
-  const toast = useToast()
-  try {
-    await $fetch(`/api/presets/${selectedPresetId.value}`, {
-      method: 'PUT',
-      body: currentParamsPayload(preset.name)
-    })
-    await fetchPresets()
-    toast.add({
-      title: 'Preset Updated',
-      description: `"${preset.name}" saved`,
-      color: 'success',
-      duration: 3000
-    })
-  } catch (e) {
-    console.error('Failed to update preset:', e)
-    toast.add({
-      title: 'Update Failed',
-      description: (e as any)?.data?.statusMessage || (e as any)?.message || 'Could not update preset',
-      color: 'error',
-      duration: 4000
-    })
-  }
-}
-
-async function deleteCurrentPreset() {
-  if (!selectedPresetId.value) return
-  try {
-    await $fetch(`/api/presets/${selectedPresetId.value}`, { method: 'DELETE' })
-    selectedPresetId.value = ''
-    await fetchPresets()
-  } catch (e) {
-    console.error('Failed to delete preset:', e)
-  }
+const onLoraMenuToggle = (open: boolean) => {
+  if (open) emit('refresh-loras')
 }
 
 function update(key: string, value: any) {
@@ -450,9 +224,11 @@ function hasLoraInSlot(slot: number): boolean {
 }
 
 // --- LoRA slot drag-reorder -------------------------------------------------
-// dragArmed is set only when the pointer goes down on the drag handle, so the
-// card (which is always draggable) only actually starts a drag from the handle
-// — clicks on the selects/sliders inside don't initiate one.
+// dragArmed is set only when the pointer goes down on the drag handle, and the
+// card's `draggable` is bound to it — so the card becomes draggable only while
+// the handle is grabbed. The rest of the time it is not draggable, which keeps
+// the browser from hijacking mousedown and lets you select text (e.g. trigger
+// words) and click the selects/sliders inside normally.
 const dragArmed = ref(false)
 const dragSlot = ref<number | null>(null)
 const dragOverSlot = ref<number | null>(null)
@@ -531,25 +307,82 @@ const lengthOptions = [
   { label: '161 frames (~10s)', value: 161 },
 ]
 
+// Noise classification. Recognizes the "high/low noise" markers Wan2.2 LoRA
+// authors use: the words high/low (incl. `highnoise`), the HN/LN abbreviations,
+// and delimited -h/_h / -l/_l. `high`/`low` must be bounded by a non-letter so
+// substrings like "blowjob" (low) or "thigh" (high) don't false-match. A LoRA
+// that matches NEITHER is noise-agnostic (single-file) and shows in both lists.
 function isHighNoise(name: string): boolean {
-  const lower = name.toLowerCase()
-  return lower.includes('high') || /[-_]h[-_.\d]/.test(lower) || lower.endsWith('-h.safetensors') || lower.endsWith('_h.safetensors')
+  const l = name.toLowerCase().replace(/\.safetensors$/, '')
+  return /highnoise/.test(l)
+    || /(^|[^a-z])hn([^a-z]|$)/.test(l)
+    || /(^|[^a-z])h([-_.\d]|$)/.test(l)
+    // 'high' bounded on EITHER side (catches glued authors like V3TWERKHIGH)
+    || /(^|[^a-z])high|high([^a-z]|$)/.test(l)
 }
+
+// English words that embed "low" but aren't the low-noise marker.
+const LOW_FALSE = /blow|flow|glow|slow|below|yellow|fellow|pillow|follow|hollow|swallow|mellow|shallow|wallow|willow|billow/g
 
 function isLowNoise(name: string): boolean {
-  const lower = name.toLowerCase()
-  return lower.includes('low') || /[-_]l[-_.\d]/.test(lower) || lower.endsWith('-l.safetensors') || lower.endsWith('_l.safetensors')
+  const l = name.toLowerCase().replace(/\.safetensors$/, '')
+  if (/lownoise/.test(l)) return true
+  if (/(^|[^a-z])ln([^a-z]|$)/.test(l)) return true
+  if (/(^|[^a-z])l([-_.\d]|$)/.test(l)) return true
+  // 'low' bounded on either side, after removing the false-positive words above
+  return /(^|[^a-z])low|low([^a-z]|$)/.test(l.replace(LOW_FALSE, ''))
 }
 
-const highNoiseLoraOptions = computed(() => [
-  { label: 'None', value: 'none' },
-  ...props.loras.filter(l => !isLowNoise(l.name)).map(l => ({ label: l.name, value: l.name }))
-])
+// i2v vs t2v relevance. The `t2v/` subfolder is the curated t2v LoRA set; a t2v
+// job shows ONLY those, and an i2v job shows everything else (the LoRA root).
+function matchesJobType(name: string): boolean {
+  const inT2vFolder = name.startsWith('t2v/')
+  return props.jobType === 't2v' ? inT2vFolder : !inT2vFolder
+}
 
-const lowNoiseLoraOptions = computed(() => [
-  { label: 'None', value: 'none' },
-  ...props.loras.filter(l => !isHighNoise(l.name)).map(l => ({ label: l.name, value: l.name }))
-])
+// Friendly, searchable dropdown label: Civitai model name when known (so typing
+// "Beth" finds B3th_v1mdw...), a 👤 marker for character LoRAs, then the
+// filename. The stored value stays the full relative path.
+function loraLabel(l: LoraInfo): string {
+  const basename = (l.name.split('/').pop() || l.name).replace(/\.safetensors$/, '')
+  const mark = /(^|\/)char\//.test(l.name) ? '👤 ' : ''
+  // Strip "(fake character)" / "(Not a real person)" — implied by the 👤 marker.
+  const civ = (l.civitai_name || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  return civ ? `${mark}${civ} — ${basename}` : `${mark}${basename}`
+}
+
+function isCharLora(name) {
+  return /(^|\/)char\//.test(name)
+}
+
+// Collapse trainer epoch checkpoints (<lora>_<expert>_ep<N>_<date>.safetensors)
+// to the LATEST epoch per concept, so the picker isn't cluttered with every
+// saved checkpoint. LoRAs without an _ep<N> marker (downloads) pass through.
+function collapseEpochs(list) {
+  const best = {}
+  for (const l of list) {
+    const m = l.name.match(/_ep(\d+)/i)
+    if (!m) continue
+    const g = l.name.replace(/_ep\d+.*$/i, '')
+    const e = parseInt(m[1], 10)
+    if (best[g] === undefined || e > best[g]) best[g] = e
+  }
+  return list.filter(l => {
+    const m = l.name.match(/_ep(\d+)/i)
+    if (!m) return true
+    return parseInt(m[1], 10) === best[l.name.replace(/_ep\d+.*$/i, '')]
+  })
+}
+
+// LoRA options for a given slot + noise half. Slot 1 is reserved for the
+// character (shows ONLY char/ LoRAs); slots 2–5 exclude characters.
+function loraOptionsFor(slot, noise) {
+  const noiseOk = noise === 'high' ? (l) => !isLowNoise(l.name) : (l) => !isHighNoise(l.name)
+  const list = collapseEpochs(
+    props.loras.filter(l => matchesJobType(l.name) && noiseOk(l) && (slot === 1 ? isCharLora(l.name) : !isCharLora(l.name)))
+  )
+  return [{ label: 'None', value: 'none' }, ...list.map(l => ({ label: loraLabel(l), value: l.name }))]
+}
 
 // Local overlay of trigger-word edits so the UI reflects saves without
 // requiring a parent refetch. Falls back to the props.loras value otherwise.
@@ -564,5 +397,188 @@ function triggerWordsFor(name: string): string | null {
 function setTriggerWords(name: string, value: string | null) {
   if (!name) return
   triggerWordsOverrides.value = { ...triggerWordsOverrides.value, [name]: value }
+  // A character's [subject] token derives from its trigger words, so re-compose
+  // live when the trigger is edited in the UI.
+  if (effectiveCategory(metaFor(name)) === 'character') {
+    const composed = composePrompt(props.modelValue)
+    if (composed) emit('update:modelValue', { ...props.modelValue, prompt: composed.prompt })
+  }
+}
+
+// --- Compositional prompt building -----------------------------------------
+// A "position"/"closeup" LoRA is the base template; its [body]/[expression]/
+// [accessory]/[effect] slots are filled by the fragments of any selected
+// modifier LoRAs (category body/expression/accessory/effect). Rebuilt live on
+// every LoRA toggle. Unfilled slots fall back to sensible defaults.
+const DEFAULT_EXPRESSION = '{to be moaning in pleasure|to be gasping|to be crying out|to be gritting her teeth|with her eyes rolling back}'
+// Default body when no body modifier (thicc/pawg) is chosen — the preferred realistic default.
+const DEFAULT_BODY = ' with a big round ass and small, natural breasts'
+const BASE_CATS = new Set(['position', 'closeup'])
+
+function metaFor(name: string): LoraInfo | undefined {
+  return props.loras.find(l => l.name === name)
+}
+
+// Anything under a `char/` folder is treated as a character LoRA regardless of
+// seeded metadata, so future character LoRAs work by drop-in convention.
+function effectiveCategory(m: LoraInfo | undefined): string | null {
+  if (!m) return null
+  if (/(^|\/)char\//.test(m.name)) return 'character'
+  return m.category || null
+}
+
+// A character's [subject] fragment: its seeded fragment, else its trigger token
+// (first comma-segment of the trigger words — editable live in the UI).
+function charToken(m: LoraInfo): string {
+  if (m.prompt_fragment) return m.prompt_fragment
+  const t = (triggerWordsFor(m.name) || '').split(',')[0].trim()
+  return t ? t + ' ' : ''
+}
+
+// The fragment a LoRA contributes to its category slot.
+function fragOf(m: LoraInfo): string {
+  if (effectiveCategory(m) === 'character') return charToken(m)
+  return m.prompt_fragment || ''
+}
+
+function recommendedStrength(name: string): number {
+  return metaFor(name)?.default_strength ?? 1
+}
+
+// Unique LoRA names currently chosen across all slots (high + low), in slot order.
+function selectedLoraNames(mv: Record<string, any>): string[] {
+  const out: string[] = []
+  for (const slot of [1, 2, 3, 4, 5]) {
+    for (const noise of ['high', 'low']) {
+      const v = mv[`lora_${slot}_${noise}`]
+      if (v && !out.includes(v)) out.push(v)
+    }
+  }
+  return out
+}
+
+function fillSlot(t: string, slot: string, value: string): string {
+  return t.split(`[${slot}]`).join(value)
+}
+
+// Build the composed prompt from the selected LoRAs, or null if there's no base
+// (position/closeup) LoRA to build on.
+function composePrompt(mv: Record<string, any>): { prompt: string; negative: string | null } | null {
+  const metas = selectedLoraNames(mv).map(metaFor).filter(Boolean) as LoraInfo[]
+  const base = metas.find(m => BASE_CATS.has(effectiveCategory(m) || 'position') && m.prompt_template)
+  if (!base?.prompt_template) return null
+
+  const frags = (cat: string) =>
+    [...new Set(metas.filter(m => effectiveCategory(m) === cat).map(fragOf).filter(Boolean))]
+
+  const charMeta = metas.find(m => effectiveCategory(m) === 'character')
+  // A chosen body modifier (thicc/pawg) overrides the realistic default body.
+  const body = frags('body').join('') || DEFAULT_BODY
+  const expression = frags('expression')[0] || DEFAULT_EXPRESSION
+  const accessory = frags('accessory').join('')
+  const effect = frags('effect').join('')
+
+  let out = base.prompt_template
+
+  if (charMeta) {
+    // Lead with the character's FULL identity — the trigger token plus any
+    // trained/edited appearance (hair colour, bangs, eyes) that lives in its
+    // trigger words. Then refer to her as "her" (with nudity + body preserved)
+    // so Wan2.2's T5 encoder keeps the trigger and the woman as ONE person.
+    const identity = (triggerWordsFor(charMeta.name) || charMeta.prompt_fragment || '')
+      .trim().replace(/\s+/g, ' ').replace(/[,.\s]+$/, '')
+    out = fillSlot(out, 'subject', '')
+    out = fillSlot(out, 'body', '')
+    const m = out.match(/a beautiful (giant )?naked woman('s)?/)
+    if (m) {
+      const giant = m[1] ? 'giant ' : ''
+      out = out.replace(m[0], m[2] ? `her ${giant}nude` : `her, ${giant}nude${body},`)
+    }
+    out = `${identity}. ${out}`
+  } else {
+    out = fillSlot(out, 'subject', '')
+    out = fillSlot(out, 'body', body)
+  }
+
+  out = fillSlot(out, 'expression', expression)
+  out = fillSlot(out, 'accessory', accessory)
+  out = fillSlot(out, 'effect', effect)
+  return { prompt: out, negative: base.negative_prompt || null }
+}
+
+// Normalized concept id from a filename (strip folders, noise markers, symbols)
+// so an unseeded high/low pair (e.g. a drop-in char LoRA) can still be matched.
+function normConcept(name: string): string {
+  const base = (name.split('/').pop() || name).toLowerCase().replace(/\.safetensors$/, '')
+  return base.replace(/highnoise|lownoise|high|low|hn|ln|noise/g, '').replace(/[^a-z0-9]/g, '')
+}
+
+// key -> { high, low } filenames, so picking one noise half auto-fills the other.
+// Prefer the seeded pair_key; fall back to the normalized concept id. A neutral
+// single-file LoRA (no clear high/low marker) fills both.
+const pairIndex = computed(() => {
+  const byKey: Record<string, { high?: string; low?: string }> = {}
+  const byNorm: Record<string, { high?: string; low?: string }> = {}
+  for (const l of props.loras) {
+    const assign = (idx: Record<string, { high?: string; low?: string }>, k: string) => {
+      const e = idx[k] || (idx[k] = {})
+      if (isLowNoise(l.name)) e.low = l.name
+      else if (isHighNoise(l.name)) e.high = l.name
+      else { e.high = e.high || l.name; e.low = e.low || l.name }
+    }
+    if (l.pair_key) assign(byKey, l.pair_key)
+    else assign(byNorm, normConcept(l.name))
+  }
+  return { byKey, byNorm }
+})
+
+function counterpartOf(name: string, targetNoise: 'high' | 'low'): string | null {
+  const pk = metaFor(name)?.pair_key
+  if (pk) return pairIndex.value.byKey[pk]?.[targetNoise] || null
+  return pairIndex.value.byNorm[normConcept(name)]?.[targetNoise] || null
+}
+
+// Set a LoRA into a slot: auto-fills the matching counterpart in the other noise
+// half of the same slot, applies each one's recommended strength, and live-
+// rebuilds the composed prompt. Clearing one half clears the whole slot.
+function setLoraInSlot(slot: number, noise: 'high' | 'low', value: string) {
+  const name = value === 'none' ? null : value
+  const other: 'high' | 'low' = noise === 'high' ? 'low' : 'high'
+  const mv: Record<string, any> = { ...props.modelValue, [`lora_${slot}_${noise}`]: name }
+
+  if (name) {
+    mv[`lora_${slot}_${noise}_strength`] = recommendedStrength(name)
+    const cp = counterpartOf(name, other)
+    if (cp) {
+      mv[`lora_${slot}_${other}`] = cp
+      mv[`lora_${slot}_${other}_strength`] = recommendedStrength(cp)
+    }
+  } else {
+    // Clearing one half removes the whole concept from the slot.
+    mv[`lora_${slot}_${other}`] = null
+  }
+
+  const composed = composePrompt(mv)
+  if (composed) {
+    mv.prompt = composed.prompt
+    if (composed.negative) mv.negative_prompt = composed.negative
+  } else if (name && !BASE_CATS.has(effectiveCategory(metaFor(name)) || 'position')) {
+    // Modifier/character picked but no base yet — nudge, don't clobber their prompt.
+    useToast().add({ title: 'Add a position LoRA', description: 'Pick a position to auto-build the prompt from your character & modifiers', color: 'info', duration: 3000 })
+  }
+  emit('update:modelValue', mv)
+}
+
+// The representative LoRA for a slot (for the single trigger/badge display).
+function slotRep(slot: number): string | null {
+  return props.modelValue[`lora_${slot}_high`] || props.modelValue[`lora_${slot}_low`] || null
+}
+
+function loraBadge(name: string): string {
+  const m = metaFor(name)
+  const cat = effectiveCategory(m)
+  if (!cat) return ''
+  const str = m?.default_strength != null ? ` · str ${m.default_strength}` : ''
+  return `${cat}${str}`
 }
 </script>

@@ -10,6 +10,7 @@ import { eq, desc, sql, and } from 'drizzle-orm'
 import { updateAutoProcessingStatus, getCurrentStatus, checkWorkerHealth, broadcastToClients } from './systemStatusManager'
 import { logger } from '~/server/utils/logger'
 import { buildPresetSnapshot } from '~/server/utils/presetSnapshot'
+import { expandWildcards } from '~/server/utils/expandWildcards'
 
 // Continuous processing flag
 // When true, server will automatically process next job after current job finishes
@@ -881,6 +882,28 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
       params = snapshotParams
     }
 
+    // Resolve any dynamic {a|b|c} wildcard prompt to its concrete selection NOW,
+    // so the worker payload AND the persisted history record the chosen prompt
+    // rather than the template. The worker won't re-expand (no braces remain).
+    // Each job resolves independently, so bulk/preset jobs each get their own roll.
+    {
+      let expandedSomething = false
+      if (typeof params.prompt === 'string' && params.prompt.includes('{')) {
+        params.prompt = expandWildcards(params.prompt)
+        expandedSomething = true
+      }
+      if (typeof params.negative_prompt === 'string' && params.negative_prompt.includes('{')) {
+        params.negative_prompt = expandWildcards(params.negative_prompt)
+        expandedSomething = true
+      }
+      // Preset jobs already persist via snapshotParams (=== params). For a
+      // preset-LESS job we must force the expanded params to be written back so
+      // history shows the selection too.
+      if (expandedSomething && !snapshotParams) {
+        snapshotParams = params
+      }
+    }
+
     let workerUrl: string
 
     try {
@@ -957,7 +980,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
         const inputImageBlob = new Blob([inputImageData.buffer])
         formData.append('input_image', inputImageBlob, `input_${job.sourceMediaUuid}.jpg`)
 
-        logger.info(`🎬 I2V job ${job.id}: prompt="${(params.prompt || '').substring(0, 60)}...", ${params.length || 81} frames`)
+        logger.info(`🎬 I2V job ${job.id}: prompt hidden (${(params.prompt || '').length} chars), ${params.length || 81} frames`)
 
       } else if (job.jobType === 't2v') {
         // ---- T2V WORKFLOW (pure text-to-video, no input image) ----
@@ -987,7 +1010,7 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
           }
         }
 
-        logger.info(`🎬 T2V job ${job.id}: prompt="${(params.prompt || '').substring(0, 60)}...", ${params.length || 81} frames`)
+        logger.info(`🎬 T2V job ${job.id}: prompt hidden (${(params.prompt || '').length} chars), ${params.length || 81} frames`)
 
       } else if (job.jobType === 'fs') {
         // ---- FS (single-image ReActor face swap) WORKFLOW ----

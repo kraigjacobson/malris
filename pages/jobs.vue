@@ -71,6 +71,19 @@
                 <UIcon name="i-heroicons-power" class="w-3 h-3 sm:w-4 sm:h-4" />
               </UButton>
 
+              <!-- Master Auto-process toggle: ON = continuously drain the queue
+                   whenever the matching worker container is up and idle (auto-
+                   pauses if it goes down). Replaces the old "Process All". -->
+              <div class="flex items-center gap-1.5 px-2" :title="autoProcessTooltip">
+                <span class="text-xs" :class="autoProcessing ? 'text-gray-400' : 'text-primary font-medium'">Off</span>
+                <USwitch
+                  :model-value="autoProcessing"
+                  :loading="isStartingContinuous || isStopping"
+                  @update:model-value="setAutoProcessing($event)"
+                />
+                <span class="text-xs" :class="autoProcessing ? 'text-primary font-medium' : 'text-gray-400'">Auto</span>
+              </div>
+
               <!-- Processing Control Buttons -->
               <template v-if="!isAnyProcessingActive">
                 <!-- Split control: Process N (▶️) + free number input for the count -->
@@ -100,11 +113,6 @@
                   />
                 </div>
 
-                <!-- Continuous Processing Button (🔄) -->
-                <UButton type="button" size="lg" variant="outline" color="primary" :loading="isStartingContinuous" @click.prevent="startContinuousProcessing()">
-                  <UIcon name="i-heroicons-arrow-path" class="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                  <span class="hidden sm:inline">Process All</span>
-                </UButton>
               </template>
 
               <!-- Stop Button (⏹️) - shown when any processing is active -->
@@ -457,7 +465,7 @@
       <div v-else class="h-80 sm:h-96 overflow-y-auto">
         <!-- List View -->
         <div v-if="viewMode === 'list'">
-          <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
+          <div v-for="job in jobs" :key="job.id" class="border-b border-gray-200 dark:border-gray-700 p-2 sm:p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors relative cursor-pointer w-full" :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedJobs.has(job.id) }" @click="needsSourceImage(job) ? openImageSelectionModal(job) : viewJobDetails(job.id)">
             <!-- Main job info row -->
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-1 sm:space-x-3 min-w-0 flex-1">
@@ -468,29 +476,34 @@
                   {{ formatDateCompact(job.updated_at) }}
                 </span>
                 <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">
-                  {{ getStatusDisplayText(job.status) }}
+                  {{ jobStatusText(job) }}
                 </UBadge>
                 <!-- Priority badge: shows position in the in-memory priority queue (1 = next) -->
                 <UBadge v-if="priorityQueueSet.has(job.id)" color="warning" variant="soft" size="xs" icon="i-heroicons-arrow-up-20-solid" :title="`Priority #${priorityIndex(job.id) + 1} — picker will run this before the normal queue`">
                   PRI {{ priorityIndex(job.id) + 1 }}
                 </UBadge>
                 <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
-                  {{ job.subject?.name || 'Unknown Subject' }}
+                  {{ job.subject?.name || jobCharacter(job) || '—' }}
                 </span>
                 <!-- Desktop: Show full text -->
                 <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
-                  {{ job.job_type === 'i2v' ? 'i2v' : job.job_type === 't2v' ? 't2v' : job.job_type === 'fs' ? 'fs' : (job.source_media_uuid ? 'vid' : 'source') }}
+                  {{ job.job_type === 'i2v' ? 'i2v' : job.job_type === 't2v' ? 't2v' : job.job_type === 'fs' ? 'fs' : job.job_type === 'train_lora' ? 'lora' : (job.source_media_uuid ? 'vid' : 'source') }}
                 </span>
                 <!-- Mobile: Show single letter badges -->
                 <UBadge v-if="job.job_type === 'i2v'" color="purple" variant="soft" size="xs" class="sm:hidden"> I </UBadge>
                 <UBadge v-else-if="job.job_type === 't2v'" color="purple" variant="soft" size="xs" class="sm:hidden"> T </UBadge>
                 <UBadge v-else-if="job.job_type === 'fs'" color="amber" variant="soft" size="xs" class="sm:hidden"> F </UBadge>
+                <UBadge v-else-if="job.job_type === 'train_lora'" color="info" variant="soft" size="xs" class="sm:hidden"> L </UBadge>
                 <UBadge v-else-if="job.source_media_uuid" color="primary" variant="soft" size="xs" class="sm:hidden"> V </UBadge>
                 <UBadge v-else color="green" variant="soft" size="xs" class="sm:hidden"> S </UBadge>
-                <!-- Preset name (if the job was submitted with one) -->
+                <!-- Preset name (legacy jobs submitted with one) -->
                 <UBadge v-if="job.parameters?._preset_name" color="info" variant="subtle" size="xs" icon="i-heroicons-bookmark" class="max-w-[120px] sm:max-w-[200px] truncate">
                   {{ job.parameters._preset_name }}
                 </UBadge>
+                <!-- At-a-glance: position LoRA short name (character name shows in the subject slot) -->
+                <span v-if="jobPositionLabel(job)" class="text-xs text-gray-400 truncate max-w-[100px] sm:max-w-[180px]">
+                  {{ jobPositionLabel(job) }}
+                </span>
                 <!-- Show progress bar when available (mobile and desktop) -->
                 <div v-if="job.progress && job.progress > 0 && job.progress < 100" class="flex items-center space-x-1 sm:space-x-2">
                   <div class="w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1">
@@ -510,7 +523,7 @@
             <!-- Full-height button container positioned absolutely -->
             <div class="absolute top-0 right-0 h-full flex items-center">
               <!-- Select button for need_input jobs -->
-              <div v-if="job.status === 'need_input'" class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop="openImageSelectionModal(job)">
+              <div v-if="needsSourceImage(job)" class="h-full flex items-center justify-center px-3 bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 dark:hover:bg-orange-900/20 border-l border-gray-200 dark:border-gray-700 cursor-pointer" @click.stop="openImageSelectionModal(job)">
                 <span class="text-xs text-orange-600 dark:text-orange-400 font-medium">
                   <span class="hidden sm:inline">Select</span>
                   <span class="sm:hidden">Sel</span>
@@ -529,14 +542,14 @@
 
         <!-- Grid View -->
         <div v-else-if="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4">
-          <div v-for="job in jobs" :key="job.id" class="relative group bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-200 dark:border-gray-700 cursor-pointer" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)">
+          <div v-for="job in jobs" :key="job.id" class="relative group bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-200 dark:border-gray-700 cursor-pointer" @click="needsSourceImage(job) ? openImageSelectionModal(job) : viewJobDetails(job.id)">
             <!-- Media Preview -->
             <div class="aspect-[2/3] bg-gray-100 dark:bg-gray-900 relative">
-              <MediaCard v-if="job.output_media" :media="job.output_media" class="w-full h-full" @click="job.status === 'need_input' ? openImageSelectionModal(job) : viewJobDetails(job.id)" @delete="deleteJob(job)">
+              <MediaCard v-if="job.output_media" :media="job.output_media" class="w-full h-full" @click="needsSourceImage(job) ? openImageSelectionModal(job) : viewJobDetails(job.id)" @delete="deleteJob(job)">
                 <template #overlays>
                   <!-- Status Badge -->
                   <div class="absolute top-2 right-2 z-10">
-                    <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ getStatusDisplayText(job.status) }}</UBadge>
+                    <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ jobStatusText(job) }}</UBadge>
                   </div>
                   <!-- Selection Checkbox -->
                   <div class="absolute top-2 left-2 z-10" @click.stop>
@@ -550,7 +563,7 @@
                 <UIcon name="i-heroicons-photo" class="w-12 h-12 text-gray-300" />
                 <!-- Status Badge -->
                 <div class="absolute top-2 right-2 z-10">
-                  <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ getStatusDisplayText(job.status) }}</UBadge>
+                  <UBadge :color="getStatusColor(job.status)" variant="solid" size="xs">{{ jobStatusText(job) }}</UBadge>
                 </div>
                 <!-- Selection Checkbox -->
                 <div class="absolute top-2 left-2 z-10" @click.stop>
@@ -591,6 +604,32 @@
 
     <!-- Submit Job Modal -->
     <SubmitJobModal ref="submitJobModalRef" v-model="showSubmitJobModal" @jobs-created="handleJobsCreated" />
+
+    <!-- Duplicate ×N Modal -->
+    <UModal v-model:open="showDuplicateModal">
+      <template #header>
+        <h3 class="text-lg font-semibold">Duplicate Job</h3>
+      </template>
+      <template #body>
+        <div class="space-y-3">
+          <p class="text-sm text-gray-600 dark:text-gray-400">
+            Queue this many copies of the selected job (same prompt, LoRAs, and settings):
+          </p>
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-500">Copies:</span>
+            <UInput v-model.number="duplicateCount" type="text" inputmode="numeric" class="w-24" @keyup.enter="confirmDuplicate" />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton variant="ghost" @click="showDuplicateModal = false">Cancel</UButton>
+          <UButton :loading="isDuplicating" :disabled="!(duplicateCount >= 1)" @click="confirmDuplicate">
+            Duplicate {{ duplicateCount >= 1 ? `×${duplicateCount}` : '' }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 
@@ -604,6 +643,52 @@ import MediaCard from '~/components/MediaCard.vue'
 definePageMeta({
   title: 'Jobs'
 })
+
+// LoRA metadata (name -> {category, civitai_name}) for at-a-glance job labels.
+const loraMeta = ref({})
+onMounted(async () => {
+  try {
+    const data = await useApiFetch('loras')
+    for (const l of (data?.loras || [])) loraMeta.value[l.name] = { category: l.category, civitai: l.civitai_name }
+  } catch { /* non-fatal */ }
+})
+
+// A LoRA's effective category (char/ folder overrides seeded metadata).
+function loraCategory(name) {
+  if (/(^|\/)char\//.test(name)) return 'character'
+  return loraMeta.value[name]?.category || null
+}
+// Strip parenthetical asides like "(fake character)" / "(Not a real person)".
+function cleanName(s) {
+  return String(s || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+}
+// Short glance label: Civitai name, else the filename's first token before a dash/underscore.
+function loraShort(name) {
+  const civ = cleanName(loraMeta.value[name]?.civitai)
+  if (civ) return civ
+  const basename = (String(name).split('/').pop() || name).replace(/\.safetensors$/, '')
+  return basename.split(/[-_]/)[0]
+}
+// The LoRAs on a job, in slot order (dedup high/low of the same concept).
+function jobLoras(job) {
+  const p = job?.parameters || {}
+  const out = []
+  for (const slot of [1, 2, 3, 4, 5]) {
+    for (const noise of ['high', 'low']) {
+      const v = p[`lora_${slot}_${noise}`]
+      if (v && !out.includes(v)) out.push(v)
+    }
+  }
+  return out
+}
+function jobPositionLabel(job) {
+  const pos = jobLoras(job).find(n => ['position', 'closeup'].includes(loraCategory(n)))
+  return pos ? loraShort(pos) : ''
+}
+function jobCharacter(job) {
+  const ch = jobLoras(job).find(n => loraCategory(n) === 'character')
+  return ch ? loraShort(ch) : ''
+}
 
 // Local state instead of store
 const jobs = ref([])
@@ -694,10 +779,29 @@ async function onPickOrderToggle(isRandom) {
   pickOrderSaving.value = true
   try {
     jobsStore.wsConnection.send(JSON.stringify({ type: 'set_pick_order', pick_order: next }))
+    if (import.meta.client) localStorage.setItem(PICK_ORDER_KEY, next)
   } finally {
     setTimeout(() => { pickOrderSaving.value = false }, 300)
   }
 }
+
+// Persist the pick-order choice across server restarts (the server keeps it in
+// memory and resets to 'random' on restart). Remember it locally and re-assert
+// it once the WebSocket is connected and the server state has arrived.
+const PICK_ORDER_KEY = 'malris:pickOrder'
+const pickOrderRestored = ref(false)
+watch(
+  () => [jobsStore.wsConnected, jobsStore.processingState?.pickOrder],
+  ([connected, serverOrder]) => {
+    if (pickOrderRestored.value || !connected || serverOrder == null || !import.meta.client) return
+    pickOrderRestored.value = true
+    const saved = localStorage.getItem(PICK_ORDER_KEY)
+    if ((saved === 'random' || saved === 'chronological') && saved !== serverOrder) {
+      jobsStore.wsConnection?.send(JSON.stringify({ type: 'set_pick_order', pick_order: saved }))
+    }
+  },
+  { immediate: true }
+)
 
 // Preset filter — pins continuous processing to a single preset (or "all").
 // Backed by the same WebSocket-driven state as pickOrder.
@@ -1032,6 +1136,17 @@ const isAnyProcessingActive = computed(() => {
 
   return comfyuiRunningJobs > 0 || localModeIsProcessing || sharedProcessingActive || anyActiveJob
 })
+
+// Master "Auto-process" switch — maps to continuous mode. On = keep draining the
+// queue; the processing service already gates on worker health (only runs when
+// the matching container, e.g. the Wan worker for t2v, is up and idle) and
+// auto-pauses continuous mode if the worker goes unreachable.
+const autoProcessing = computed(() => jobsStore.processingState?.isContinuous === true)
+const autoProcessTooltip = 'Auto-process: while on, queued jobs run automatically whenever the matching worker container (e.g. the Wan container for t2v) is up and idle. Pauses if it goes down.'
+async function setAutoProcessing(on) {
+  if (on) await startContinuousProcessing()
+  else await stopAllProcessing()
+}
 
 // Get all jobs that need input for modal navigation
 const needInputJobs = ref([])
@@ -1667,6 +1782,14 @@ const getStatusDisplayText = status => {
   return status
 }
 
+// A train_lora job parked in need_input is "paused" (a queue mechanic so the
+// picker skips it), NOT a faceswap job awaiting a source image. Present and
+// treat it as paused so it doesn't pollute the faceswap Need Input bucket.
+const isTrainingPaused = job => job?.status === 'need_input' && job?.job_type === 'train_lora'
+// True only for jobs that genuinely await a source-image selection (faceswap).
+const needsSourceImage = job => job?.status === 'need_input' && job?.job_type !== 'train_lora'
+const jobStatusText = job => (isTrainingPaused(job) ? 'paused' : getStatusDisplayText(job.status))
+
 // Get job actions for dropdown menu
 const getJobActions = job => {
   const actions = []
@@ -1674,7 +1797,7 @@ const getJobActions = job => {
   // Edit the preset this queued i2v job references. Since queued jobs resolve
   // params live from the preset row, saving the preset propagates to every
   // queued job using it — no per-job edit needed.
-  if (job.status === 'queued' && job.job_type === 'i2v' && job.preset_id) {
+  if (job.status === 'queued' && ['i2v', 't2v'].includes(job.job_type) && job.preset_id) {
     actions.push({
       label: 'Edit Preset',
       icon: 'i-heroicons-pencil-square',
@@ -1733,6 +1856,13 @@ const getJobActions = job => {
     })
   }
 
+  // Duplicate ×N: clone this job's exact params into N new queued jobs.
+  actions.push({
+    label: 'Duplicate ×N',
+    icon: 'i-heroicons-square-2-stack',
+    onSelect: () => openDuplicateModal(job)
+  })
+
   // Always add delete option
   actions.push({
     label: 'Delete Job',
@@ -1743,6 +1873,54 @@ const getJobActions = job => {
   })
 
   return [actions]
+}
+
+// --- Duplicate ×N ----------------------------------------------------------
+const showDuplicateModal = ref(false)
+const duplicateJob = ref(null)
+const duplicateCount = ref(5)
+const isDuplicating = ref(false)
+
+function openDuplicateModal(job) {
+  duplicateJob.value = job
+  duplicateCount.value = 5
+  showDuplicateModal.value = true
+}
+
+async function confirmDuplicate() {
+  const job = duplicateJob.value
+  const n = parseInt(duplicateCount.value, 10)
+  if (!job || !Number.isFinite(n) || n < 1) return
+  isDuplicating.value = true
+  const toast = useToast()
+  let ok = 0, fail = 0
+  try {
+    // Clone the job's stored params verbatim (self-contained for new jobs;
+    // preset-referencing for legacy ones — create.post handles both).
+    const body = {
+      job_type: job.job_type,
+      parameters: job.parameters || {},
+      subject_uuid: job.subject_uuid || job.subject?.id || null,
+      dest_media_uuid: job.dest_media_uuid || null,
+      source_media_uuid: job.source_media_uuid || null,
+    }
+    for (let i = 0; i < n; i++) {
+      try {
+        await useApiFetch('jobs/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+        ok++
+      } catch { fail++ }
+    }
+    toast.add({
+      title: 'Duplicated',
+      description: `Queued ${ok} copy${ok !== 1 ? 'ies' : ''}${fail ? `, ${fail} failed` : ''}`,
+      color: fail ? 'warning' : 'success',
+      duration: 3500,
+    })
+    showDuplicateModal.value = false
+    await refreshJobsWithCurrentState()
+  } finally {
+    isDuplicating.value = false
+  }
 }
 
 // Image selection modal methods

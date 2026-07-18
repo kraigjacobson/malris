@@ -52,6 +52,19 @@ export const subjects = pgTable("subjects", {
 export const loraMetadata = pgTable("lora_metadata", {
   name: varchar("name", { length: 255 }).primaryKey(),
   triggerWords: text("trigger_words"),
+  // Default prompt for this LoRA. May contain Dynamic-Prompts {a|b|c} wildcards;
+  // expanded at job activation (server/utils/expandWildcards.ts). For a base
+  // (position/closeup) LoRA this holds slotted text with [body]/[expression]/
+  // [accessory]/[effect] placeholders filled by modifier LoRAs' fragments.
+  promptTemplate: text("prompt_template"),
+  negativePrompt: text("negative_prompt"),
+  // Composition metadata (see migration 014).
+  category: varchar("category", { length: 20 }), // position|closeup|body|expression|accessory|effect
+  promptFragment: text("prompt_fragment"), // modifier snippet that fills its category slot
+  defaultStrength: real("default_strength"), // recommended strength applied on select
+  pairKey: varchar("pair_key", { length: 60 }), // shared id for a high/low pair (auto-fill counterpart)
+  civitaiName: text("civitai_name"), // Civitai model name resolved by file hash
+  civitaiUrl: text("civitai_url"), // Civitai model page URL
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -142,7 +155,7 @@ export const loraTrainings = pgTable("lora_trainings", {
   triggerWord: varchar("trigger_word", { length: 100 }).notNull(),
   status: varchar("status", { length: 20 }).default("queued").notNull(), // queued | training | paused | completed | failed | canceled
   imageUuids: jsonb("image_uuids").default([]).notNull(), // media_records uuids in the training set
-  config: jsonb("config").default({}).notNull(), // { epochs, rank, lr, resolution, num_repeats }
+  config: jsonb("config").default({}).notNull(), // { epochs, rank, lr, resolution, num_repeats, checkpoint_minutes }
   outputLoras: jsonb("output_loras"), // { high: '<name>_high.safetensors', low: '<name>_low.safetensors' }
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

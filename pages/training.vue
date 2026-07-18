@@ -53,6 +53,16 @@
           </div>
           <div class="flex items-center gap-1 shrink-0" @click.stop>
             <UButton
+              v-if="['training', 'paused', 'failed'].includes(training.status)"
+              icon="i-heroicons-beaker"
+              variant="ghost"
+              color="primary"
+              size="sm"
+              :loading="publishingId === training.id"
+              title="Save latest epoch as a test LoRA"
+              @click="publishLatest(training)"
+            />
+            <UButton
               v-if="['training', 'queued'].includes(training.status)"
               icon="i-heroicons-pause"
               variant="ghost"
@@ -111,6 +121,7 @@ const loading = ref(false)
 const showNewModal = ref(false)
 const showDetailsModal = ref(false)
 const detailsTrainingId = ref<string | null>(null)
+const publishingId = ref<string | null>(null)
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -145,6 +156,25 @@ const openNewModal = () => {
 const openDetails = (training: any) => {
   detailsTrainingId.value = training.id
   showDetailsModal.value = true
+}
+
+// Snapshot the newest saved epoch into the loras folder for mid-training
+// testing, without opening the details modal.
+const publishLatest = async (training: any) => {
+  publishingId.value = training.id
+  try {
+    const res = await $fetch<{ loras: Record<string, string> }>(`/api/trainings/${training.id}/publish-latest`, { method: 'POST' })
+    const names = Object.values(res.loras || {})
+    toast.add({
+      title: 'Test LoRA saved',
+      description: names.length ? `Published to loras: ${names.join(', ')}` : 'Snapshot published to the loras folder.',
+      color: 'success'
+    })
+  } catch (error: any) {
+    toast.add({ title: 'Could not save test LoRA', description: error?.data?.statusMessage || error?.message, color: 'error' })
+  } finally {
+    publishingId.value = null
+  }
 }
 
 const pauseTraining = async (training: any) => {

@@ -30,6 +30,7 @@ export interface TrainingConfig {
   lr?: number
   resolution?: number
   num_repeats?: number
+  checkpoint_minutes?: number // deepspeed resume cadence — a pause/cancel loses at most this much work
 }
 
 const CONFIG_DEFAULTS: Required<TrainingConfig> = {
@@ -37,7 +38,8 @@ const CONFIG_DEFAULTS: Required<TrainingConfig> = {
   rank: 32,
   lr: 2e-5,
   resolution: 512,
-  num_repeats: 5
+  num_repeats: 5,
+  checkpoint_minutes: 30
 }
 
 // ---------------------------------------------------------------------------
@@ -237,8 +239,11 @@ caching_batch_size = 1
 steps_per_print = 1
 video_clip_mode = 'single_beginning'
 
-save_every_n_epochs = 5
-checkpoint_every_n_minutes = 30
+# A LoRA is emitted every epoch (epochN/adapter_model.safetensors, ComfyUI
+# format) so a mid-training "Save test LoRA" can grab a fresh snapshot; the
+# deepspeed resume checkpoint is on a user-set wall-clock cadence (the slider).
+save_every_n_epochs = 1
+checkpoint_every_n_minutes = ${cfg.checkpoint_minutes}
 
 [model]
 type = 'wan'

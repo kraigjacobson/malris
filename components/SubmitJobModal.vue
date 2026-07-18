@@ -72,7 +72,7 @@
               Editing the preset's parameters. Click <span class="font-medium">Update</span> at the top to save — all queued jobs using this preset will pick up the new values automatically.
             </p>
             <div class="flex-1 min-h-0 overflow-y-auto">
-              <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+              <I2vJobForm v-model="i2vParams" :loras="availableLoras" @refresh-loras="fetchLoras" />
             </div>
           </div>
 
@@ -106,7 +106,7 @@
               One i2v job will be created for every source image marked as favorite (set from the Manage Subject modal). All jobs share the settings below.
             </p>
             <div class="flex-1 min-h-0 overflow-y-auto">
-              <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+              <I2vJobForm v-model="i2vParams" :loras="availableLoras" @refresh-loras="fetchLoras" />
             </div>
           </div>
 
@@ -174,7 +174,7 @@
               <!-- Right: I2V Parameters -->
               <div class="overflow-y-auto">
                 <p class="text-xs text-gray-400 mb-2">Generation settings:</p>
-                <I2vJobForm v-model="i2vParams" :loras="availableLoras" />
+                <I2vJobForm v-model="i2vParams" :loras="availableLoras" @refresh-loras="fetchLoras" />
               </div>
             </div>
           </div>
@@ -184,19 +184,30 @@
              generation params. Each submit creates N identical queued jobs
              (seed is randomized per job on the worker). -->
         <div v-if="selectedJobType === 't2v'" class="flex flex-col flex-1 min-h-0">
-          <div class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-400">Resolution:</span>
-              <USelect v-model="t2vResolution" :items="t2vResolutionOptions" size="xs" class="w-40" />
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-400">Jobs to queue:</span>
-              <UInput v-model.number="t2vJobCount" type="number" min="1" max="100" size="xs" class="w-20" />
+          <!-- Preset Edit Mode: form only, the form's own Update button saves -->
+          <div v-if="presetEditMode" class="flex flex-col flex-1 min-h-0">
+            <p class="flex-shrink-0 text-xs text-gray-400 mb-2">
+              Editing the preset's parameters. Click <span class="font-medium">Update</span> in the form to save — all queued t2v jobs using this preset pick up the new values automatically.
+            </p>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <I2vJobForm v-model="t2vParams" :loras="availableLoras" job-type="t2v" @refresh-loras="fetchLoras" />
             </div>
           </div>
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <I2vJobForm v-model="t2vParams" :loras="availableLoras" job-type="t2v" />
-          </div>
+          <template v-else>
+            <div class="flex-shrink-0 mb-2 p-2 bg-gray-800 rounded-lg flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400">Resolution:</span>
+                <USelect v-model="t2vResolution" :items="t2vResolutionOptions" size="xs" class="w-40" />
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400">Jobs to queue:</span>
+                <UInput v-model.number="t2vJobCount" type="text" inputmode="numeric" size="xs" class="w-20" />
+              </div>
+            </div>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <I2vJobForm v-model="t2vParams" :loras="availableLoras" job-type="t2v" @refresh-loras="fetchLoras" />
+            </div>
+          </template>
         </div>
 
         <!-- Subject First Workflow -->
@@ -2444,10 +2455,14 @@ const editPresetFromJob = async (job) => {
     })
     return
   }
-  if (job.job_type !== 'i2v') {
+  // Both i2v and t2v jobs carry their prompt/LoRAs on a preset (t2v's width/
+  // height live on the job, but the tweakable bits are the preset's) — so the
+  // same Edit Preset flow works for both.
+  const jobType = job.job_type
+  if (jobType !== 'i2v' && jobType !== 't2v') {
     toast.add({
       title: 'Cannot edit preset',
-      description: `Preset editing is only supported for i2v jobs (this job is ${job.job_type || 'unknown'}).`,
+      description: `Preset editing is only supported for i2v and t2v jobs (this job is ${jobType || 'unknown'}).`,
       color: 'warning',
       duration: 4000
     })
@@ -2456,7 +2471,7 @@ const editPresetFromJob = async (job) => {
 
   let preset
   try {
-    const data = await $fetch('/api/presets?job_type=i2v')
+    const data = await $fetch(`/api/presets?job_type=${jobType}`)
     preset = data?.presets?.find(p => p.id === job.preset_id)
   } catch (e) {
     console.error('Failed to fetch preset:', e)
@@ -2471,15 +2486,17 @@ const editPresetFromJob = async (job) => {
     return
   }
 
+  const paramsRef = jobType === 't2v' ? t2vParams : i2vParams
+
   resetWorkflow()
   presetEditMode.value = true
-  selectedJobType.value = 'i2v'
-  form.value.job_type = 'i2v'
+  selectedJobType.value = jobType
+  form.value.job_type = jobType
   await fetchLoras()
 
   const seeded = {
     prompt: preset.prompt || '',
-    negative_prompt: preset.negativePrompt || i2vParams.value.negative_prompt,
+    negative_prompt: preset.negativePrompt || paramsRef.value.negative_prompt,
     length: preset.length || 81,
     lora_1_high: preset.lora1High || null,
     lora_1_low: preset.lora1Low || null,
@@ -2514,7 +2531,7 @@ const editPresetFromJob = async (job) => {
   if (preset.lora4LowStrengthOff) seeded[loraOffKey('lora_4_low_strength')] = true
   if (preset.lora5HighStrengthOff) seeded[loraOffKey('lora_5_high_strength')] = true
   if (preset.lora5LowStrengthOff) seeded[loraOffKey('lora_5_low_strength')] = true
-  i2vParams.value = seeded
+  paramsRef.value = seeded
 
   isOpen.value = true
 }

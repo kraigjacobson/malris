@@ -135,7 +135,6 @@
           
           <ClientOnly>
             <div v-if="user" class="flex items-center space-x-1 sm:space-x-4">
-              <span class="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:inline">Welcome, Kraig</span>
               <UButton
                 variant="outline"
                 size="sm"
@@ -303,11 +302,6 @@ const navigationItems = ref<NavigationMenuItem[]>([
         label: 'Utilities',
         icon: 'i-heroicons-cog-6-tooth',
         to: '/utilities'
-      },
-      {
-        label: 'I2V Presets',
-        icon: 'i-heroicons-bookmark',
-        to: '/i2v-presets'
       }
     ]
   }

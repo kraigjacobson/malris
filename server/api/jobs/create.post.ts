@@ -136,6 +136,18 @@ export default defineEventHandler(async (event) => {
       params.frames_per_batch = frames_per_batch
     }
 
+    // For LoRA-driven jobs (t2v/i2v) with no explicit subject, inherit the
+    // subject from the training that produced the selected LoRA — otherwise the
+    // job shows "unknown".
+    let resolvedSubjectUuid: string | null = subject_uuid || null
+    if (!resolvedSubjectUuid) {
+      const { deriveSubjectFromLoras } = await import('~/server/utils/subjectFromLora')
+      resolvedSubjectUuid = await deriveSubjectFromLoras(db, params)
+      if (resolvedSubjectUuid) {
+        logger.info(`🔗 ${job_type} job inheriting subject ${resolvedSubjectUuid} from its LoRA's training`)
+      }
+    }
+
     // Resolve source media UUID for vid_faceswap jobs
     let resolvedSourceMediaUuid = source_media_uuid || null
     if (job_type === "vid_faceswap" && subject_uuid) {
@@ -147,12 +159,24 @@ export default defineEventHandler(async (event) => {
     // Promote _preset_id from the jsonb stash to a real column. Queued jobs
     // resolve preset values live; only non-preset params survive in parameters.
     const presetId: string | null = params._preset_id || null
-    const queuedParams = stripPresetFields(params)
+    // Strip preset-derived fields (prompt, loras, length…) ONLY when the job
+    // references a preset — then the preset is the source of truth and those
+    // values get re-snapshotted at activation. For a preset-LESS job (e.g. an
+    // inline t2v job typed without saving a preset) those fields ARE the real
+    // parameters, so keep them; just drop the internal preset bookkeeping keys.
+    let queuedParams: Record<string, any>
+    if (presetId) {
+      queuedParams = stripPresetFields(params)
+    } else {
+      const { _preset_id: _pid, _preset_name: _pname, ...rest } = params
+      void _pid; void _pname
+      queuedParams = rest
+    }
 
     // Create job using Drizzle ORM
     const newJob = await db.insert(jobs).values({
       jobType: job_type,
-      subjectUuid: subject_uuid || null,
+      subjectUuid: resolvedSubjectUuid,
       destMediaUuid: dest_media_uuid || null,
       sourceMediaUuid: resolvedSourceMediaUuid,
       presetId,

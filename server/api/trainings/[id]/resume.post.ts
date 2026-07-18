@@ -22,19 +22,37 @@ export default defineEventHandler(async (event) => {
   if (!['paused', 'failed'].includes(training.status)) {
     throw createError({ statusCode: 400, statusMessage: `Cannot resume a training in status '${training.status}'` })
   }
-  if (!training.jobId) {
-    throw createError({ statusCode: 400, statusMessage: 'Training has no job to resume' })
+  const now = new Date()
+
+  // The training's job can go missing — jobId is `onDelete: 'set null'`, so if
+  // the underlying train_lora job was deleted (job cleanup, manual delete) the
+  // training row survives with jobId = null. Rather than dead-ending, mint a
+  // fresh train_lora job and re-link it. The dataset + TOMLs already live under
+  // /train from creation, and the trainer resumes from the latest deepspeed
+  // checkpoint (skipping .done experts), so no re-export is needed.
+  let jobId = training.jobId
+  if (!jobId) {
+    const [job] = await db
+      .insert(jobs)
+      .values({
+        jobType: 'train_lora',
+        subjectUuid: training.subjectUuid,
+        status: 'queued',
+        progress: 0
+      })
+      .returning({ id: jobs.id })
+    jobId = job.id
+    logger.info(`🎓 training ${id} had no job — created replacement job ${jobId}`)
   }
 
-  const now = new Date()
   await db
     .update(loraTrainings)
-    .set({ status: 'queued', errorMessage: null, updatedAt: now })
+    .set({ status: 'queued', jobId, errorMessage: null, updatedAt: now })
     .where(eq(loraTrainings.id, id))
   await db
     .update(jobs)
     .set({ status: 'queued', errorMessage: null, updatedAt: now })
-    .where(eq(jobs.id, training.jobId))
+    .where(eq(jobs.id, jobId))
 
   logger.info(`🎓 training ${id} requeued for resume`)
 

@@ -48,6 +48,15 @@
           </div>
         </div>
 
+        <!-- Checkpoint interval (resume granularity) -->
+        <div>
+          <label class="block text-sm font-medium mb-1">Checkpoint every: {{ form.checkpointMinutes }} min</label>
+          <USlider v-model="form.checkpointMinutes" :min="5" :max="60" :step="5" />
+          <p class="text-xs text-gray-500 mt-1">
+            How often training saves a resume point — a pause or cancel loses at most this much work. Smaller = more flexible, slightly more disk churn.
+          </p>
+        </div>
+
         <!-- Image picker -->
         <div v-if="form.subjectUuid">
           <div class="flex items-center justify-between mb-2">
@@ -130,7 +139,8 @@ const form = ref({
   loraName: '',
   triggerWord: '',
   epochs: 40,
-  rank: 32
+  rank: 32,
+  checkpointMinutes: 30
 })
 
 const close = () => {
@@ -206,7 +216,7 @@ const createTraining = async () => {
         lora_name: form.value.loraName,
         trigger_word: form.value.triggerWord.trim(),
         image_uuids: [...selectedUuids.value],
-        config: { epochs: form.value.epochs, rank: form.value.rank }
+        config: { epochs: form.value.epochs, rank: form.value.rank, checkpoint_minutes: form.value.checkpointMinutes }
       }
     })
     toast.add({ title: 'Training queued', description: 'The dataset was exported; it will start when the GPU frees up.', color: 'success' })
@@ -221,7 +231,7 @@ const createTraining = async () => {
 }
 
 const resetForm = () => {
-  form.value = { subjectUuid: undefined, loraName: '', triggerWord: '', epochs: 40, rank: 32 }
+  form.value = { subjectUuid: undefined, loraName: '', triggerWord: '', epochs: 40, rank: 32, checkpointMinutes: 30 }
   scoredImages.value = []
   selectedUuids.value = new Set()
 }

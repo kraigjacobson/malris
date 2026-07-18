@@ -6,7 +6,7 @@
 import type { SystemStatus, SystemHealth, ComfyUIProcessingStatus, AutoProcessingStatus, WebSocketMessage } from '~/types/systemStatus'
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
-import { count, eq } from 'drizzle-orm'
+import { count, eq, and } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 // Register global error handlers FIRST to catch WebSocket errors
 console.log('🛡️ [SYSTEM STATUS] Registering global error handlers...')
@@ -523,6 +523,15 @@ export async function updateJobCounts() {
           break
       }
     })
+
+    // train_lora jobs parked in need_input are "paused" (a queue mechanic so the
+    // picker skips them), not faceswap jobs awaiting a source image. Subtract
+    // them so the Need Input badge reflects only actionable jobs.
+    const pausedTrainingRows = await db
+      .select({ c: count() })
+      .from(jobs)
+      .where(and(eq(jobs.status, 'need_input'), eq(jobs.jobType, 'train_lora')))
+    counts.needInput = Math.max(0, counts.needInput - Number(pausedTrainingRows[0]?.c || 0))
 
     updateStatus(
       {

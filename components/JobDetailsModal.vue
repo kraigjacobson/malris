@@ -228,14 +228,14 @@
                       <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution:</span>
                       <span class="text-sm text-gray-600 dark:text-gray-400">{{ job.parameters.width }} × {{ job.parameters.height }}</span>
                     </div>
-                    <div v-for="slot in 3" :key="slot">
+                    <div v-for="slot in 5" :key="slot">
                       <div v-if="job.parameters[`lora_${slot}_high`] || job.parameters[`lora_${slot}_low`]" class="flex flex-col space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded">
                         <span class="text-xs font-medium text-gray-700 dark:text-gray-300">LoRA {{ slot }}</span>
                         <div v-if="job.parameters[`lora_${slot}_high`]" class="text-xs text-gray-600 dark:text-gray-400">
-                          <span class="font-medium">High:</span> {{ job.parameters[`lora_${slot}_high`] }} @ {{ job.parameters[`lora_${slot}_high_strength`] ?? 1 }}
+                          <span class="font-medium">High:</span> {{ loraLabel(job.parameters[`lora_${slot}_high`]) }} @ {{ job.parameters[`lora_${slot}_high_strength`] ?? 1 }}
                         </div>
                         <div v-if="job.parameters[`lora_${slot}_low`]" class="text-xs text-gray-600 dark:text-gray-400">
-                          <span class="font-medium">Low:</span> {{ job.parameters[`lora_${slot}_low`] }} @ {{ job.parameters[`lora_${slot}_low_strength`] ?? 1 }}
+                          <span class="font-medium">Low:</span> {{ loraLabel(job.parameters[`lora_${slot}_low`]) }} @ {{ job.parameters[`lora_${slot}_low_strength`] ?? 1 }}
                         </div>
                       </div>
                     </div>
@@ -316,6 +316,23 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'cancel-job', 'retry-job', 'delete-job', 'open-image-fullscreen', 'job-changed', 'rating-changed'])
+
+// Clean LoRA labels: map a stored filename/path to its Civitai name (falling
+// back to the basename), matching the submit form's dropdown labels.
+const loraMeta = ref({})
+onMounted(async () => {
+  try {
+    const data = await useApiFetch('loras')
+    for (const l of (data?.loras || [])) loraMeta.value[l.name] = l.civitai_name || null
+  } catch { /* non-fatal, falls back to basename */ }
+})
+function loraLabel(name) {
+  if (!name) return ''
+  const basename = (String(name).split('/').pop() || name).replace(/\.safetensors$/, '')
+  const mark = /(^|\/)char\//.test(name) ? '👤 ' : ''
+  const civ = (loraMeta.value[name] || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  return civ ? `${mark}${civ}` : `${mark}${basename}`
+}
 
 const { displayImages } = useSettings()
 

@@ -44,6 +44,23 @@ export default defineNuxtConfig({
   },
   modules: ['@nuxt/icon', '@nuxt/eslint', '@nuxt/ui', '@nuxtjs/supabase', '@nuxt/image', '@pinia/nuxt', '@nuxtjs/device', '@scalar/nuxt'], // '@vite-pwa/nuxt' disabled to debug reload
 
+  // Bundle icon sets locally so icons never hit the public Iconify CDN at runtime.
+  // We use heroicons (app) + lucide (app + @nuxt/ui internal defaults); both are
+  // installed as @iconify-json/* packages.
+  //
+  // NOTE: this app is `ssr: false`, and @nuxt/icon defaults such apps to the
+  // `iconify` provider, which fetches every icon straight from api.iconify.design
+  // and *disables* the server bundle. We serve from our own Nitro node server
+  // instead, so force provider 'server'. serverBundle 'local' then packs every
+  // installed @iconify-json collection into that server (whole collections, so
+  // dynamically-named icons resolve too), and fallbackToApi: false forbids any
+  // network fetch to api.iconify.design.
+  icon: {
+    provider: 'server',
+    serverBundle: 'local',
+    fallbackToApi: false
+  },
+
   css: ['~/assets/css/main.css'],
 
   supabase: {
