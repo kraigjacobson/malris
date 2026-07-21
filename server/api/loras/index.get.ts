@@ -48,6 +48,7 @@ export default defineEventHandler(async () => {
   const pairMap = new Map<string, string>()
   const civitaiNameMap = new Map<string, string>()
   const civitaiUrlMap = new Map<string, string>()
+  const orientationMap = new Map<string, string>()
   for (const row of rows) {
     if (row.triggerWords) triggerMap.set(row.name, row.triggerWords)
     if (row.promptTemplate) promptMap.set(row.name, row.promptTemplate)
@@ -58,6 +59,7 @@ export default defineEventHandler(async () => {
     if (row.pairKey) pairMap.set(row.name, row.pairKey)
     if (row.civitaiName) civitaiNameMap.set(row.name, row.civitaiName)
     if (row.civitaiUrl) civitaiUrlMap.set(row.name, row.civitaiUrl)
+    if (row.orientation) orientationMap.set(row.name, row.orientation)
   }
 
   // Metadata is keyed by the registered name (usually the bare filename). Look
@@ -79,6 +81,7 @@ export default defineEventHandler(async () => {
       pair_key: pick(pairMap, name, base),
       civitai_name: pick(civitaiNameMap, name, base),
       civitai_url: pick(civitaiUrlMap, name, base),
+      orientation: pick(orientationMap, name, base),
     }
   })
 

@@ -9,7 +9,7 @@ export default defineEventHandler(async event => {
   try {
     // Get query parameters
     const query = getQuery(event)
-    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, dest_media_uuid_ref, exclude_dest_for_subject, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false, similar_to_uuid, similarity_threshold } = query
+    const { uuid, media_type, purpose, status, exclude_statuses, tags, only_untagged, only_orphans, filename_pattern, subject_uuid, subject_uuids, exclude_subject_uuid, job_id, source_job_type, ai_generated, dest_media_uuid_ref, exclude_dest_for_subject, has_subject, preset_id, min_file_size, max_file_size, min_width, max_width, min_height, max_height, min_duration, max_duration, created_after, created_before, updated_after, updated_before, accessed_after, accessed_before, min_access_count, max_access_count, min_completions, max_completions, tags_confirmed, ratings, unrated_only, sort_by = 'created_at', sort_order = 'desc', seed, limit = 100, offset = 0, page, pick_random = false, include_thumbnails = false, include_images = false, similar_to_uuid, similarity_threshold } = query
 
     // Debug logging for include_thumbnails parameter
     logger.info('🔍 Media search parameters:', {
@@ -61,6 +61,7 @@ export default defineEventHandler(async event => {
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
           job_id: mediaRecords.jobId,
+          ai_generated: mediaRecords.aiGenerated,
           thumbnail_uuid: mediaRecords.thumbnailUuid,
           created_at: mediaRecords.createdAt,
           updated_at: mediaRecords.updatedAt,
@@ -118,6 +119,7 @@ export default defineEventHandler(async event => {
         source_media_uuid_ref: result.source_media_uuid_ref,
         dest_media_uuid_ref: result.dest_media_uuid_ref,
         job_id: result.job_id,
+        ai_generated: result.ai_generated,
         thumbnail_uuid: result.thumbnail_uuid,
         subject_thumbnail_uuid: result.subject_thumbnail_uuid,
         created_at: result.created_at,
@@ -301,14 +303,29 @@ export default defineEventHandler(async event => {
 
     // Filter by the originating job's type — e.g. 'fs' to show only source
     // images produced by a Faceswap I2I job. 'none' restricts to media with no
-    // originating job at all (manual uploads).
+    // originating job at all (manual uploads); 'any' is the complement — any
+    // media that came from a job (i.e. generated output, regardless of job type).
     if (source_job_type && source_job_type !== 'all') {
       if (source_job_type === 'none') {
         conditions.push(isNull(mediaRecords.jobId))
+      } else if (source_job_type === 'any') {
+        conditions.push(isNotNull(mediaRecords.jobId))
       } else {
         conditions.push(
           sql`EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.id} = ${mediaRecords.jobId} AND ${jobs.jobType} = ${source_job_type as string})`
         )
+      }
+    }
+
+    // AI-provenance filter (manual flag — see schema.ts / CONCEPT-TRAINING-PLAN §5):
+    // 'real' = ai_generated false, 'ai' = true, 'null'/'undecided' = not yet tagged.
+    if (ai_generated) {
+      if (ai_generated === 'real') {
+        conditions.push(eq(mediaRecords.aiGenerated, false))
+      } else if (ai_generated === 'ai') {
+        conditions.push(eq(mediaRecords.aiGenerated, true))
+      } else if (ai_generated === 'null' || ai_generated === 'undecided') {
+        conditions.push(isNull(mediaRecords.aiGenerated))
       }
     }
 
@@ -516,6 +533,7 @@ export default defineEventHandler(async event => {
           source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
           dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
           job_id: mediaRecords.jobId,
+          ai_generated: mediaRecords.aiGenerated,
           thumbnail_uuid: mediaRecords.thumbnailUuid,
           created_at: mediaRecords.createdAt,
           updated_at: mediaRecords.updatedAt,
@@ -634,6 +652,7 @@ export default defineEventHandler(async event => {
         source_media_uuid_ref: mediaRecords.sourceMediaUuidRef,
         dest_media_uuid_ref: mediaRecords.destMediaUuidRef,
         job_id: mediaRecords.jobId,
+        ai_generated: mediaRecords.aiGenerated,
         thumbnail_uuid: mediaRecords.thumbnailUuid,
         created_at: mediaRecords.createdAt,
         updated_at: mediaRecords.updatedAt,
@@ -752,6 +771,7 @@ export default defineEventHandler(async event => {
       source_media_uuid_ref: result.source_media_uuid_ref,
       dest_media_uuid_ref: result.dest_media_uuid_ref,
       job_id: result.job_id,
+      ai_generated: result.ai_generated,
       thumbnail_uuid: result.thumbnail_uuid,
       subject_thumbnail_uuid: result.subject_thumbnail_uuid,
       created_at: result.created_at,

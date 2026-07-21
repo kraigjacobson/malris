@@ -200,12 +200,21 @@
                 <USelect v-model="t2vResolution" :items="t2vResolutionOptions" size="xs" class="w-40" />
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">Jobs to queue:</span>
+                <span class="text-xs text-gray-400">{{ t2vSweep ? 'Takes per position:' : 'Jobs to queue:' }}</span>
                 <UInput v-model.number="t2vJobCount" type="text" inputmode="numeric" size="xs" class="w-20" />
               </div>
+              <!-- Character sweep: one job per position LoRA using the Character in
+                   slot 1, so you can compare how each position renders her. -->
+              <div class="flex items-center gap-2" title="Render your Character (slot 1) against every position LoRA — one job per position (× takes). Any modifiers you set apply to all.">
+                <USwitch v-model="t2vSweep" size="xs" />
+                <span class="text-xs" :class="t2vSweep ? 'text-primary font-medium' : 'text-gray-400'">Sweep positions</span>
+              </div>
+              <span v-if="t2vSweep" class="text-xs text-gray-400">
+                {{ t2vSweepBaseCount }} position{{ t2vSweepBaseCount === 1 ? '' : 's' }} × {{ t2vJobCount || 0 }} = {{ t2vSweepBaseCount * (t2vJobCount || 0) }} jobs
+              </span>
             </div>
             <div class="flex-1 min-h-0 overflow-y-auto">
-              <I2vJobForm v-model="t2vParams" :loras="availableLoras" job-type="t2v" @refresh-loras="fetchLoras" />
+              <I2vJobForm ref="t2vFormRef" v-model="t2vParams" :loras="availableLoras" job-type="t2v" @refresh-loras="fetchLoras" />
             </div>
           </template>
         </div>
@@ -715,8 +724,8 @@ const t2vParams = ref({
   length: 81,
   // Output dimensions live on the params so they save to / load from the t2v
   // preset (via I2vJobForm) and bake onto each queued job for per-job editing.
-  width: 832,
-  height: 480,
+  width: 720,
+  height: 1280,
   lora_1_high: null,
   lora_1_low: null,
   lora_1_high_strength: 1,
@@ -750,14 +759,21 @@ const t2vResolutionOptions = [
 const t2vResolution = computed({
   get: () => {
     const { width, height } = t2vParams.value
-    return (width && height) ? `${width}x${height}` : '832x480'
+    return (width && height) ? `${width}x${height}` : '720x1280'
   },
   set: (value) => {
     const [width, height] = String(value).split('x').map(Number)
     t2vParams.value = { ...t2vParams.value, width, height }
   }
 })
-const t2vJobCount = ref(1)
+const t2vJobCount = ref(5)
+
+// Character sweep: when on, submit generates one t2v job per position LoRA
+// (× t2vJobCount takes) using the Character in slot 1. The I2vJobForm owns the
+// compose engine, so it builds the per-position job specs; we just loop + queue.
+const t2vSweep = ref(false)
+const t2vFormRef = ref(null)
+const t2vSweepBaseCount = computed(() => (t2vSweep.value ? (t2vFormRef.value?.sweepBaseCount || 0) : 0))
 
 // When true, the modal is in "edit preset" mode: subject/image selection is
 // skipped, only the i2v form is shown, and the only meaningful action is the
@@ -879,7 +895,13 @@ const canCreateJobs = computed(() => {
     return i2vSelectedImages.value.length > 0 && i2vParams.value.prompt.trim() !== ''
   }
   if (selectedJobType.value === 't2v') {
-    return t2vParams.value.prompt.trim() !== '' && t2vJobCount.value >= 1
+    if (t2vJobCount.value < 1) return false
+    // Sweep mode composes a prompt per position, so it only needs a Character in
+    // slot 1 (not a typed prompt) plus at least one position to sweep.
+    if (t2vSweep.value) {
+      return !!(t2vParams.value.lora_1_high || t2vParams.value.lora_1_low) && t2vSweepBaseCount.value > 0
+    }
+    return t2vParams.value.prompt.trim() !== ''
   }
   if (selectedJobType.value === 'fs') {
     return fsSelectedSubject.value && fsSelectedFaces.value.length > 0 && fsSelectedDestImages.value.length > 0
@@ -902,6 +924,7 @@ const jobCount = computed(() => {
     return i2vSelectedImages.value.length
   }
   if (selectedJobType.value === 't2v') {
+    if (t2vSweep.value) return t2vSweepBaseCount.value * (t2vJobCount.value || 0)
     return t2vJobCount.value || 0
   }
   if (selectedJobType.value === 'fs') {
@@ -1533,8 +1556,9 @@ const resetSelections = () => {
   i2vSourceRatings.value = []
   i2vSourceShowUnrated.value = false
 
-  // Clear t2v workflow (params keep their defaults; count resets to 1)
-  t2vJobCount.value = 1
+  // Clear t2v workflow (params keep their defaults; count resets to 5)
+  t2vJobCount.value = 5
+  t2vSweep.value = false
 
   // Clear fs workflow
   fsSelectedSubject.value = null
@@ -2097,27 +2121,45 @@ const createBatchJobs = async () => {
       // params (from the resolution picker / loaded preset); the worker
       // randomizes the seed per job. Guard against a preset that predates the
       // width/height columns so we never queue a job with missing dimensions.
-      const t2vParameters = applyLoraDisableOverrides(t2vParams.value)
-      if (!t2vParameters.width || !t2vParameters.height) {
-        const [width, height] = t2vResolution.value.split('x').map(Number)
-        t2vParameters.width = width
-        t2vParameters.height = height
+      const [defW, defH] = t2vResolution.value.split('x').map(Number)
+      const withDims = (p) => {
+        const out = applyLoraDisableOverrides(p)
+        if (!out.width || !out.height) { out.width = defW; out.height = defH }
+        return out
       }
-      for (let i = 0; i < t2vJobCount.value; i++) {
+      const createT2v = async (parameters) => {
         try {
           await useApiFetch('jobs/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: {
-              job_type: 't2v',
-              parameters: t2vParameters
-            }
+            body: { job_type: 't2v', parameters }
           })
           successCount++
         } catch (error) {
           errorCount++
           errors.push(error?.data?.statusMessage || error?.message || 'Unknown error')
         }
+      }
+
+      if (t2vSweep.value) {
+        // Character sweep: one job per position LoRA (× takes), each with the
+        // Character from slot 1 and a prompt composed against that position.
+        const res = t2vFormRef.value?.buildSweepJobs?.() || { jobs: [], error: 'Sweep is unavailable.' }
+        if (res.error || !res.jobs.length) {
+          toast.add({ title: 'Cannot sweep', description: res.error || 'No positions to sweep.', color: 'warning', duration: 5000 })
+          isSubmitting.value = false
+          return
+        }
+        const takes = Math.max(1, t2vJobCount.value || 1)
+        for (const job of res.jobs) {
+          const parameters = withDims(job.parameters)
+          for (let i = 0; i < takes; i++) await createT2v(parameters)
+        }
+      } else {
+        // Create N identical t2v jobs (no source media). The worker randomizes
+        // the seed per job.
+        const t2vParameters = withDims(t2vParams.value)
+        for (let i = 0; i < t2vJobCount.value; i++) await createT2v(t2vParameters)
       }
     } else if (selectedJobType.value === 'tagging') {
       // Single batch request to /api/media/tag-batch.

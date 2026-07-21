@@ -5,7 +5,20 @@
       <template #header>
         <div class="flex flex-col gap-2 sm:gap-0">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
+            <div class="flex items-center gap-2 min-w-0">
+              <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Queue Status</h2>
+              <!-- Wan worker health chip: up/idle · busy(N) · down · unknown -->
+              <ClientOnly>
+                <UBadge :color="wanWorker.color" variant="soft" size="sm" :title="wanWorker.title" class="whitespace-nowrap">
+                  {{ wanWorker.label }}
+                </UBadge>
+                <!-- Live realtime dot: green = socket live, grey pulse = reconnecting/polling -->
+                <span class="inline-flex items-center gap-1" :title="wsLive ? 'Live — realtime updates connected' : 'Reconnecting — counts may lag'">
+                  <span class="w-2 h-2 rounded-full" :class="wsLive ? 'bg-green-500' : 'bg-gray-400 animate-pulse'" />
+                  <span class="text-xs hidden sm:inline" :class="wsLive ? 'text-green-600 dark:text-green-500' : 'text-gray-400'">{{ wsLive ? 'live' : '…' }}</span>
+                </span>
+              </ClientOnly>
+            </div>
             <div class="flex items-center gap-1 sm:gap-2">
               <!-- Subject Filter for continuous processing (scopes Process All / Process N to one subject across all job types) -->
               <div class="hidden sm:block w-48" title="Limit continuous processing to a single subject">
@@ -420,7 +433,7 @@
     <!-- Jobs List -->
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-3">
             <UCheckbox :model-value="allVisibleSelected" :indeterminate="hasPartialSelection" @update:model-value="toggleSelectAll" />
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -443,15 +456,35 @@
               <USelect v-model="itemsPerPage" :items="limitOptions" class="w-24" size="xs" @change="handleLimitChange" />
             </div>
 
-            <!-- Bulk Actions -->
-            <div v-if="hasSelectedJobs" class="flex items-center gap-2">
-              <UButton size="xs" color="primary" variant="outline" icon="i-heroicons-arrow-up" @click="bulkPushToFront"> Push to Front </UButton>
-              <UButton size="xs" color="primary" variant="outline" @click="bulkQueue"> Queue Selected </UButton>
-              <UButton size="xs" color="error" variant="outline" @click="bulkCancel"> Cancel Selected </UButton>
-              <UButton size="xs" color="error" variant="outline" @click="bulkDelete"> Delete Selected </UButton>
-              <UButton size="xs" variant="ghost" @click="clearSelection"> Clear </UButton>
+            <!-- Bulk Actions — icon-only on mobile so nothing runs off-screen -->
+            <div v-if="hasSelectedJobs" class="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+              <UButton size="xs" color="primary" variant="outline" icon="i-heroicons-arrow-up" @click="bulkPushToFront"><span class="hidden sm:inline">Push to Front</span></UButton>
+              <UButton size="xs" color="primary" variant="outline" icon="i-heroicons-queue-list" @click="bulkQueue"><span class="hidden sm:inline">Queue Selected</span></UButton>
+              <UButton size="xs" color="error" variant="outline" icon="i-heroicons-x-mark" @click="bulkCancel"><span class="hidden sm:inline">Cancel Selected</span></UButton>
+              <UButton size="xs" color="error" variant="outline" icon="i-heroicons-trash" @click="bulkDelete"><span class="hidden sm:inline">Delete Selected</span></UButton>
+              <UButton size="xs" variant="ghost" icon="i-heroicons-x-circle" @click="clearSelection"><span class="hidden sm:inline">Clear</span></UButton>
             </div>
           </div>
+        </div>
+
+        <!-- Created-date range filter + mass delete. End defaults to now; pick a
+             quick preset or a start time, then wipe the whole matching set. -->
+        <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Created:</span>
+          <div class="flex flex-wrap gap-1">
+            <UButton v-for="p in rangePresets" :key="p.label" size="xs" variant="soft" color="neutral" @click="setRangePreset(p.minutes)">
+              {{ p.label }}
+            </UButton>
+          </div>
+          <div class="flex items-center gap-1">
+            <input v-model="createdAfter" type="datetime-local" aria-label="Created after (start)" class="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-1.5 py-1 text-gray-900 dark:text-gray-100" />
+            <span class="text-xs text-gray-400">→</span>
+            <input v-model="createdBefore" type="datetime-local" aria-label="Created before (end)" class="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-1.5 py-1 text-gray-900 dark:text-gray-100" />
+            <UButton size="xs" variant="ghost" color="neutral" title="Set end to now" @click="createdBefore = toLocalInput(new Date())">Now</UButton>
+          </div>
+          <UButton size="xs" variant="outline" color="primary" @click="applyDateRange">Apply</UButton>
+          <UButton v-if="createdAfter || createdBefore" size="xs" variant="ghost" @click="clearDateRange">Clear</UButton>
+          <span class="text-xs text-gray-400">{{ totalJobs }} match — select &amp; delete via the checkboxes above</span>
         </div>
       </template>
 
@@ -485,6 +518,14 @@
                 <span class="text-xs text-gray-600 dark:text-gray-400 truncate">
                   {{ job.subject?.name || jobCharacter(job) || '—' }}
                 </span>
+                <!-- Active elapsed timer — the only "alive vs hung" signal since
+                     there's no progress heartbeat. Green/yellow/red by minutes. -->
+                <span
+                  v-if="job.status === 'active'"
+                  class="text-xs font-semibold"
+                  :class="activeMinutes(job) >= 25 ? 'text-red-500' : activeMinutes(job) >= 15 ? 'text-yellow-500' : 'text-green-500'"
+                  :title="`Active for ${activeMinutes(job)} min` + (activeMinutes(job) >= 25 ? ' — likely stuck; auto-fails at 35m' : '')"
+                >▶ {{ activeMinutes(job) }}m</span>
                 <!-- Desktop: Show full text -->
                 <span class="text-xs text-gray-500 dark:text-gray-500 hidden sm:inline">
                   {{ job.job_type === 'i2v' ? 'i2v' : job.job_type === 't2v' ? 't2v' : job.job_type === 'fs' ? 'fs' : job.job_type === 'train_lora' ? 'lora' : (job.source_media_uuid ? 'vid' : 'source') }}
@@ -647,6 +688,8 @@ definePageMeta({
 // LoRA metadata (name -> {category, civitai_name}) for at-a-glance job labels.
 const loraMeta = ref({})
 onMounted(async () => {
+  // Default the range-delete end bound to "now" so a start/preset is all that's needed.
+  createdBefore.value = toLocalInput(new Date())
   try {
     const data = await useApiFetch('loras')
     for (const l of (data?.loras || [])) loraMeta.value[l.name] = { category: l.category, civitai: l.civitai_name }
@@ -688,6 +731,21 @@ function jobPositionLabel(job) {
 function jobCharacter(job) {
   const ch = jobLoras(job).find(n => loraCategory(n) === 'character')
   return ch ? loraShort(ch) : ''
+}
+
+// How long a job has been 'active' (minutes). There's no progress heartbeat from
+// the worker, so this elapsed time is the only "is it alive or hung?" signal —
+// green while normal, yellow past 15m, red past 25m (the watchdog auto-fails a
+// stuck job at 35m). nowTick makes it re-count live every 30s.
+const nowTick = ref(Date.now())
+onMounted(() => {
+  const t = setInterval(() => { nowTick.value = Date.now() }, 30000)
+  onUnmounted(() => clearInterval(t))
+})
+function activeMinutes(job) {
+  const t = job.started_at || job.updated_at
+  if (!t) return 0
+  return Math.max(0, Math.floor((nowTick.value - new Date(t).getTime()) / 60000))
 }
 
 // Local state instead of store
@@ -869,7 +927,7 @@ const selectedPresetFilter = ref(null)
 // Independent of the subject-card source-type filter (which also filters the
 // visible list). When left on 'all', we fall back to the subject-card filter
 // so existing behavior is preserved.
-const processingJobType = ref('all')
+const processingJobType = ref('t2v')
 // Only real continuous-picker scopes belong here. 'tagging' is intentionally
 // excluded — tagging jobs bypass the picker and are dispatched directly, and
 // feeding it as a scope would make the picker fall through to "process all".
@@ -948,6 +1006,47 @@ const onProcessingSubjectSelect = (selected) => {
 const selectedRatings = ref([])
 const showUnrated = ref(false)
 
+// --- Created-date range filter + mass delete --------------------------------
+// Filters the list to jobs created within [createdAfter, createdBefore] and lets
+// you delete the ENTIRE matching set (across pages) in one go — e.g. "everything
+// I made in the last 20 minutes" — instead of ticking 130 rows by hand. The end
+// defaults to now; pick a start (or a quick preset) and delete.
+const createdAfter = ref('')   // datetime-local string (local time), '' = unbounded
+const createdBefore = ref('')  // datetime-local string (local time), '' = now
+
+const rangePresets = [
+  { label: '20m', minutes: 20 },
+  { label: '1h', minutes: 60 },
+  { label: '6h', minutes: 360 },
+  { label: '24h', minutes: 1440 },
+  { label: '3d', minutes: 4320 },
+]
+
+// Date <-> datetime-local string ("YYYY-MM-DDTHH:mm", local time).
+const toLocalInput = (d) => {
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+// datetime-local string -> ISO (UTC) for the API; '' -> undefined.
+const localInputToISO = (s) => (s ? new Date(s).toISOString() : undefined)
+
+// Quick preset: start = now - N minutes, end = now, then apply.
+function setRangePreset(minutes) {
+  const now = new Date()
+  createdBefore.value = toLocalInput(now)
+  createdAfter.value = toLocalInput(new Date(now.getTime() - minutes * 60000))
+  applyDateRange()
+}
+function applyDateRange() {
+  pageNumber.value = 1
+  refreshJobsWithCurrentState()
+}
+function clearDateRange() {
+  createdAfter.value = ''
+  createdBefore.value = ''
+  applyDateRange()
+}
+
 // Direct API call function to replace store method
 const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid = '', sourceType = 'all') => {
   try {
@@ -985,6 +1084,12 @@ const fetchJobsDirectly = async (page = 1, limit = 24, status = '', subjectUuid 
     if (selectedPresetFilter.value) {
       query.preset_id = selectedPresetFilter.value
     }
+
+    // Created-date range filter
+    const ca = localInputToISO(createdAfter.value)
+    const cb = localInputToISO(createdBefore.value)
+    if (ca) query.created_after = ca
+    if (cb) query.created_before = cb
 
     const response = await useApiFetch('jobs/search', { query })
 
@@ -1142,6 +1247,27 @@ const isAnyProcessingActive = computed(() => {
 // the matching container, e.g. the Wan worker for t2v, is up and idle) and
 // auto-pauses continuous mode if the worker goes unreachable.
 const autoProcessing = computed(() => jobsStore.processingState?.isContinuous === true)
+
+// Header Wan-worker health chip: is the Wan container up, and idle vs rendering?
+// Data already flows over the socket (systemStatus.wanWorker + comfyuiProcessing).
+const wanWorker = computed(() => {
+  const st = jobsStore.systemStatus
+  const health = st?.wanWorker?.status
+  if (!st || !health || health === 'unknown') return { label: 'Wan ?', color: 'neutral', title: 'Wan worker status unknown' }
+  if (health === 'unhealthy') return { label: 'Wan down', color: 'error', title: st.wanWorker?.message || 'Wan worker not responding' }
+  const running = st.comfyuiProcessing?.runningJobs || 0
+  if (running > 0 || st.comfyuiProcessing?.status === 'processing') {
+    return { label: `Wan busy${running ? ` (${running})` : ''}`, color: 'warning', title: 'Wan worker up and rendering' }
+  }
+  // A job is active in malris but ComfyUI's queue is empty = the worker is loading
+  // models/LoRAs before sampling starts (or wrapping up) — show "loading", not "idle".
+  if ((jobsStore.queueStatus?.queue?.active || 0) > 0) {
+    return { label: 'Wan loading…', color: 'info', title: 'Job dispatched — Wan worker is loading models/LoRAs (or finishing up)' }
+  }
+  return { label: 'Wan idle', color: 'success', title: 'Wan worker up and idle — ready' }
+})
+// Live realtime-updates indicator (WebSocket connected vs polling fallback).
+const wsLive = computed(() => jobsStore.wsConnected === true)
 const autoProcessTooltip = 'Auto-process: while on, queued jobs run automatically whenever the matching worker container (e.g. the Wan container for t2v) is up and idle. Pauses if it goes down.'
 async function setAutoProcessing(on) {
   if (on) await startContinuousProcessing()
@@ -1895,11 +2021,20 @@ async function confirmDuplicate() {
   const toast = useToast()
   let ok = 0, fail = 0
   try {
-    // Clone the job's stored params verbatim (self-contained for new jobs;
-    // preset-referencing for legacy ones — create.post handles both).
+    // Clone the job's stored params (self-contained for new jobs; preset-
+    // referencing for legacy ones — create.post handles both). If the source
+    // carried a pre-dynamic prompt template, duplicate THAT (not the already-
+    // expanded post-dynamic selection) so each copy re-rolls its wildcards.
+    const params = { ...(job.parameters || {}) }
+    if (typeof params.prompt_template === 'string' && params.prompt_template.includes('{')) {
+      params.prompt = params.prompt_template
+    }
+    if (typeof params.negative_prompt_template === 'string' && params.negative_prompt_template.includes('{')) {
+      params.negative_prompt = params.negative_prompt_template
+    }
     const body = {
       job_type: job.job_type,
-      parameters: job.parameters || {},
+      parameters: params,
       subject_uuid: job.subject_uuid || job.subject?.id || null,
       dest_media_uuid: job.dest_media_uuid || null,
       source_media_uuid: job.source_media_uuid || null,
@@ -2010,13 +2145,20 @@ const retryJob = async job => {
       method: 'POST'
     })
 
-    // Show success toast with new job ID
+    // Show success toast, including what the prompt recompose did (diagnostic):
+    // whether it rebuilt from the live template, or why it kept the old prompt.
     const toast = useToast()
+    const rc = response.recompose
+    let rcMsg = ''
+    if (rc) {
+      if (rc.applied) rcMsg = `\n✅ Recomposed from ${rc.loraCount} LoRA(s): "${rc.promptPreview}…"`
+      else rcMsg = `\n⚠️ Not recomposed — ${rc.reason || 'unknown'}${rc.loraNames?.length ? ` [loras: ${rc.loraNames.join(', ')}]` : ''}`
+    }
     toast.add({
-      title: 'Job Retried Successfully',
-      description: `New job ID: ${response.job_id}`,
-      color: 'success',
-      duration: 2000
+      title: 'Job Retried',
+      description: `Job ${response.job_id} re-queued.${rcMsg}`,
+      color: rc && rc.attempted && !rc.applied ? 'warning' : 'success',
+      duration: rc && !rc.applied ? 12000 : 3000
     })
 
     // Refresh the jobs list after retry

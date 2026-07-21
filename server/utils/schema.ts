@@ -65,6 +65,10 @@ export const loraMetadata = pgTable("lora_metadata", {
   pairKey: varchar("pair_key", { length: 60 }), // shared id for a high/low pair (auto-fill counterpart)
   civitaiName: text("civitai_name"), // Civitai model name resolved by file hash
   civitaiUrl: text("civitai_url"), // Civitai model page URL
+  // Preferred output aspect for a base (position/closeup) LoRA: 'landscape' |
+  // 'portrait'. The sweep/job picks a frame the pose fits so Wan doesn't
+  // fisheye-cram a wide pose into portrait. Null = use the form's resolution.
+  orientation: varchar("orientation", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -148,9 +152,15 @@ export const jobs = pgTable("jobs", {
 export const loraTrainings = pgTable("lora_trainings", {
   id: uuid("id").primaryKey().defaultRandom(),
   jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  // Nullable: a 'concept' training has no single subject (it selects dest images
+  // across many subjects by tag). 'character' trainings still set it.
   subjectUuid: uuid("subject_uuid")
-    .references(() => subjects.id, { onDelete: "cascade" })
-    .notNull(),
+    .references(() => subjects.id, { onDelete: "cascade" }),
+  // 'character' = single-subject identity LoRA; 'concept' = pose/action across
+  // many subjects (see CONCEPT-TRAINING-PLAN.md §6).
+  kind: varchar("kind", { length: 20 }).default("character").notNull(),
+  // Target WD14 tag a concept run trains (NULL for character runs).
+  conceptTag: varchar("concept_tag", { length: 100 }),
   loraName: varchar("lora_name", { length: 100 }).notNull().unique(),
   triggerWord: varchar("trigger_word", { length: 100 }).notNull(),
   status: varchar("status", { length: 20 }).default("queued").notNull(), // queued | training | paused | completed | failed | canceled
@@ -198,6 +208,27 @@ export const mediaRecords = pgTable("media_records", {
   // Face embedding for "sort by face similarity" (see server/utils/faceEmbedding.ts)
   faceEmbedding: bytea("face_embedding"), // 512 LE float32s (L2-normalized); NULL = no face / not processed
   faceEmbeddedAt: timestamp("face_embedded_at", { withTimezone: true }), // NULL = not yet processed
+  // Measured sharpness / high-frequency detail at the 512 training scale (see
+  // server/utils/imageSharpness.ts). Higher = sharper. Used to order the LoRA
+  // training-image picker so upscaled-blurry photos sink despite big dimensions.
+  sharpness: real("sharpness"), // normalized focus measure; NULL = not yet scored
+  sharpnessAt: timestamp("sharpness_at", { withTimezone: true }), // NULL = not yet scored
+  // Natural-language Florence-2 caption (prose) — used for Wan LoRA training
+  // captions in preference to the WD14 tag list. See server/utils/imageCaption.ts.
+  caption: text("caption"), // NULL = not yet captioned
+  captionAt: timestamp("caption_at", { withTimezone: true }), // NULL = not yet captioned
+  // Marks that the FULL (non-allowlisted) WD14 tag set has been written to `tags`
+  // via the standalone wd14-tagger sidecar (see server/utils/imageWd14.ts). The
+  // in-app tagger allowlists tags down to a small vocabulary; the concept
+  // tag-search needs the complete set. NULL = only legacy allowlist tags.
+  tagsFullAt: timestamp("tags_full_at", { withTimezone: true }),
+  // AI-provenance flag for the concept-training candidate pool. Automated
+  // detection was dropped (an open AI detector false-flags ~10% of real photos at
+  // high confidence, indistinguishable by score from true AI — see
+  // CONCEPT-TRAINING-PLAN.md §5). Instead this is a manual/provenance flag: set by
+  // folder bulk-tag on import (e.g. Civit→true, Boost2→false) and multiselect
+  // bulk-edit in the media gallery. The concept picker shows real (false) only.
+  aiGenerated: boolean("ai_generated"), // true=AI, false=real, NULL=undecided
   // Large object support columns
   storageType: varchar("storage_type", { length: 10 })
     .default("bytea")

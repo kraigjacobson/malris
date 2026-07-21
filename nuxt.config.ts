@@ -61,6 +61,13 @@ export default defineNuxtConfig({
     fallbackToApi: false
   },
 
+  // Scalar's API-reference UI otherwise pulls Inter + JetBrains Mono from its
+  // CDN (fonts.scalar.com) at runtime. Disable the default web fonts so the
+  // docs page falls back to the local system font stack — no network fetch.
+  scalar: {
+    withDefaultFonts: false
+  },
+
   css: ['~/assets/css/main.css'],
 
   supabase: {

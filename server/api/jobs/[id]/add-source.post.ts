@@ -24,7 +24,7 @@ export default defineEventHandler(async event => {
     // Use Drizzle ORM instead of raw SQL
     const { getDb } = await import('~/server/utils/database')
     const { jobs, mediaRecords } = await import('~/server/utils/schema')
-    const { eq } = await import('drizzle-orm')
+    const { eq, sql } = await import('drizzle-orm')
 
     const db = getDb()
 
@@ -83,13 +83,14 @@ export default defineEventHandler(async event => {
     }
 
     // Update job with source media and set status back to queued. Drop the
-    // preset snapshot — the next pickup will read the preset's current values.
+    // preset snapshot for preset-backed jobs (the next pickup reads the preset's
+    // current values); preset-LESS jobs keep their params — nothing to restore.
     const updatedJob = await db
       .update(jobs)
       .set({
         sourceMediaUuid: body.source_media_uuid,
         status: 'queued',
-        parameters: {},
+        parameters: sql`CASE WHEN ${jobs.presetId} IS NOT NULL THEN '{}'::jsonb ELSE ${jobs.parameters} END`,
         updatedAt: new Date()
       })
       .where(eq(jobs.id, jobId))

@@ -41,33 +41,20 @@
                         :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)"
                         class="w-4 h-4"
                       />
-                      <span class="font-medium">RunPod:</span>
+                      <span class="font-medium">Faceswap:</span>
                       <span :class="getWorkerStatusColor(jobsStore.systemStatus.runpodWorker.status)">
                         {{ jobsStore.systemStatus.runpodWorker.status.toUpperCase() }}
                       </span>
                     </div>
                     
-                    <!-- ComfyUI Status -->
-                    <div class="flex items-center gap-2">
-                      <UIcon
-                        :name="getWorkerStatusIcon(jobsStore.systemStatus.comfyui.status)"
-                        :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)"
-                        class="w-4 h-4"
-                      />
-                      <span class="font-medium">ComfyUI:</span>
-                      <span :class="getWorkerStatusColor(jobsStore.systemStatus.comfyui.status)">
-                        {{ jobsStore.systemStatus.comfyui.status.toUpperCase() }}
-                      </span>
-                    </div>
-
-                    <!-- Wan I2V Worker Status -->
+                    <!-- Wan Worker Status -->
                     <div v-if="jobsStore.systemStatus.wanWorker" class="flex items-center gap-2">
                       <UIcon
                         :name="getWorkerStatusIcon(jobsStore.systemStatus.wanWorker.status)"
                         :class="getWorkerStatusColor(jobsStore.systemStatus.wanWorker.status)"
                         class="w-4 h-4"
                       />
-                      <span class="font-medium">Wan I2V:</span>
+                      <span class="font-medium">Wan (i2v + t2v):</span>
                       <span :class="getWorkerStatusColor(jobsStore.systemStatus.wanWorker.status)">
                         {{ jobsStore.systemStatus.wanWorker.status.toUpperCase() }}
                       </span>

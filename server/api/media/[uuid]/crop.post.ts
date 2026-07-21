@@ -106,7 +106,15 @@ export default defineEventHandler(async (event) => {
              chunk_size = $5,
              encryption_metadata = $6,
              width = $7,
-             height = $8
+             height = $8,
+             -- A crop changes the pixels and the framing, so every pixel-derived
+             -- analysis is now stale. NULL the markers so each backfill sweep
+             -- re-analyzes this row (they all select WHERE <field>_at IS NULL):
+             -- sharpness, Florence caption, face embedding, perceptual hashes.
+             sharpness = NULL, sharpness_at = NULL,
+             caption = NULL, caption_at = NULL,
+             face_embedding = NULL, face_embedded_at = NULL,
+             dhash = NULL, phash = NULL, tile_hashes = NULL, perceptual_hashed_at = NULL
          WHERE uuid = $9`,
         [
           encryptedData,

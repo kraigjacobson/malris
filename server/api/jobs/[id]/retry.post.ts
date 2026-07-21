@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
       status: result.status,
       updated_at: result.updatedAt,
       deleted_media_count: result.deletedMediaCount,
+      recompose: result.recompose,
       message: `Job ${jobId} has been reset to queued status. Deleted ${result.deletedMediaCount} output media records.`
     }
 

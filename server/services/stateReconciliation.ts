@@ -93,6 +93,38 @@ async function reconcileProcessingState(): Promise<ReconciliationResult> {
       }
     }
 
+    // Rule 1b: Time-based stuck-job watchdog (fires in ANY mode, incl. Auto).
+    // A Wan render — even HD/long — finishes well under ~20 min, plus a couple
+    // minutes of LoRA loading. Anything still 'active' past STUCK_THRESHOLD is
+    // wedged (dead worker, hung ComfyUI, or a lost callback), so fail it with a
+    // clear message instead of leaving it "active" for hours. Since there's no
+    // progress heartbeat, updatedAt == the moment it went active, so time-since
+    // is simply how long it's been running.
+    const STUCK_THRESHOLD_MS = 35 * 60 * 1000 // 35 min with no completion
+    if (dbActiveCount > 0) {
+      const activeJobs = await db
+        .select({ id: jobs.id, updatedAt: jobs.updatedAt })
+        .from(jobs)
+        .where(eq(jobs.status, 'active'))
+      const now = Date.now()
+      const stuck = activeJobs.filter(j => now - new Date(j.updatedAt).getTime() >= STUCK_THRESHOLD_MS)
+      if (stuck.length > 0) {
+        for (const j of stuck) {
+          await db.update(jobs).set({
+            status: 'failed',
+            updatedAt: new Date(),
+            errorMessage: 'Auto-failed: stuck in active for 35+ min (worker hang or lost callback). Retry to re-run.'
+          }).where(eq(jobs.id, j.id))
+        }
+        logger.warn(`⚠️ [RECONCILIATION] Auto-failed ${stuck.length} job(s) stuck active 35+ min: ${stuck.map(j => j.id).join(', ')}`)
+        actions.push(`Auto-failed ${stuck.length} job(s) stuck active 35+ min`)
+        const { updateJobCounts } = await import('./systemStatusManager')
+        await updateJobCounts()
+        broadcastStateCorrection({ oldState: 'active_jobs_present', newState: 'stuck_jobs_failed', reason: `${stuck.length} job(s) stuck active 35+ min`, actions })
+        return { correctionMade: true, oldState: 'active_jobs_present', newState: 'stuck_jobs_failed', reason: `${stuck.length} job(s) stuck 35+ min`, actions }
+      }
+    }
+
     // Rule 2: Database has active jobs but ComfyUI reports 0 running (zombie jobs)
     // CRITICAL FIX: Don't fire this rule during continuous processing - there's a delay between
     // marking job as active and ComfyUI reporting it. Only check for zombies when NOT in continuous mode.

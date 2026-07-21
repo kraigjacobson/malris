@@ -75,6 +75,14 @@
           </div>
         </div>
 
+        <!-- AI-provenance Filter -->
+        <div class="grid grid-cols-2 gap-3 sm:gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"> AI / Real </label>
+            <USelect v-model="aiGenerated" :items="aiGeneratedOptions" placeholder="AI: All" class="w-full" :disabled="!!mediaUuid" />
+          </div>
+        </div>
+
         <!-- Second row for Subject and Tags -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <!-- Subject Filter -->
@@ -146,6 +154,10 @@
               <UIcon name="i-heroicons-tag" />
               Tag selected ({{ selectedCount }})
             </UButton>
+            <!-- AI-provenance bulk-set -->
+            <UButton color="green" variant="solid" size="xs" :disabled="selectedCount === 0" :loading="isSettingAi" @click="setSelectedAiGenerated(false)">Mark real</UButton>
+            <UButton color="orange" variant="solid" size="xs" :disabled="selectedCount === 0" :loading="isSettingAi" @click="setSelectedAiGenerated(true)">Mark AI</UButton>
+            <UButton color="neutral" variant="outline" size="xs" :disabled="selectedCount === 0" :loading="isSettingAi" @click="setSelectedAiGenerated(null)">Undecided</UButton>
             <UButton color="neutral" variant="ghost" size="xs" @click="exitMultiSelectMode">Exit</UButton>
           </template>
           <UButton v-else variant="outline" size="xs" @click="enterMultiSelectMode">
@@ -170,6 +182,10 @@
           :class="multiSelectMode && isMediaSelected(media.uuid) ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-900 rounded' : ''"
           @click="handleMediaClick(media, $event, index)">
           <MediaCard :media="media" class="w-full h-full" :show-delete="!multiSelectMode" :show-rating="!multiSelectMode" @delete="confirmDelete(media)" @rating-updated="rating => handleRatingUpdated(media.uuid, rating)" />
+          <!-- AI-provenance badge (true=AI/false=real; null=undecided shows nothing) -->
+          <div v-if="media.ai_generated === true || media.ai_generated === false" class="absolute top-1 right-1 z-30 pointer-events-none">
+            <span class="px-1 py-0.5 text-[10px] leading-none font-semibold rounded" :class="media.ai_generated ? 'bg-orange-500 text-white' : 'bg-green-600 text-white'">{{ media.ai_generated ? 'AI' : 'REAL' }}</span>
+          </div>
           <!-- Selection indicator -->
           <div v-if="multiSelectMode" class="absolute top-2 left-2 z-40 pointer-events-none">
             <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors" :class="isMediaSelected(media.uuid) ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white/80 border-gray-300 text-gray-600'">
@@ -306,7 +322,7 @@ definePageMeta({
 
 // Initialize stores and composables
 const settingsStore = useSettingsStore()
-const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedSubjects, filenameSearch, selectedTags, onlyShowUntagged, onlyShowOrphans, selectedRatings, showUnrated, selectedPreset, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid } = useMediaGalleryFilters()
+const { filters: _persistentFilters, loadFilters, resetFilters: _resetFilters, mediaType, purpose, selectedSubjects, filenameSearch, selectedTags, onlyShowUntagged, onlyShowOrphans, aiGenerated, selectedRatings, showUnrated, selectedPreset, sortBy, sortOrder, paginationLimit, viewMode, filtersCollapsed, subjectUuid, mediaUuid } = useMediaGalleryFilters()
 
 // Template refs
 const modalVideo = ref(null)
@@ -328,6 +344,7 @@ const multiSelectMode = ref(false)
 const selectedMediaUuids = ref(new Set())
 const lastSelectedIndex = ref(-1)
 const isTaggingBatch = ref(false)
+const isSettingAi = ref(false)
 const selectedCount = computed(() => selectedMediaUuids.value.size)
 const isMediaSelected = uuid => selectedMediaUuids.value.has(uuid)
 
@@ -417,6 +434,14 @@ const mediaTypeOptions = [
   { label: 'Videos', value: 'video' }
 ]
 
+// AI-provenance filter (manual flag — CONCEPT-TRAINING-PLAN §5).
+const aiGeneratedOptions = [
+  { label: 'AI: All', value: 'all' },
+  { label: 'Real only', value: 'real' },
+  { label: 'AI only', value: 'ai' },
+  { label: 'Undecided (null)', value: 'null' }
+]
+
 const purposeOptions = [
   { label: 'All Purposes', value: 'all' },
   { label: 'Source', value: 'source' },
@@ -484,6 +509,10 @@ const buildSearchParams = () => {
 
   if (mediaTypeValue) params.append('media_type', mediaTypeValue)
   if (purposeValue && purposeValue !== 'all') params.append('purpose', purposeValue)
+
+  // AI-provenance filter (real / ai / null); 'all' = no filter
+  const aiValue = typeof aiGenerated.value === 'object' ? aiGenerated.value.value : aiGenerated.value
+  if (aiValue && aiValue !== 'all') params.append('ai_generated', aiValue)
 
   // Add selected subjects (multiple)
   if (selectedSubjects.value && selectedSubjects.value.length > 0) {
@@ -809,6 +838,7 @@ const clearFilters = () => {
   selectedRatings.value = []
   showUnrated.value = false
   onlyShowOrphans.value = false
+  aiGenerated.value = 'all'
   mediaUuid.value = ''
   selectedPreset.value = null
 
@@ -1200,6 +1230,45 @@ const tagSelectedBatch = async () => {
     })
   } finally {
     isTaggingBatch.value = false
+  }
+}
+
+// Bulk-set the AI-provenance flag on the current selection.
+// value: false = real, true = AI, null = undecided.
+const setSelectedAiGenerated = async value => {
+  const uuids = Array.from(selectedMediaUuids.value)
+  if (uuids.length === 0) return
+  const toast = useToast()
+  isSettingAi.value = true
+  try {
+    const response = await useApiFetch('media/ai-generated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { media_uuids: uuids, value }
+    })
+    // Optimistically reflect the change in the loaded grid so the badge + any
+    // active real/ai/null filter stay accurate without a re-search.
+    const changed = new Set(uuids)
+    for (const m of mediaResults.value) {
+      if (changed.has(m.uuid)) m.ai_generated = value
+    }
+    const label = value === true ? 'AI' : value === false ? 'real' : 'undecided'
+    toast.add({
+      title: 'Updated',
+      description: response?.message || `Marked ${uuids.length} as ${label}.`,
+      color: 'success',
+      duration: 3000
+    })
+    exitMultiSelectMode()
+  } catch (error) {
+    toast.add({
+      title: 'Update Failed',
+      description: error?.data?.statusMessage || error?.message || 'Could not update AI flag',
+      color: 'error',
+      duration: 4000
+    })
+  } finally {
+    isSettingAi.value = false
   }
 }
 

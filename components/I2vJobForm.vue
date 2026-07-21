@@ -193,6 +193,15 @@ interface LoraInfo {
   default_strength?: number | null
   pair_key?: string | null
   civitai_name?: string | null
+  orientation?: string | null
+}
+
+// Frame dimensions per preferred orientation (matches the resolution picker's HD
+// options). A base LoRA's `orientation` picks one so a wide pose gets a wide
+// frame instead of Wan fisheye-cramming it into portrait.
+const ORIENT_DIMS: Record<string, { width: number; height: number }> = {
+  portrait: { width: 720, height: 1280 },
+  landscape: { width: 1280, height: 720 },
 }
 
 const props = withDefaults(defineProps<{
@@ -558,6 +567,18 @@ function setLoraInSlot(slot: number, noise: 'high' | 'low', value: string) {
     mv[`lora_${slot}_${other}`] = null
   }
 
+  // Picking a base position with a preferred orientation auto-sets the frame
+  // (t2v only) so the pose gets a fitting aspect; you can still override the
+  // resolution after. Modifiers/characters don't touch it.
+  if (name && props.jobType === 't2v') {
+    const selMeta = metaFor(name)
+    const dims = ORIENT_DIMS[selMeta?.orientation || '']
+    if (dims && BASE_CATS.has(effectiveCategory(selMeta) || '')) {
+      mv.width = dims.width
+      mv.height = dims.height
+    }
+  }
+
   const composed = composePrompt(mv)
   if (composed) {
     mv.prompt = composed.prompt
@@ -581,4 +602,115 @@ function loraBadge(name: string): string {
   const str = m?.default_strength != null ? ` · str ${m.default_strength}` : ''
   return `${cat}${str}`
 }
+
+// --- Character sweep --------------------------------------------------------
+// Render the CURRENTLY selected character (slot 1) against EVERY base position/
+// closeup LoRA — one job spec per position — so you can eyeball how each one
+// handles her and tune as you go. Any modifiers you've set (body/expression/
+// accessory/effect) ride along on every position; the swept position is the
+// only base in play for each job.
+function conceptKey(name: string): string {
+  return metaFor(name)?.pair_key || normConcept(name)
+}
+
+// One representative LoRA per base (position/closeup) concept in this job type's set.
+function sweepBases(): LoraInfo[] {
+  const seen = new Set<string>()
+  const out: LoraInfo[] = []
+  for (const l of props.loras) {
+    if (!matchesJobType(l.name)) continue
+    const m = metaFor(l.name)
+    if (!m?.prompt_template || !BASE_CATS.has(effectiveCategory(m) || '')) continue
+    const k = conceptKey(l.name)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(l)
+  }
+  return out
+}
+
+// Fill both noise halves (+ recommended strengths) of a slot from one LoRA name,
+// resolving the high/low counterpart the same way the pickers do.
+function assignConcept(mv: Record<string, any>, slot: number, name: string) {
+  const high = isLowNoise(name) ? (counterpartOf(name, 'high') || name) : name
+  const low = isHighNoise(name) ? (counterpartOf(name, 'low') || name) : name
+  mv[`lora_${slot}_high`] = high
+  mv[`lora_${slot}_low`] = low
+  mv[`lora_${slot}_high_strength`] = recommendedStrength(high)
+  mv[`lora_${slot}_low_strength`] = recommendedStrength(low)
+}
+
+// Copy a slot verbatim (both halves, strengths, and disable flags) — used to
+// carry the character slot into every swept job untouched.
+function copySlotVerbatim(dst: Record<string, any>, dstSlot: number, srcSlot: number) {
+  const src = props.modelValue
+  for (const suf of ['high', 'low', 'high_strength', 'low_strength']) {
+    const v = src[`lora_${srcSlot}_${suf}`]
+    if (v !== undefined && v !== null) dst[`lora_${dstSlot}_${suf}`] = v
+  }
+  for (const noise of ['high', 'low']) {
+    const k = loraOffKey(`lora_${srcSlot}_${noise}_strength`)
+    if (src[k]) dst[loraOffKey(`lora_${dstSlot}_${noise}_strength`)] = true
+  }
+}
+
+// Currently-selected modifier concepts (non-char, non-base), deduped, in order.
+function currentModifierNames(): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const nm of selectedLoraNames(props.modelValue)) {
+    const cat = effectiveCategory(metaFor(nm))
+    if (cat === 'character' || BASE_CATS.has(cat || '')) continue
+    const k = conceptKey(nm)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(nm)
+  }
+  return out
+}
+
+function buildSweepJobs(): { jobs: { label: string; parameters: Record<string, any> }[]; error?: string } {
+  const charName = props.modelValue.lora_1_high || props.modelValue.lora_1_low
+  if (!charName || !isCharLora(charName)) {
+    return { jobs: [], error: 'Pick a character in the Character slot (slot 1) before sweeping.' }
+  }
+  const bases = sweepBases()
+  if (!bases.length) return { jobs: [], error: 'No position LoRAs available to sweep.' }
+
+  const mods = currentModifierNames()
+  const jobs = bases.map(base => {
+    // Start from a clean, fully-specified slot set so no stale base lingers.
+    const mv: Record<string, any> = { length: props.modelValue.length }
+    for (const s of [1, 2, 3, 4, 5]) { mv[`lora_${s}_high`] = null; mv[`lora_${s}_low`] = null }
+    // Frame each position by its preferred orientation; fall back to the form's
+    // current resolution when the position doesn't specify one.
+    const dims = ORIENT_DIMS[metaFor(base.name)?.orientation || '']
+      || { width: props.modelValue.width, height: props.modelValue.height }
+    if (dims.width) mv.width = dims.width
+    if (dims.height) mv.height = dims.height
+
+    copySlotVerbatim(mv, 1, 1)          // character, untouched
+    assignConcept(mv, 2, base.name)     // the swept position
+    let s = 3
+    for (const nm of mods) { if (s > 5) break; assignConcept(mv, s, nm); s++ }
+
+    const composed = composePrompt(mv)
+    const parameters: Record<string, any> = { ...mv }
+    if (composed) {
+      parameters.prompt = composed.prompt
+      if (composed.negative) parameters.negative_prompt = composed.negative
+    }
+    if (!parameters.negative_prompt && props.modelValue.negative_prompt) {
+      parameters.negative_prompt = props.modelValue.negative_prompt
+    }
+    const label = (metaFor(base.name)?.civitai_name || base.name.split('/').pop() || base.name).replace(/\.safetensors$/, '')
+    return { label, parameters }
+  })
+  return { jobs }
+}
+
+// Number of positions a sweep would cover — drives the parent's count preview.
+const sweepBaseCount = computed(() => sweepBases().length)
+
+defineExpose({ buildSweepJobs, sweepBaseCount })
 </script>

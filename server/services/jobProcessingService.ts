@@ -256,57 +256,69 @@ async function pickWanJob(db: ReturnType<typeof getDb>, order: 'chronological' |
       .limit(1)
   }
 
-  if (order === 'chronological') {
-    logger.info(`🎬 Processing ${wanJobType} job (chronological)`)
-    return db
-      .select(selectCols)
-      .from(jobs)
-      .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, wanJobType), ...subjectConds()))
-      .orderBy(desc(jobs.updatedAt))
-      .limit(1)
-  }
+  // Stack affinity: swapping LoRAs on the worker is slow, so drain the stack
+  // that's ALREADY loaded before switching to a different one — no matter when
+  // those jobs were created/recreated. We look at the most recent active/
+  // completed job of this type (what the worker last loaded) and prefer queued
+  // jobs on the same stack: by preset when it has one, else by its exact LoRA-
+  // slot combo from parameters (covers preset-LESS t2v/i2v jobs like sweeps).
+  // Within the matched stack — and for the fallback when nothing matches —
+  // ordering still follows the chrono/random toggle.
+  const modeOrder = order === 'chronological' ? desc(jobs.updatedAt) : sql`RANDOM()`
 
-  // Random mode: find the preset_id of the most recent non-queued job of this
-  // type (the one currently loaded on the worker, or the last thing it ran) so
-  // we can prefer jobs that reuse the same LoRAs.
   const recentRun = await db
-    .select({ presetId: jobs.presetId })
+    .select({ presetId: jobs.presetId, parameters: jobs.parameters })
     .from(jobs)
-    .where(and(
-      eq(jobs.jobType, wanJobType),
-      sql`${jobs.status} IN ('active', 'completed')`,
-      sql`${jobs.presetId} IS NOT NULL`,
-    ))
+    .where(and(eq(jobs.jobType, wanJobType), sql`${jobs.status} IN ('active', 'completed')`))
     .orderBy(desc(jobs.updatedAt))
     .limit(1)
 
-  const lastPresetId = recentRun[0]?.presetId || null
+  const loaded = recentRun[0]
+  const LORA_KEYS = ['lora_1_high', 'lora_1_low', 'lora_2_high', 'lora_2_low', 'lora_3_high', 'lora_3_low', 'lora_4_high', 'lora_4_low', 'lora_5_high', 'lora_5_low']
+  let stackCond: any = null
+  let stackDesc = ''
 
-  if (lastPresetId) {
-    const matchingJobs = await db
-      .select(selectCols)
-      .from(jobs)
-      .where(and(
-        eq(jobs.status, 'queued'),
-        eq(jobs.jobType, wanJobType),
-        eq(jobs.presetId, lastPresetId),
-        ...subjectConds(),
-      ))
-      .orderBy(sql`RANDOM()`)
-      .limit(1)
-
-    if (matchingJobs.length > 0) {
-      logger.info(`🎬 Processing ${wanJobType} job (random, reusing preset ${lastPresetId})`)
-      return matchingJobs
+  if (loaded?.presetId) {
+    stackCond = eq(jobs.presetId, loaded.presetId)
+    stackDesc = `preset ${loaded.presetId}`
+  } else if (loaded?.parameters) {
+    const p = loaded.parameters as Record<string, any>
+    // Only bother matching if the loaded job actually used LoRAs. Each slot is
+    // matched exactly (NULL-safe) so the whole combo has to be identical — a
+    // different retried stack won't match and waits until this one drains.
+    if (LORA_KEYS.some(k => p[k] != null && p[k] !== 'none')) {
+      stackCond = and(...LORA_KEYS.map(k => {
+        const v = p[k]
+        return (v == null || v === 'none')
+          ? sql`(${jobs.parameters}->>${k}) IS NULL`
+          : sql`(${jobs.parameters}->>${k}) = ${v}`
+      }))
+      stackDesc = 'loaded LoRA stack'
     }
   }
 
-  logger.info(`🎬 Processing ${wanJobType} job (random, no preset carryover)`)
+  if (stackCond) {
+    const matching = await db
+      .select(selectCols)
+      .from(jobs)
+      .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, wanJobType), stackCond, ...subjectConds()))
+      .orderBy(modeOrder)
+      .limit(1)
+    if (matching.length > 0) {
+      logger.info(`🎬 Processing ${wanJobType} job (${order}, reusing ${stackDesc})`)
+      return matching
+    }
+  }
+
+  // Nothing loaded, or the loaded stack's queue is drained → take the next job by
+  // the chrono/random toggle. Whatever stack it uses becomes the new "loaded"
+  // one, and subsequent picks drain that before switching again.
+  logger.info(`🎬 Processing ${wanJobType} job (${order}, new stack)`)
   return db
     .select(selectCols)
     .from(jobs)
     .where(and(eq(jobs.status, 'queued'), eq(jobs.jobType, wanJobType), ...subjectConds()))
-    .orderBy(sql`RANDOM()`)
+    .orderBy(modeOrder)
     .limit(1)
 }
 
@@ -889,10 +901,14 @@ export async function processNextJob(): Promise<ProcessNextJobResult> {
     {
       let expandedSomething = false
       if (typeof params.prompt === 'string' && params.prompt.includes('{')) {
+        // Stash the pre-expansion (pre-dynamic) template so a later "Duplicate ×N"
+        // can re-roll each copy instead of cloning this job's concrete selection.
+        if (!params.prompt_template) params.prompt_template = params.prompt
         params.prompt = expandWildcards(params.prompt)
         expandedSomething = true
       }
       if (typeof params.negative_prompt === 'string' && params.negative_prompt.includes('{')) {
+        if (!params.negative_prompt_template) params.negative_prompt_template = params.negative_prompt
         params.negative_prompt = expandWildcards(params.negative_prompt)
         expandedSomething = true
       }
@@ -1430,12 +1446,19 @@ export async function stopAllProcessing(opts: { forceRestart?: boolean } = {}) {
 
   // Requeue any jobs currently marked active so the UI clears and they can be retried.
   // Safe here (unlike reconciliation's disabled Rule 3) because the user explicitly clicked Stop.
-  // Clearing parameters drops the snapshot so the preset reference re-takes over
-  // — matches the rule "moving back to queued erases hardcoded values".
+  // Clearing parameters drops the preset snapshot so the preset re-takes over at
+  // activation — BUT only for preset-backed jobs. Preset-LESS jobs (inline t2v/i2v
+  // and character sweeps) carry their prompt + LoRAs in parameters with no preset
+  // to restore from, so wiping them leaves an empty, un-runnable job. Preserve
+  // those; only blank the snapshot when a preset_id exists.
   const db = getDb()
   const requeued = await db
     .update(jobs)
-    .set({ status: 'queued', parameters: {}, updatedAt: new Date() })
+    .set({
+      status: 'queued',
+      parameters: sql`CASE WHEN ${jobs.presetId} IS NOT NULL THEN '{}'::jsonb ELSE ${jobs.parameters} END`,
+      updatedAt: new Date()
+    })
     .where(eq(jobs.status, 'active'))
     .returning({ id: jobs.id })
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDb, getDbClient } from '~/server/utils/database'
 import { mediaRecords, jobs } from '~/server/utils/schema'
 import { retrieveMedia } from '~/server/services/hybridMediaStorage'
@@ -425,8 +425,9 @@ export default defineEventHandler(async event => {
             }
 
             // Reset the job: clear source_media_uuid and set status back to
-            // queued. Drop the preset snapshot — the next pickup will read the
-            // preset's current values.
+            // queued. Drop the preset snapshot for preset-backed jobs (next pickup
+            // reads the preset's current values); preset-LESS jobs keep their
+            // params — they hold the prompt/LoRAs with nothing to restore from.
             await db
               .update(jobs)
               .set({
@@ -436,7 +437,7 @@ export default defineEventHandler(async event => {
                 errorMessage: null,
                 startedAt: null,
                 completedAt: null,
-                parameters: {},
+                parameters: sql`CASE WHEN ${jobs.presetId} IS NOT NULL THEN '{}'::jsonb ELSE ${jobs.parameters} END`,
                 updatedAt: new Date()
               })
               .where(eq(jobs.id, job.id))

@@ -23,6 +23,7 @@ export interface MediaGalleryFilters {
   selectedTags: string[]
   onlyShowUntagged: boolean
   onlyShowOrphans: boolean
+  aiGenerated: string // 'all' | 'real' | 'ai' | 'null'
   selectedRatings: number[]
   showUnrated: boolean
   selectedPreset: string | null
@@ -49,6 +50,7 @@ const defaultFilters: MediaGalleryFilters = {
   selectedTags: [],
   onlyShowUntagged: false,
   onlyShowOrphans: false,
+  aiGenerated: 'all',
   selectedRatings: [],
   showUnrated: false,
   selectedPreset: null,
@@ -156,6 +158,12 @@ export const useMediaGalleryFilters = () => {
       get: () => filters.value.onlyShowOrphans,
       set: value => {
         filters.value.onlyShowOrphans = value
+      }
+    }),
+    aiGenerated: computed({
+      get: () => filters.value.aiGenerated,
+      set: value => {
+        filters.value.aiGenerated = value
       }
     }),
     selectedRatings: computed({

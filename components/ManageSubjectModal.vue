@@ -161,6 +161,28 @@
               "Auto" infers from the subject name (celeb/asmr substring, else real).
             </p>
           </div>
+
+          <!-- Show filter: subject uploads vs generated outputs. Lives here (not
+               in the grid toolbar) so it stays reachable even when a filter
+               yields zero images. Edit mode only — new subjects have no images. -->
+          <div v-if="isEditMode">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Show
+            </label>
+            <div class="flex gap-2 flex-wrap">
+              <UButton v-for="opt in imageFilterOptions" :key="opt.value"
+                :variant="imageFilter === opt.value ? 'solid' : 'outline'"
+                :color="imageFilter === opt.value ? 'primary' : 'neutral'"
+                size="sm"
+                :disabled="isUploading || isSaving || isLoadingImages"
+                @click="onFilterChange(opt.value)">
+                {{ opt.label }}
+              </UButton>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              "Subject images" are your uploads; "Output images" are generated (e.g. face-swaps).
+            </p>
+          </div>
         </div>
 
         <!-- Current Images Display -->
@@ -625,6 +647,14 @@ const imageSortOptions = [
   { label: 'Filename', value: 'filename' },
   { label: 'Face similarity', value: 'face_similarity' }
 ]
+// Which images to show: genuine subject uploads (no job), generated outputs
+// (born from a job, e.g. face-swaps), or both. Defaults to subject images.
+const imageFilter = ref('subject')
+const imageFilterOptions = [
+  { label: 'Subject images', value: 'subject' },
+  { label: 'Output images', value: 'output' },
+  { label: 'Both', value: 'both' }
+]
 const selectedImageUuids = ref(new Set())
 const isPickerOpen = ref(false)
 const pickerSubjects = ref([])
@@ -728,6 +758,7 @@ const resetForm = () => {
   currentImageIndex.value = 0
   uploadProgress.value = 0
   createdSubject.value = null
+  imageFilter.value = 'subject'
   // Reset multi-select/picker state so re-opening the modal is clean
   isSelectionMode.value = false
   selectedImageUuids.value = new Set()
@@ -1111,11 +1142,22 @@ const loadSubjectImages = async () => {
 
   isLoadingImages.value = true
   try {
+    // Map the Show filter to the search API's source_job_type:
+    //   subject → 'none' (no originating job = genuine uploads)
+    //   output  → 'any'  (born from a job = generated, e.g. face-swaps)
+    //   both    → 'all'  (no job filter)
+    const sourceJobType = imageFilter.value === 'subject'
+      ? 'none'
+      : imageFilter.value === 'output'
+        ? 'any'
+        : 'all'
+
     const response = await useApiFetch('media/search', {
       query: {
         subject_uuid: currentSubject.value.id,
         purpose: 'source',
         media_type: 'image',
+        source_job_type: sourceJobType,
         limit: 1000,
         sort_by: imageSortBy.value,
         sort_order: 'asc'
@@ -1145,6 +1187,13 @@ const loadSubjectImages = async () => {
 const onSortChange = (value) => {
   if (value == null) return
   imageSortBy.value = value
+  loadSubjectImages()
+}
+
+// Re-fetch when the Show (subject/output/both) filter changes.
+const onFilterChange = (value) => {
+  if (value == null) return
+  imageFilter.value = value
   loadSubjectImages()
 }
 

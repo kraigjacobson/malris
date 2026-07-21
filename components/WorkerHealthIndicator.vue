@@ -6,10 +6,10 @@
       <span :class="['text-xs', faceswapHealthy ? 'text-green-400' : 'text-red-400']">FS</span>
     </div>
 
-    <!-- Wan Worker -->
-    <div class="flex items-center gap-1.5" :title="`Wan I2V: ${wanStatus}`">
+    <!-- Wan Worker (handles both i2v and t2v) -->
+    <div class="flex items-center gap-1.5" :title="`Wan (i2v + t2v): ${wanStatus}`">
       <div :class="['w-2.5 h-2.5 rounded-full', wanHealthy ? 'bg-green-500 animate-pulse' : 'bg-red-500']" />
-      <span :class="['text-xs', wanHealthy ? 'text-green-400' : 'text-red-400']">I2V</span>
+      <span :class="['text-xs', wanHealthy ? 'text-green-400' : 'text-red-400']">Wan</span>
     </div>
 
     <!-- Overall Status Text -->
@@ -40,6 +40,6 @@ const statusText = computed(() => {
   if (!anyHealthy.value) return 'All Offline'
   if (faceswapHealthy.value && wanHealthy.value) return 'All Ready'
   if (faceswapHealthy.value) return 'FS Ready'
-  return 'I2V Ready'
+  return 'Wan Ready'
 })
 </script>

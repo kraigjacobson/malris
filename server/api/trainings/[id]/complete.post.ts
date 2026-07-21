@@ -48,39 +48,52 @@ export default defineEventHandler(async (event) => {
         .set({ status: 'completed', progress: 100, completedAt: now, updatedAt: now })
         .where(eq(jobs.id, training.jobId))
     }
-    // Auto-incorporate the trained character into the prompt system: move the
-    // published high/low LoRAs into t2v/char/ (the char-folder convention then
-    // treats them as a character), and register them with the trigger word,
-    // the subject's name (dropdown badge), and a shared pair_key (high/low
-    // auto-pairing). The appearance/description is added by hand later via the
-    // trigger-words pencil in the UI.
+    // Auto-incorporate the trained LoRA into the prompt system.
+    //  - character: move high/low into t2v/char/ (folder convention = character),
+    //    register with trigger + subject name (dropdown badge) + pair_key.
+    //  - concept:  move into t2v/concept/ and register as category='position' with
+    //    a starter prompt_template so it drops into the dynamic-prompt slot system
+    //    (Kraig refines the template via the trigger pencil). See §6 of the plan.
+    const isConcept = training.kind === 'concept'
     try {
       const LORAS_DIR = process.env.LORAS_DIR || '/data/loras'
-      const charDir = path.join(LORAS_DIR, 't2v', 'char')
-      await mkdir(charDir, { recursive: true })
+      const subDir = isConcept ? 'concept' : 'char'
+      const outDir = path.join(LORAS_DIR, 't2v', subDir)
+      await mkdir(outDir, { recursive: true })
       const subjRows = training.subjectUuid
         ? await db.select({ name: subjects.name }).from(subjects).where(eq(subjects.id, training.subjectUuid)).limit(1)
         : []
       const subjectName = subjRows[0]?.name || training.loraName
+      // Badge/name: concept → the tag it trains; character → the subject's name.
+      const displayName = isConcept ? (training.conceptTag || training.loraName) : subjectName
+      // Starter base template for a concept/position LoRA: trigger leads (fires
+      // the LoRA), plus the standard slotted phrasing the compose engine fills.
+      const conceptTemplate = `${training.triggerWord}, a beautiful naked woman[body] shown in the ${training.conceptTag || 'trained'} pose. She appears [expression]. [accessory]photorealistic, sharp focus. [effect]`
 
       for (const file of Object.values(loras) as string[]) {
         if (!file) continue
         const basename = path.basename(file)
         const src = path.isAbsolute(file) ? file : path.join(LORAS_DIR, file)
-        const destAbs = path.join(charDir, basename)
+        const destAbs = path.join(outDir, basename)
         try {
           if (path.resolve(src) !== path.resolve(destAbs)) await rename(src, destAbs)
         } catch (e) {
           logger.warn(`🎓 could not move ${src} -> ${destAbs}: ${(e as any)?.message}`)
         }
-        const name = existsSync(destAbs) ? `t2v/char/${basename}` : file
+        const name = existsSync(destAbs) ? `t2v/${subDir}/${basename}` : file
+        const values = isConcept
+          ? { name, triggerWords: training.triggerWord, civitaiName: displayName, pairKey: training.loraName, category: 'position', promptTemplate: conceptTemplate, defaultStrength: 1.0 }
+          : { name, triggerWords: training.triggerWord, civitaiName: displayName, pairKey: training.loraName }
+        const setOnConflict = isConcept
+          ? { triggerWords: training.triggerWord, civitaiName: displayName, pairKey: training.loraName, category: 'position', updatedAt: now }
+          : { triggerWords: training.triggerWord, civitaiName: displayName, pairKey: training.loraName, updatedAt: now }
         await db
           .insert(loraMetadata)
-          .values({ name, triggerWords: training.triggerWord, civitaiName: subjectName, pairKey: training.loraName })
-          .onConflictDoUpdate({ target: loraMetadata.name, set: { triggerWords: training.triggerWord, civitaiName: subjectName, pairKey: training.loraName, updatedAt: now } })
+          .values(values)
+          .onConflictDoUpdate({ target: loraMetadata.name, set: setOnConflict })
       }
     } catch (e) {
-      logger.error(`🎓 char auto-incorporation failed for ${id}: ${(e as any)?.message}`)
+      logger.error(`🎓 auto-incorporation failed for ${id}: ${(e as any)?.message}`)
       for (const file of Object.values(loras) as string[]) {
         if (!file) continue
         await db
@@ -89,7 +102,7 @@ export default defineEventHandler(async (event) => {
           .onConflictDoUpdate({ target: loraMetadata.name, set: { triggerWords: training.triggerWord, updatedAt: now } })
       }
     }
-    logger.info(`🎓 training ${id} completed — published: ${JSON.stringify(loras)}`)
+    logger.info(`🎓 training ${id} completed (${training.kind}) — published: ${JSON.stringify(loras)}`)
   } else if (status === 'failed') {
     const error = body?.error || 'Training failed'
     await db

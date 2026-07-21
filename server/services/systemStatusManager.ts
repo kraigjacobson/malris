@@ -6,7 +6,7 @@
 import type { SystemStatus, SystemHealth, ComfyUIProcessingStatus, AutoProcessingStatus, WebSocketMessage } from '~/types/systemStatus'
 import { getDb } from '~/server/utils/database'
 import { jobs } from '~/server/utils/schema'
-import { count, eq, and } from 'drizzle-orm'
+import { count, eq, and, sql } from 'drizzle-orm'
 import { logger } from '~/server/utils/logger'
 // Register global error handlers FIRST to catch WebSocket errors
 console.log('🛡️ [SYSTEM STATUS] Registering global error handlers...')
@@ -59,10 +59,11 @@ async function requeueOrphanedActiveJobs(): Promise<void> {
         progress: 0,
         startedAt: null,
         errorMessage: null,
-        // Drop the preset snapshot — moving back to queued returns the job to
-        // pure-reference mode, picking up the preset's current values on the
-        // next pickup.
-        parameters: {},
+        // Drop the preset snapshot — moving back to queued returns preset-backed
+        // jobs to pure-reference mode, picking up the preset's current values on
+        // the next pickup. Preset-LESS jobs (inline t2v/i2v, sweeps) keep their
+        // params: they ARE the job, and there's no preset to restore from.
+        parameters: sql`CASE WHEN ${jobs.presetId} IS NOT NULL THEN '{}'::jsonb ELSE ${jobs.parameters} END`,
         updatedAt: new Date()
       })
       .where(eq(jobs.status, 'active'))
@@ -132,6 +133,7 @@ let comfyuiHealthInterval: NodeJS.Timeout | null = null
 
 const RUNPOD_CHECK_INTERVAL = 30000 // 30 seconds
 const COMFYUI_CHECK_INTERVAL = 15000 // 15 seconds
+const WAN_CHECK_INTERVAL = 12000 // 12 seconds — snappier busy/idle for the Wan chip (it's the primary worker)
 
 // WebSocket client management
 export function addWebSocketClient(ws: any) {
@@ -198,24 +200,25 @@ function sendToClient(ws: any, message: WebSocketMessage) {
 
 // Calculate overall system health based on component statuses
 function calculateSystemHealth(): SystemHealth {
-  const { runpodWorker, comfyui, wanWorker, autoProcessing } = currentStatus
+  const { runpodWorker, wanWorker, autoProcessing } = currentStatus
 
-  // System is healthy if at least one worker is up
+  // Workers are OPTIONAL and run independently — a t2v-only setup runs just the
+  // Wan container, so the faceswap worker (runpodWorker) and its ComfyUI being
+  // offline is normal, NOT a system outage. So: if ANY worker is up, the system
+  // is usable → healthy (degraded only if auto-processing itself is paused).
+  // We DON'T let the faceswap ComfyUI's status drag the whole system red.
   const anyWorkerHealthy = runpodWorker.status === 'healthy' || wanWorker.status === 'healthy'
   const allWorkersUnhealthy = runpodWorker.status === 'unhealthy' && wanWorker.status === 'unhealthy'
   const allWorkersUnknown = runpodWorker.status === 'unknown' && wanWorker.status === 'unknown'
 
-  if (allWorkersUnhealthy || comfyui.status === 'unhealthy') {
+  if (anyWorkerHealthy) {
+    return autoProcessing.status === 'paused' ? 'degraded' : 'healthy'
+  }
+  if (allWorkersUnhealthy) {
     return 'unhealthy'
   }
-
-  if (allWorkersUnknown || comfyui.status === 'unknown') {
+  if (allWorkersUnknown) {
     return 'unknown'
-  }
-
-  // If auto processing is enabled but has issues, system is degraded
-  if (autoProcessing.status === 'paused') {
-    return 'degraded'
   }
 
   // All systems healthy
@@ -590,7 +593,7 @@ export function startSystemMonitoring() {
   // Set up intervals (no job counts polling - updated reactively)
   runpodHealthInterval = setInterval(checkRunPodWorkerHealth, RUNPOD_CHECK_INTERVAL)
   comfyuiHealthInterval = setInterval(checkComfyUIHealth, COMFYUI_CHECK_INTERVAL)
-  setInterval(checkWanWorkerHealth, RUNPOD_CHECK_INTERVAL)
+  setInterval(checkWanWorkerHealth, WAN_CHECK_INTERVAL)
 
   // Start reconciliation service
   import('./stateReconciliation')
